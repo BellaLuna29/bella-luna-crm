@@ -201,6 +201,64 @@ export function parseFactureInput(
   return { fields }
 }
 
+/**
+ * Validates and maps a raw request body into Airtable field names for the
+ * Dépenses table. `requireCore` enforces date/description/montant as
+ * mandatory (create only).
+ */
+export function parseDepenseInput(
+  body: unknown,
+  { requireCore }: { requireCore: boolean },
+): { fields: Record<string, unknown> } | ClientInputErrors {
+  if (typeof body !== 'object' || body === null) {
+    return { errors: ['Corps de requête invalide.'] }
+  }
+  const b = body as Record<string, unknown>
+  const errors: string[] = []
+  const fields: Record<string, unknown> = {}
+
+  if ('date' in b || requireCore) {
+    const v = b.date
+    if (typeof v === 'string' && DATE_RE.test(v)) {
+      fields['Date'] = v
+    } else if (requireCore) {
+      errors.push('La date est obligatoire (format AAAA-MM-JJ).')
+    }
+  }
+
+  if ('categorie' in b) {
+    const v = typeof b.categorie === 'string' ? b.categorie.trim() : ''
+    if (v.length > 100) errors.push('La catégorie est trop longue.')
+    else if (v.length > 0) fields['Catégorie'] = v
+  }
+
+  if ('description' in b || requireCore) {
+    const v = typeof b.description === 'string' ? b.description.trim() : ''
+    if (requireCore && v.length === 0) {
+      errors.push('La description est obligatoire.')
+    } else if (v.length > 500) {
+      errors.push('La description est trop longue (500 caractères max).')
+    }
+    if (v.length > 0) fields['Description'] = v
+  }
+
+  if ('montant' in b || requireCore) {
+    const v = b.montant
+    if (typeof v === 'number' && Number.isFinite(v) && v >= 0) {
+      fields['Montant'] = v
+    } else if (requireCore) {
+      errors.push('Le montant est obligatoire et doit être un nombre positif.')
+    }
+  }
+
+  if ('recurrente' in b) {
+    fields['Récurrente'] = Boolean(b.recurrente)
+  }
+
+  if (errors.length > 0) return { errors }
+  return { fields }
+}
+
 export const RDV_STATUT_VALUES = ['Confirmé', 'Honoré', 'Annulé'] as const
 const RECORD_ID_RE = /^rec[a-zA-Z0-9]{14}$/
 const MAX_NOTES = 5000

@@ -73,6 +73,7 @@ export async function airtableGetRecord(
 export async function airtableCreate(
   tableId: string,
   fields: Record<string, unknown>,
+  options?: { typecast?: boolean },
 ): Promise<AirtableRecord> {
   const { apiKey, baseId } = getConfig()
   const url = `${AIRTABLE_API_BASE}/${baseId}/${tableId}`
@@ -83,7 +84,7 @@ export async function airtableCreate(
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ fields }),
+    body: JSON.stringify({ fields, typecast: options?.typecast ?? false }),
   })
 
   if (!response.ok) {
@@ -109,6 +110,34 @@ export async function airtableUpdate(
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({ fields }),
+  })
+
+  if (!response.ok) {
+    const body = await response.text()
+    throw new Error(`Airtable a répondu ${response.status} : ${body}`)
+  }
+
+  return (await response.json()) as AirtableRecord
+}
+
+export async function airtableUploadAttachment(
+  tableId: string,
+  recordId: string,
+  fieldName: string,
+  filename: string,
+  contentType: string,
+  base64Data: string,
+): Promise<AirtableRecord> {
+  const { apiKey, baseId } = getConfig()
+  const url = `https://content.airtable.com/v0/${baseId}/${recordId}/${encodeURIComponent(fieldName)}/uploadAttachment`
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ contentType, filename, file: base64Data }),
   })
 
   if (!response.ok) {

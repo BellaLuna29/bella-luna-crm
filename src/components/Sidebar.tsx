@@ -7,6 +7,7 @@ const NAV_ITEMS: { view: View; label: string }[] = [
   { view: 'clients', label: 'Clientes' },
   { view: 'agenda', label: 'Rendez-vous' },
   { view: 'billing', label: 'Facturation' },
+  { view: 'compta', label: 'Compta' },
   { view: 'newsletter', label: 'Newsletter' },
 ]
 

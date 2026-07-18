@@ -8,6 +8,7 @@ import AgendaView from './views/AgendaView'
 import DashboardView from './views/DashboardView'
 import StatsView from './views/StatsView'
 import FacturationView from './views/FacturationView'
+import ComptaView from './views/ComptaView'
 import ComingSoon from './views/ComingSoon'
 import type { View } from './types'
 
@@ -18,6 +19,7 @@ const TITLES: Record<View, [string, string]> = {
   'client-detail': ['Fiche cliente', 'Informations, historique et notes'],
   agenda: ['Rendez-vous', 'Votre agenda et le suivi des cures'],
   billing: ['Facturation', 'Factures, promotions et suivi des paiements'],
+  compta: ['Compta', 'Dépenses et exports pour ta comptabilité'],
   newsletter: ['Newsletter', 'Offres du moment et ciblage clientes'],
 }
 
@@ -90,6 +92,7 @@ function App() {
                   }}
                 />
               )}
+              {view === 'compta' && <ComptaView />}
               {view === 'newsletter' && <ComingSoon title="Newsletter" />}
             </main>
           </div>
