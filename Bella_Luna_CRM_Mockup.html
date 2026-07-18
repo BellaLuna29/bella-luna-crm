@@ -1,0 +1,945 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bella Luna — Espace de gestion</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600;700&display=swap');
+
+  :root{
+    --sage-dark:#3A5A50;
+    --sage:#6E9486;
+    --sage-light:#E8EFEA;
+    --sage-pale:#F4F8F6;
+    --gold:#C9A86A;
+    --gold-pale:#F1E6CF;
+    --text-dark:#23332D;
+    --text-muted:#6B8074;
+    --cream:#FFFFFF;
+    --border:#DCE7E1;
+    --danger:#B5654F;
+    --radius:14px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family:'Inter',sans-serif;
+    background:var(--sage-pale);
+    color:var(--text-dark);
+    -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3{font-family:'Fraunces',serif; margin:0;}
+  a{text-decoration:none; color:inherit;}
+  button{font-family:inherit; cursor:pointer;}
+
+  /* ---------- LAYOUT ---------- */
+  .app{
+    display:flex;
+    min-height:100vh;
+  }
+
+  /* Sidebar */
+  .sidebar{
+    width:240px;
+    background:var(--sage-dark);
+    color:#fff;
+    display:flex;
+    flex-direction:column;
+    padding:28px 18px;
+    flex-shrink:0;
+  }
+  .brand{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    margin-bottom:36px;
+    padding:0 8px;
+  }
+  .brand-mark{
+    width:36px;height:36px;border-radius:50%;
+    background:var(--gold);
+    display:flex;align-items:center;justify-content:center;
+    font-family:'Fraunces',serif;font-weight:600;color:var(--sage-dark);
+    font-size:16px;
+  }
+  .brand-text{font-family:'Fraunces',serif; font-size:18px; font-weight:600; letter-spacing:.3px;}
+  .brand-sub{font-size:10px; color:#AFC4BA; letter-spacing:1.5px; margin-top:-2px;}
+
+  .nav{display:flex; flex-direction:column; gap:4px;}
+  .nav-item{
+    display:flex; align-items:center; gap:12px;
+    padding:11px 12px;
+    border-radius:10px;
+    color:#D9E4DE;
+    font-size:14.5px;
+    font-weight:500;
+    border:none;
+    background:transparent;
+    width:100%;
+    text-align:left;
+    transition:background .15s;
+  }
+  .nav-item:hover{background:rgba(255,255,255,.08);}
+  .nav-item.active{background:rgba(255,255,255,.14); color:#fff;}
+  .nav-item svg{width:18px;height:18px; flex-shrink:0;}
+
+  .nav-footer{
+    margin-top:auto;
+    padding:14px 12px;
+    background:rgba(255,255,255,.06);
+    border-radius:10px;
+    font-size:12px;
+    color:#AFC4BA;
+    line-height:1.5;
+  }
+
+  /* Main */
+  .main{flex:1; display:flex; flex-direction:column; min-width:0;}
+  .topbar{
+    height:72px;
+    background:#fff;
+    border-bottom:1px solid var(--border);
+    display:flex; align-items:center; justify-content:space-between;
+    padding:0 32px;
+    flex-shrink:0;
+  }
+  .topbar h2{font-size:21px; font-weight:600;}
+  .topbar-sub{font-size:13px; color:var(--text-muted); margin-top:2px;}
+  .topbar-right{display:flex; align-items:center; gap:14px;}
+  .badge-demo{
+    font-size:11px; background:var(--gold-pale); color:#8a6d2f;
+    padding:5px 10px; border-radius:20px; font-weight:600; letter-spacing:.3px;
+  }
+  .avatar{
+    width:38px;height:38px;border-radius:50%;
+    background:var(--sage); color:#fff; display:flex; align-items:center; justify-content:center;
+    font-weight:600; font-size:14px;
+  }
+
+  .content{flex:1; padding:28px 32px; overflow-y:auto;}
+  .view{display:none; animation:fadeIn .25s ease;}
+  .view.active{display:block;}
+  @keyframes fadeIn{from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:translateY(0);}}
+
+  /* ---------- Cards / generic ---------- */
+  .card{
+    background:#fff;
+    border-radius:var(--radius);
+    border:1px solid var(--border);
+    padding:22px;
+  }
+  .grid-stats{
+    display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:24px;
+  }
+  .stat{
+    background:#fff; border:1px solid var(--border); border-radius:var(--radius);
+    padding:18px 20px;
+  }
+  .stat-label{font-size:12px; color:var(--text-muted); font-weight:500;}
+  .stat-value{font-family:'Fraunces',serif; font-size:26px; font-weight:600; margin-top:4px; color:var(--sage-dark);}
+  .stat-delta{font-size:11.5px; margin-top:4px; color:var(--sage);}
+
+  /* ---------- DASHBOARD ---------- */
+  .dash-grid{display:grid; grid-template-columns:1.4fr 1fr; gap:20px;}
+  .section-title{font-size:15px; font-weight:600; margin-bottom:14px; display:flex; align-items:center; justify-content:space-between;}
+  .section-title .link{font-size:12.5px; color:var(--sage-dark); font-weight:500;}
+
+  .agenda-row{
+    display:flex; align-items:center; gap:14px;
+    padding:12px 4px; border-bottom:1px solid var(--sage-light);
+  }
+  .agenda-row:last-child{border-bottom:none;}
+  .agenda-time{
+    width:56px; font-size:13px; font-weight:600; color:var(--sage-dark); flex-shrink:0;
+  }
+  .agenda-info{flex:1;}
+  .agenda-name{font-size:14px; font-weight:600;}
+  .agenda-service{font-size:12.5px; color:var(--text-muted);}
+  .tag{
+    font-size:10.5px; font-weight:600; padding:3px 9px; border-radius:20px;
+    background:var(--sage-light); color:var(--sage-dark);
+  }
+  .tag.gold{background:var(--gold-pale); color:#8a6d2f;}
+
+  .alert-row{
+    display:flex; gap:12px; align-items:flex-start;
+    padding:12px; border-radius:10px; background:var(--sage-pale); margin-bottom:10px;
+  }
+  .alert-row:last-child{margin-bottom:0;}
+  .alert-icon{
+    width:30px;height:30px;border-radius:50%; flex-shrink:0;
+    display:flex;align-items:center;justify-content:center;
+    background:var(--gold-pale); color:#8a6d2f;
+  }
+  .alert-text{font-size:13px; line-height:1.4;}
+  .alert-text b{font-weight:600;}
+
+  /* ---------- CLIENTS LIST ---------- */
+  .toolbar{display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; gap:12px;}
+  .search{
+    flex:1; max-width:340px; position:relative;
+  }
+  .search input{
+    width:100%; padding:10px 14px 10px 36px; border-radius:10px; border:1px solid var(--border);
+    font-size:13.5px; font-family:inherit; background:#fff;
+  }
+  .search svg{position:absolute; left:12px; top:50%; transform:translateY(-50%); width:15px; height:15px; color:var(--text-muted);}
+  .btn-primary{
+    background:var(--sage-dark); color:#fff; border:none; padding:10px 18px; border-radius:10px;
+    font-size:13.5px; font-weight:600; display:flex; align-items:center; gap:7px;
+  }
+  .btn-primary:hover{background:#2d473f;}
+  .btn-secondary{
+    background:#fff; color:var(--sage-dark); border:1px solid var(--border); padding:9px 16px; border-radius:10px;
+    font-size:13px; font-weight:600;
+  }
+
+  .client-table{width:100%; border-collapse:collapse;}
+  .client-table th{
+    text-align:left; font-size:11.5px; color:var(--text-muted); font-weight:600;
+    text-transform:uppercase; letter-spacing:.4px; padding:0 14px 10px 14px; border-bottom:1px solid var(--border);
+  }
+  .client-table td{padding:13px 14px; font-size:13.5px; border-bottom:1px solid var(--sage-light);}
+  .client-table tr.row-clickable{cursor:pointer; transition:background .12s;}
+  .client-table tr.row-clickable:hover{background:var(--sage-pale);}
+  .client-name-cell{display:flex; align-items:center; gap:10px;}
+  .mini-avatar{
+    width:32px;height:32px;border-radius:50%; background:var(--sage-light); color:var(--sage-dark);
+    display:flex;align-items:center;justify-content:center; font-weight:600; font-size:12.5px; flex-shrink:0;
+  }
+  .status-pill{
+    font-size:11px; font-weight:600; padding:4px 10px; border-radius:20px; display:inline-block;
+  }
+  .status-reguliere{background:var(--sage-light); color:var(--sage-dark);}
+  .status-nouvelle{background:var(--gold-pale); color:#8a6d2f;}
+  .status-inactive{background:#F3E3DE; color:var(--danger);}
+
+  /* ---------- CLIENT DETAIL ---------- */
+  .back-link{
+    display:inline-flex; align-items:center; gap:6px; font-size:13px; color:var(--text-muted);
+    margin-bottom:16px; font-weight:500;
+  }
+  .back-link:hover{color:var(--sage-dark);}
+  .detail-grid{display:grid; grid-template-columns:280px 1fr; gap:20px;}
+  .profile-card{text-align:center; padding-bottom:24px;}
+  .profile-avatar{
+    width:72px;height:72px;border-radius:50%; background:var(--sage-light); color:var(--sage-dark);
+    display:flex;align-items:center;justify-content:center; font-family:'Fraunces',serif; font-weight:600; font-size:26px;
+    margin:0 auto 14px;
+  }
+  .profile-name{font-size:18px; font-weight:600; font-family:'Fraunces',serif;}
+  .profile-meta{font-size:12.5px; color:var(--text-muted); margin-top:3px;}
+  .info-list{margin-top:20px; text-align:left; display:flex; flex-direction:column; gap:13px;}
+  .info-item{display:flex; gap:10px; font-size:13px;}
+  .info-item svg{width:15px;height:15px; color:var(--sage); flex-shrink:0; margin-top:2px;}
+  .info-item-text b{display:block; font-size:11px; color:var(--text-muted); font-weight:500; margin-bottom:1px;}
+
+  .note-box{
+    margin-top:18px; background:var(--sage-pale); border-radius:10px; padding:13px; text-align:left;
+    font-size:12.5px; line-height:1.5; color:var(--text-dark);
+  }
+  .note-box b{display:block; font-size:11px; color:var(--sage-dark); margin-bottom:4px; text-transform:uppercase; letter-spacing:.3px;}
+
+  .cure-progress{margin-top:18px; text-align:left;}
+  .cure-bar{
+    height:8px; background:var(--sage-light); border-radius:10px; overflow:hidden; margin-top:6px;
+  }
+  .cure-bar-fill{height:100%; background:var(--gold); border-radius:10px;}
+
+  .tabs{display:flex; gap:6px; margin-bottom:16px; border-bottom:1px solid var(--border);}
+  .tab-btn{
+    background:none; border:none; padding:10px 4px; margin-right:18px; font-size:13.5px; font-weight:600;
+    color:var(--text-muted); border-bottom:2px solid transparent; margin-bottom:-1px;
+  }
+  .tab-btn.active{color:var(--sage-dark); border-bottom-color:var(--sage-dark);}
+  .tab-panel{display:none;}
+  .tab-panel.active{display:block;}
+
+  .history-item{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:13px 0; border-bottom:1px solid var(--sage-light);
+  }
+  .history-item:last-child{border-bottom:none;}
+  .history-left{display:flex; gap:12px; align-items:center;}
+  .history-dot{width:9px;height:9px;border-radius:50%; background:var(--sage);}
+  .history-date{font-size:11.5px; color:var(--text-muted); width:80px;}
+  .history-service{font-size:13.5px; font-weight:600;}
+  .history-price{font-size:13.5px; font-weight:600; color:var(--sage-dark);}
+
+  /* ---------- BILLING ---------- */
+  .invoice-card{
+    background:#fff; border-radius:var(--radius); border:1px solid var(--border); padding:0; overflow:hidden;
+  }
+  .invoice-header{
+    background:var(--sage-dark); color:#fff; padding:22px 26px; display:flex; justify-content:space-between; align-items:flex-start;
+  }
+  .invoice-header h3{font-size:17px;}
+  .invoice-header .inv-num{font-size:12px; color:#AFC4BA; margin-top:4px;}
+  .invoice-body{padding:24px 26px;}
+  .inv-line{display:flex; justify-content:space-between; padding:9px 0; font-size:13.5px;}
+  .inv-line.promo{color:var(--gold); font-weight:600;}
+  .inv-line.total{
+    border-top:1px dashed var(--border); margin-top:6px; padding-top:14px;
+    font-family:'Fraunces',serif; font-size:18px; font-weight:600;
+  }
+  .promo-note{
+    display:flex; gap:10px; align-items:center; margin-top:16px; padding:11px 13px;
+    background:var(--gold-pale); border-radius:10px; font-size:12px; color:#8a6d2f;
+  }
+
+  .promo-manager{margin-top:24px;}
+  .promo-list{display:flex; flex-direction:column; gap:10px; margin-top:14px;}
+  .promo-row{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:13px 16px; background:var(--sage-pale); border-radius:10px;
+  }
+  .promo-row-left{display:flex; align-items:center; gap:12px;}
+  .promo-icon{
+    width:34px;height:34px;border-radius:50%; background:var(--gold-pale); color:#8a6d2f;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .promo-name{font-size:13.5px; font-weight:600;}
+  .promo-detail{font-size:11.5px; color:var(--text-muted);}
+  .toggle{
+    width:38px; height:22px; border-radius:20px; background:var(--sage); position:relative; flex-shrink:0;
+    border:none; cursor:pointer;
+  }
+  .toggle::after{
+    content:''; position:absolute; width:18px;height:18px; background:#fff; border-radius:50%;
+    top:2px; right:2px; transition:.2s;
+  }
+  .toggle.off{background:#D8DEDA;}
+  .toggle.off::after{right:auto; left:2px;}
+
+  /* ---------- NEWSLETTER ---------- */
+  .nl-grid{display:grid; grid-template-columns:1fr 1fr; gap:20px;}
+  .nl-compose-field{margin-bottom:16px;}
+  .nl-compose-field label{display:block; font-size:12px; font-weight:600; color:var(--text-muted); margin-bottom:6px;}
+  .nl-compose-field input, .nl-compose-field textarea, .nl-compose-field select{
+    width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:9px; font-size:13.5px; font-family:inherit;
+    background:#fff;
+  }
+  .nl-compose-field textarea{resize:vertical; min-height:90px;}
+  .segment-chip{
+    display:inline-flex; align-items:center; gap:6px; padding:6px 12px; border-radius:20px;
+    background:var(--sage-light); color:var(--sage-dark); font-size:12px; font-weight:600; margin:0 6px 6px 0;
+    border:1px solid var(--sage-light); cursor:pointer;
+  }
+  .segment-chip.selected{background:var(--sage-dark); color:#fff;}
+
+  .preview-phone{
+    background:var(--sage-dark); border-radius:24px; padding:14px; max-width:300px; margin:0 auto;
+  }
+  .preview-screen{background:#fff; border-radius:16px; padding:18px; min-height:380px;}
+  .preview-from{font-size:10.5px; color:var(--text-muted); margin-bottom:8px;}
+  .preview-subject{font-weight:700; font-size:14px; margin-bottom:10px;}
+  .preview-img{
+    height:90px; background:linear-gradient(135deg, var(--sage-light), var(--gold-pale));
+    border-radius:10px; margin-bottom:12px; display:flex; align-items:center; justify-content:center;
+    color:var(--sage-dark); font-family:'Fraunces',serif; font-size:13px; font-weight:600; text-align:center;
+  }
+  .preview-body-text{font-size:12px; line-height:1.6; color:var(--text-dark);}
+  .preview-cta{
+    margin-top:14px; background:var(--sage-dark); color:#fff; text-align:center; padding:10px; border-radius:8px;
+    font-size:12px; font-weight:600;
+  }
+
+  .recap-list{margin-top:20px;}
+  .recap-row{display:flex; justify-content:space-between; padding:11px 0; border-bottom:1px solid var(--sage-light); font-size:13px;}
+  .recap-row:last-child{border-bottom:none;}
+
+  .toast{
+    position:fixed; bottom:26px; left:50%; transform:translateX(-50%) translateY(20px);
+    background:var(--sage-dark); color:#fff; padding:13px 22px; border-radius:10px; font-size:13.5px; font-weight:500;
+    box-shadow:0 8px 24px rgba(0,0,0,.15); opacity:0; transition:.25s; pointer-events:none; z-index:999;
+    display:flex; align-items:center; gap:10px;
+  }
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+
+  @media (max-width:900px){
+    .sidebar{display:none;}
+    .dash-grid, .detail-grid, .nl-grid{grid-template-columns:1fr;}
+    .grid-stats{grid-template-columns:repeat(2,1fr);}
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- SIDEBAR -->
+  <nav class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">B</div>
+      <div>
+        <div class="brand-text">Bella Luna</div>
+        <div class="brand-sub">ESPACE GESTION</div>
+      </div>
+    </div>
+    <div class="nav">
+      <button class="nav-item active" data-view="dashboard">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+        Tableau de bord
+      </button>
+      <button class="nav-item" data-view="clients">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="8" r="2.4"/><path d="M16 14.2c2.3.5 4 2.6 4 5.1"/></svg>
+        Clientes
+      </button>
+      <button class="nav-item" data-view="agenda">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/><path d="M8 14.5l1.5 1.5L12.5 13"/></svg>
+        Rendez-vous
+      </button>
+      <button class="nav-item" data-view="billing">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
+        Facturation
+      </button>
+      <button class="nav-item" data-view="newsletter">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>
+        Newsletter
+      </button>
+    </div>
+    <div class="nav-footer">
+      Ceci est une maquette de démonstration.<br>Les données affichées sont fictives.
+    </div>
+  </nav>
+
+  <!-- MAIN -->
+  <div class="main">
+    <div class="topbar">
+      <div>
+        <h2 id="topbar-title">Tableau de bord</h2>
+        <div class="topbar-sub" id="topbar-sub">Vue d'ensemble de votre activité</div>
+      </div>
+      <div class="topbar-right">
+        <span class="badge-demo">Maquette interactive</span>
+        <div class="avatar">C</div>
+      </div>
+    </div>
+
+    <div class="content">
+
+      <!-- ============ DASHBOARD ============ -->
+      <div class="view active" id="view-dashboard">
+        <div class="grid-stats">
+          <div class="stat">
+            <div class="stat-label">Rendez-vous cette semaine</div>
+            <div class="stat-value">14</div>
+            <div class="stat-delta">+3 vs semaine dernière</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Clientes actives</div>
+            <div class="stat-value">87</div>
+            <div class="stat-delta">5 nouvelles ce mois</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">CA du mois</div>
+            <div class="stat-value">3 240 €</div>
+            <div class="stat-delta">+12% vs mois dernier</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Cures en cours</div>
+            <div class="stat-value">9</div>
+            <div class="stat-delta">2 arrivent à terme</div>
+          </div>
+        </div>
+
+        <div class="dash-grid">
+          <div class="card">
+            <div class="section-title">Aujourd'hui — Jeudi 19 juin
+              <a class="link" data-goto="agenda">Voir l'agenda →</a>
+            </div>
+            <div class="agenda-row">
+              <div class="agenda-time">09:30</div>
+              <div class="agenda-info">
+                <div class="agenda-name">Coline Kerjean</div>
+                <div class="agenda-service">L'Envolée de Sérénité — 60 min</div>
+              </div>
+              <span class="tag">Régulière</span>
+            </div>
+            <div class="agenda-row">
+              <div class="agenda-time">11:00</div>
+              <div class="agenda-info">
+                <div class="agenda-name">Mathieu Floch</div>
+                <div class="agenda-service">Massage Sportif — Approfondissement</div>
+              </div>
+              <span class="tag gold">Promo lancement</span>
+            </div>
+            <div class="agenda-row">
+              <div class="agenda-time">14h15</div>
+              <div class="agenda-info">
+                <div class="agenda-name">Elodie Pennec</div>
+                <div class="agenda-service">Drainage lymphatique — séance 4/5</div>
+              </div>
+              <span class="tag">Cure en cours</span>
+            </div>
+            <div class="agenda-row">
+              <div class="agenda-time">16h30</div>
+              <div class="agenda-info">
+                <div class="agenda-name">Anaïs Le Roux</div>
+                <div class="agenda-service">Extensions de cils — Remplissage</div>
+              </div>
+              <span class="tag">Nouvelle</span>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="section-title">À ne pas oublier</div>
+            <div class="alert-row">
+              <div class="alert-icon">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+              </div>
+              <div class="alert-text"><b>Anaïs Le Roux</b> arrive à J+25 sur ses cils — relance remplissage à envoyer.</div>
+            </div>
+            <div class="alert-row">
+              <div class="alert-icon">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 2l2.4 7h7.1l-5.7 4.3 2.2 7-5.9-4.4-5.9 4.4 2.2-7L2.6 9h7z"/></svg>
+              </div>
+              <div class="alert-text"><b>Sophie Quéméner</b> fête son anniversaire le 24 juin — message cadeau prévu.</div>
+            </div>
+            <div class="alert-row">
+              <div class="alert-icon">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+              </div>
+              <div class="alert-text"><b>3 clientes</b> n'ont pas pris rendez-vous depuis plus de 2 mois.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ CLIENTS LIST ============ -->
+      <div class="view" id="view-clients">
+        <div class="toolbar">
+          <div class="search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+            <input type="text" placeholder="Rechercher une cliente...">
+          </div>
+          <button class="btn-primary" onclick="showToast('Nouvelle fiche cliente créée (démonstration)')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg>
+            Ajouter une cliente
+          </button>
+        </div>
+
+        <div class="card" style="padding:0;">
+          <table class="client-table">
+            <thead>
+              <tr>
+                <th>Cliente</th><th>Téléphone</th><th>Dernier RDV</th><th>Statut</th><th>Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="row-clickable" onclick="openClient('coline')">
+                <td><div class="client-name-cell"><div class="mini-avatar">CK</div>Coline Kerjean</div></td>
+                <td>06 12 34 56 78</td>
+                <td>12 juin 2026</td>
+                <td><span class="status-pill status-reguliere">Régulière</span></td>
+                <td>Préfère pression légère</td>
+              </tr>
+              <tr class="row-clickable" onclick="openClient('mathieu')">
+                <td><div class="client-name-cell"><div class="mini-avatar">MF</div>Mathieu Floch</div></td>
+                <td>06 22 11 09 87</td>
+                <td>15 juin 2026</td>
+                <td><span class="status-pill status-reguliere">Régulier</span></td>
+                <td>Sportif — coureur, focus jambes</td>
+              </tr>
+              <tr class="row-clickable" onclick="openClient('elodie')">
+                <td><div class="client-name-cell"><div class="mini-avatar">EP</div>Elodie Pennec</div></td>
+                <td>06 45 78 12 33</td>
+                <td>5 juin 2026</td>
+                <td><span class="status-pill status-reguliere">Régulière</span></td>
+                <td>Cure drainage 4/5 séances</td>
+              </tr>
+              <tr class="row-clickable" onclick="openClient('anais')">
+                <td><div class="client-name-cell"><div class="mini-avatar">AL</div>Anaïs Le Roux</div></td>
+                <td>07 89 65 43 21</td>
+                <td>20 mai 2026</td>
+                <td><span class="status-pill status-nouvelle">Nouvelle</span></td>
+                <td>Allergie colle cils testée OK</td>
+              </tr>
+              <tr class="row-clickable" onclick="openClient('sophie')">
+                <td><div class="client-name-cell"><div class="mini-avatar">SQ</div>Sophie Quéméner</div></td>
+                <td>06 33 22 11 00</td>
+                <td>2 avril 2026</td>
+                <td><span class="status-pill status-inactive">Inactive</span></td>
+                <td>Anniversaire le 24/06</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ============ CLIENT DETAIL ============ -->
+      <div class="view" id="view-client-detail">
+        <a class="back-link" data-goto="clients">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M15 19l-7-7 7-7"/></svg>
+          Retour aux clientes
+        </a>
+        <div class="detail-grid">
+          <div class="card profile-card">
+            <div class="profile-avatar" id="cd-initials">EP</div>
+            <div class="profile-name" id="cd-name">Elodie Pennec</div>
+            <div class="profile-meta" id="cd-meta">Cliente régulière depuis 2024</div>
+
+            <div class="info-list">
+              <div class="info-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3 19.5 19.5 0 0 1-6-6 19.8 19.8 0 0 1-3-8.7A2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 2 .7 3a2 2 0 0 1-.5 2.1L8 10a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.5c1 .3 2 .5 3 .7a2 2 0 0 1 1.6 2z"/></svg>
+                <div class="info-item-text"><b>Téléphone</b>06 45 78 12 33</div>
+              </div>
+              <div class="info-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>
+                <div class="info-item-text"><b>E-mail</b>elodie.pennec@mail.fr</div>
+              </div>
+              <div class="info-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
+                <div class="info-item-text"><b>Date de naissance</b>14 mars 1990</div>
+              </div>
+              <div class="info-item">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                <div class="info-item-text"><b>Métier</b>Infirmière</div>
+              </div>
+            </div>
+
+            <div class="note-box">
+              <b>Note personnelle</b>
+              Sensible au niveau des lombaires, préfère une pression moyenne. Apprécie l'huile à la lavande.
+            </div>
+
+            <div class="cure-progress">
+              <div style="display:flex; justify-content:space-between; font-size:12px; font-weight:600;">
+                <span>Cure drainage lymphatique</span><span>4 / 5</span>
+              </div>
+              <div class="cure-bar"><div class="cure-bar-fill" style="width:80%"></div></div>
+            </div>
+          </div>
+
+          <div>
+            <div class="tabs">
+              <button class="tab-btn active" data-tab="historique">Historique des rendez-vous</button>
+              <button class="tab-btn" data-tab="factures">Factures</button>
+            </div>
+
+            <div class="tab-panel active" id="tab-historique">
+              <div class="card">
+                <div class="history-item">
+                  <div class="history-left">
+                    <div class="history-dot"></div>
+                    <div><div class="history-date">5 juin 2026</div><div class="history-service">Drainage Lymphatique — séance 4/5</div></div>
+                  </div>
+                  <div class="history-price">120 €</div>
+                </div>
+                <div class="history-item">
+                  <div class="history-left">
+                    <div class="history-dot"></div>
+                    <div><div class="history-date">22 mai 2026</div><div class="history-service">Drainage Lymphatique — séance 3/5</div></div>
+                  </div>
+                  <div class="history-price">120 €</div>
+                </div>
+                <div class="history-item">
+                  <div class="history-left">
+                    <div class="history-dot"></div>
+                    <div><div class="history-date">8 mai 2026</div><div class="history-service">Drainage Lymphatique — séance 2/5</div></div>
+                  </div>
+                  <div class="history-price">120 €</div>
+                </div>
+                <div class="history-item">
+                  <div class="history-left">
+                    <div class="history-dot"></div>
+                    <div><div class="history-date">24 avril 2026</div><div class="history-service">Extensions de cils — Pose mixte</div></div>
+                  </div>
+                  <div class="history-price">80 €</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="tab-panel" id="tab-factures">
+              <div class="card">
+                <div class="history-item">
+                  <div class="history-left">
+                    <div><div class="history-date">FAC-0142</div><div class="history-service">5 juin 2026 — Payée</div></div>
+                  </div>
+                  <div class="history-price">120 €</div>
+                </div>
+                <div class="history-item">
+                  <div class="history-left">
+                    <div><div class="history-date">FAC-0131</div><div class="history-service">22 mai 2026 — Payée</div></div>
+                  </div>
+                  <div class="history-price">120 €</div>
+                </div>
+                <div class="history-item">
+                  <div class="history-left">
+                    <div><div class="history-date">FAC-0118</div><div class="history-service">8 mai 2026 — Payée</div></div>
+                  </div>
+                  <div class="history-price">120 €</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ AGENDA ============ -->
+      <div class="view" id="view-agenda">
+        <div class="toolbar">
+          <h3 style="font-size:15px; font-family:'Inter'; font-weight:600;">Semaine du 16 au 20 juin 2026</h3>
+          <button class="btn-primary" onclick="showToast('Nouveau rendez-vous ajouté (démonstration)')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg>
+            Nouveau rendez-vous
+          </button>
+        </div>
+        <div class="card">
+          <div class="section-title">Jeudi 19 juin</div>
+          <div class="agenda-row">
+            <div class="agenda-time">09:30</div>
+            <div class="agenda-info"><div class="agenda-name">Coline Kerjean</div><div class="agenda-service">L'Envolée de Sérénité — 60 min</div></div>
+            <span class="tag">Confirmé</span>
+          </div>
+          <div class="agenda-row">
+            <div class="agenda-time">11:00</div>
+            <div class="agenda-info"><div class="agenda-name">Mathieu Floch</div><div class="agenda-service">Massage Sportif — Approfondissement musculaire</div></div>
+            <span class="tag gold">Promo lancement</span>
+          </div>
+          <div class="agenda-row">
+            <div class="agenda-time">14h15</div>
+            <div class="agenda-info"><div class="agenda-name">Elodie Pennec</div><div class="agenda-service">Drainage lymphatique — séance 4/5</div></div>
+            <span class="tag">Cure en cours</span>
+          </div>
+          <div class="agenda-row">
+            <div class="agenda-time">16h30</div>
+            <div class="agenda-info"><div class="agenda-name">Anaïs Le Roux</div><div class="agenda-service">Extensions de cils — Remplissage</div></div>
+            <span class="tag">Rappel envoyé ✓</span>
+          </div>
+        </div>
+        <div class="card" style="margin-top:18px;">
+          <div class="section-title">Vendredi 20 juin</div>
+          <div class="agenda-row">
+            <div class="agenda-time">10:00</div>
+            <div class="agenda-info"><div class="agenda-name">Sophie Quéméner</div><div class="agenda-service">L'Harmonie — 45 min</div></div>
+            <span class="tag">Confirmé</span>
+          </div>
+          <div class="agenda-row">
+            <div class="agenda-time">15:00</div>
+            <div class="agenda-info"><div class="agenda-name">Nouvelle cliente — Camille R.</div><div class="agenda-service">Massage Signature — 1h30</div></div>
+            <span class="tag gold">Nouvelle</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ BILLING ============ -->
+      <div class="view" id="view-billing">
+        <div class="dash-grid">
+          <div>
+            <div class="section-title">Facture générée automatiquement</div>
+            <div class="invoice-card">
+              <div class="invoice-header">
+                <div>
+                  <h3>Mathieu Floch</h3>
+                  <div class="inv-num">Facture FAC-0156 — 19 juin 2026</div>
+                </div>
+                <div style="text-align:right; font-size:12px; color:#AFC4BA;">Bella Luna<br>Quimper</div>
+              </div>
+              <div class="invoice-body">
+                <div class="inv-line"><span>Approfondissement musculaire — 1h30</span><span>145,00 €</span></div>
+                <div class="inv-line promo"><span>Offre de lancement — Massage sportif (-20,7%)</span><span>− 30,00 €</span></div>
+                <div class="inv-line total"><span>Total à payer</span><span>115,00 €</span></div>
+                <div class="promo-note">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20.6 11.5l-9-9a2 2 0 0 0-2.8 0l-7.3 7.3a2 2 0 0 0 0 2.8l9 9a2 2 0 0 0 2.8 0l7.3-7.3a2 2 0 0 0 0-2.8z"/><circle cx="8.5" cy="8.5" r="1.2"/></svg>
+                  La promotion « Offre de lancement » a été appliquée automatiquement — aucune saisie manuelle.
+                </div>
+              </div>
+            </div>
+
+            <div class="promo-manager card">
+              <div class="section-title">Promotions actives</div>
+              <div class="promo-list">
+                <div class="promo-row">
+                  <div class="promo-row-left">
+                    <div class="promo-icon">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20.6 11.5l-9-9a2 2 0 0 0-2.8 0l-7.3 7.3a2 2 0 0 0 0 2.8l9 9a2 2 0 0 0 2.8 0l7.3-7.3a2 2 0 0 0 0-2.8z"/><circle cx="8.5" cy="8.5" r="1.2"/></svg>
+                    </div>
+                    <div><div class="promo-name">Offre de lancement — Massage Sportif</div><div class="promo-detail">-20% sur les 3 formules sportives</div></div>
+                  </div>
+                  <button class="toggle" onclick="this.classList.toggle('off'); showToast('Promotion mise à jour')"></button>
+                </div>
+                <div class="promo-row">
+                  <div class="promo-row-left">
+                    <div class="promo-icon">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20.6 11.5l-9-9a2 2 0 0 0-2.8 0l-7.3 7.3a2 2 0 0 0 0 2.8l9 9a2 2 0 0 0 2.8 0l7.3-7.3a2 2 0 0 0 0-2.8z"/><circle cx="8.5" cy="8.5" r="1.2"/></svg>
+                    </div>
+                    <div><div class="promo-name">Cure 8 séances drainage</div><div class="promo-detail">80€/séance au lieu de 120€</div></div>
+                  </div>
+                  <button class="toggle" onclick="this.classList.toggle('off'); showToast('Promotion mise à jour')"></button>
+                </div>
+                <div class="promo-row">
+                  <div class="promo-row-left">
+                    <div class="promo-icon">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M20.6 11.5l-9-9a2 2 0 0 0-2.8 0l-7.3 7.3a2 2 0 0 0 0 2.8l9 9a2 2 0 0 0 2.8 0l7.3-7.3a2 2 0 0 0 0-2.8z"/><circle cx="8.5" cy="8.5" r="1.2"/></svg>
+                    </div>
+                    <div><div class="promo-name">Anniversaire client : -10€</div><div class="promo-detail">Appliqué automatiquement le mois de l'anniversaire</div></div>
+                  </div>
+                  <button class="toggle off" onclick="this.classList.toggle('off'); showToast('Promotion mise à jour')"></button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="section-title">Ce mois-ci</div>
+            <div class="recap-list">
+              <div class="recap-row"><span>Factures émises</span><b>38</b></div>
+              <div class="recap-row"><span>Montant total facturé</span><b>3 240 €</b></div>
+              <div class="recap-row"><span>Remises accordées</span><b style="color:var(--gold);">− 312 €</b></div>
+              <div class="recap-row"><span>Forfaits en cours</span><b>9 cures</b></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ NEWSLETTER ============ -->
+      <div class="view" id="view-newsletter">
+        <div class="nl-grid">
+          <div class="card">
+            <div class="section-title">Composer une offre</div>
+
+            <div class="nl-compose-field">
+              <label>Objet</label>
+              <input type="text" id="nl-subject" value="🌿 Offre du moment chez Bella Luna" oninput="updatePreview()">
+            </div>
+
+            <div class="nl-compose-field">
+              <label>Cibler les clientes intéressées par</label>
+              <div>
+                <span class="segment-chip selected" onclick="toggleChip(this)">Massage relaxant</span>
+                <span class="segment-chip" onclick="toggleChip(this)">Drainage / Madérothérapie</span>
+                <span class="segment-chip" onclick="toggleChip(this)">Extensions de cils</span>
+                <span class="segment-chip" onclick="toggleChip(this)">Massage sportif</span>
+                <span class="segment-chip" onclick="toggleChip(this)">Toutes les clientes</span>
+              </div>
+            </div>
+
+            <div class="nl-compose-field">
+              <label>Message</label>
+              <textarea id="nl-body" oninput="updatePreview()">Profitez de -20% sur tous les massages relaxants jusqu'au 30 juin. Une parenthèse de douceur à s'offrir avant l'été !</textarea>
+            </div>
+
+            <div class="nl-compose-field">
+              <label>Envoi</label>
+              <select>
+                <option>Envoyer maintenant</option>
+                <option>Programmer pour demain 9h</option>
+                <option>Programmer pour vendredi 9h</option>
+              </select>
+            </div>
+
+            <button class="btn-primary" style="width:100%; justify-content:center; padding:12px;" onclick="sendNewsletter()">
+              Envoyer l'offre à 32 clientes ciblées
+            </button>
+          </div>
+
+          <div>
+            <div class="section-title">Aperçu en direct</div>
+            <div class="preview-phone">
+              <div class="preview-screen">
+                <div class="preview-from">De : Bella Luna &lt;contact@bellaluna29.fr&gt;</div>
+                <div class="preview-subject" id="prev-subject">🌿 Offre du moment chez Bella Luna</div>
+                <div class="preview-img">Bella Luna</div>
+                <div class="preview-body-text" id="prev-body">Profitez de -20% sur tous les massages relaxants jusqu'au 30 juin. Une parenthèse de douceur à s'offrir avant l'été !</div>
+                <div class="preview-cta">Prendre rendez-vous</div>
+              </div>
+            </div>
+
+            <div class="card" style="margin-top:18px;">
+              <div class="section-title">Dernier envoi</div>
+              <div class="recap-row"><span>Madérothérapie — Cure printemps</span><b>28 clientes</b></div>
+              <div class="recap-row"><span>Taux d'ouverture</span><b style="color:var(--sage-dark);">61%</b></div>
+              <div class="recap-row"><span>Rendez-vous générés</span><b>7</b></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6L9 17l-5-5"/></svg>
+  <span id="toast-text">Action effectuée</span>
+</div>
+
+<script>
+  const titles = {
+    dashboard: ["Tableau de bord", "Vue d'ensemble de votre activité"],
+    clients: ["Clientes", "87 fiches clientes enregistrées"],
+    "client-detail": ["Fiche cliente", "Informations, historique et notes"],
+    agenda: ["Rendez-vous", "Votre agenda et le suivi des cures"],
+    billing: ["Facturation", "Factures, promotions et suivi des paiements"],
+    newsletter: ["Newsletter", "Offres du moment et ciblage clientes"],
+  };
+
+  function setView(view){
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    document.getElementById('view-' + view).classList.add('active');
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    const navBtn = document.querySelector(`.nav-item[data-view="${view}"]`);
+    if(navBtn) navBtn.classList.add('active');
+    document.getElementById('topbar-title').textContent = titles[view][0];
+    document.getElementById('topbar-sub').textContent = titles[view][1];
+    document.querySelector('.content').scrollTop = 0;
+  }
+
+  document.querySelectorAll('.nav-item').forEach(btn => {
+    btn.addEventListener('click', () => setView(btn.dataset.view));
+  });
+  document.querySelectorAll('[data-goto]').forEach(el => {
+    el.addEventListener('click', (e) => { e.preventDefault(); setView(el.dataset.goto); });
+  });
+
+  const clientsData = {
+    coline: {name:"Coline Kerjean", initials:"CK", meta:"Cliente régulière depuis 2023"},
+    mathieu: {name:"Mathieu Floch", initials:"MF", meta:"Client régulier — massages sportifs"},
+    elodie: {name:"Elodie Pennec", initials:"EP", meta:"Cliente régulière depuis 2024"},
+    anais: {name:"Anaïs Le Roux", initials:"AL", meta:"Nouvelle cliente — premier RDV en mai"},
+    sophie: {name:"Sophie Quéméner", initials:"SQ", meta:"Cliente depuis 2022 — actuellement inactive"},
+  };
+
+  function openClient(id){
+    const c = clientsData[id];
+    document.getElementById('cd-initials').textContent = c.initials;
+    document.getElementById('cd-name').textContent = c.name;
+    document.getElementById('cd-meta').textContent = c.meta;
+    setView('client-detail');
+  }
+
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+    });
+  });
+
+  function toggleChip(el){
+    el.classList.toggle('selected');
+  }
+
+  function updatePreview(){
+    document.getElementById('prev-subject').textContent = document.getElementById('nl-subject').value;
+    document.getElementById('prev-body').textContent = document.getElementById('nl-body').value;
+  }
+
+  function showToast(text){
+    const t = document.getElementById('toast');
+    document.getElementById('toast-text').textContent = text;
+    t.classList.add('show');
+    clearTimeout(window._toastTimer);
+    window._toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
+  }
+
+  function sendNewsletter(){
+    showToast("Offre envoyée à 32 clientes ciblées ✓");
+  }
+</script>
+
+</body>
+</html>
