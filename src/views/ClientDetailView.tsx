@@ -4,6 +4,7 @@ import { apiFetch, ApiError } from '../lib/api'
 import StatusPill from '../components/StatusPill'
 import ClientFormModal from '../components/ClientFormModal'
 import RdvHistoryRow from '../components/RdvHistoryRow'
+import MessageComposerModal from '../components/MessageComposerModal'
 
 interface Client {
   id: string
@@ -84,6 +85,7 @@ function ClientDetailView({ clientId, onBack }: ClientDetailViewProps) {
   const [state, setState] = useState<State>({ status: 'loading' })
   const [tab, setTab] = useState<'historique' | 'factures'>('historique')
   const [showEdit, setShowEdit] = useState(false)
+  const [showContact, setShowContact] = useState(false)
 
   const load = useCallback(() => {
     setState({ status: 'loading' })
@@ -113,12 +115,20 @@ function ClientDetailView({ clientId, onBack }: ClientDetailViewProps) {
           ← Retour aux clientes
         </button>
         {state.status === 'success' && (
-          <button
-            onClick={() => setShowEdit(true)}
-            className="bg-white border border-border text-sage-dark px-4 py-2 rounded-[10px] text-sm font-semibold hover:bg-sage-pale"
-          >
-            Modifier
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowContact(true)}
+              className="bg-white border border-border text-sage-dark px-4 py-2 rounded-[10px] text-sm font-semibold hover:bg-sage-pale"
+            >
+              Contacter
+            </button>
+            <button
+              onClick={() => setShowEdit(true)}
+              className="bg-white border border-border text-sage-dark px-4 py-2 rounded-[10px] text-sm font-semibold hover:bg-sage-pale"
+            >
+              Modifier
+            </button>
+          </div>
         )}
       </div>
 
@@ -282,6 +292,15 @@ function ClientDetailView({ clientId, onBack }: ClientDetailViewProps) {
             setShowEdit(false)
             load()
           }}
+        />
+      )}
+
+      {showContact && state.status === 'success' && (
+        <MessageComposerModal
+          context={{ nomComplet: state.data.client.nomComplet }}
+          telephone={state.data.client.telephone}
+          email={state.data.client.email}
+          onClose={() => setShowContact(false)}
         />
       )}
     </div>

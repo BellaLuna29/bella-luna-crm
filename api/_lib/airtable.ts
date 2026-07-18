@@ -147,6 +147,21 @@ export async function airtableUploadAttachment(
   return (await response.json()) as AirtableRecord
 }
 
+export async function airtableDelete(tableId: string, recordId: string): Promise<void> {
+  const { apiKey, baseId } = getConfig()
+  const url = `${AIRTABLE_API_BASE}/${baseId}/${tableId}/${recordId}`
+
+  const response = await fetch(url, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${apiKey}` },
+  })
+
+  if (!response.ok) {
+    const body = await response.text()
+    throw new Error(`Airtable a répondu ${response.status} : ${body}`)
+  }
+}
+
 export async function airtableGetByIds(
   tableId: string,
   ids: string[],

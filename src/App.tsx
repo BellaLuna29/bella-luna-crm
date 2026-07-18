@@ -9,7 +9,8 @@ import DashboardView from './views/DashboardView'
 import StatsView from './views/StatsView'
 import FacturationView from './views/FacturationView'
 import ComptaView from './views/ComptaView'
-import ComingSoon from './views/ComingSoon'
+import SmsView from './views/SmsView'
+import NewsletterView from './views/NewsletterView'
 import type { View } from './types'
 
 const TITLES: Record<View, [string, string]> = {
@@ -20,6 +21,7 @@ const TITLES: Record<View, [string, string]> = {
   agenda: ['Rendez-vous', 'Votre agenda et le suivi des cures'],
   billing: ['Facturation', 'Factures, promotions et suivi des paiements'],
   compta: ['Compta', 'Dépenses et exports pour ta comptabilité'],
+  sms: ['SMS', 'Messages pré-remplis à envoyer par SMS ou e-mail'],
   newsletter: ['Newsletter', 'Offres du moment et ciblage clientes'],
 }
 
@@ -53,10 +55,14 @@ function App() {
 
       <Show when="signed-in">
         <div className="flex min-h-screen">
-          <Sidebar activeView={view} onNavigate={navigate} />
+          <div className="print:hidden">
+            <Sidebar activeView={view} onNavigate={navigate} />
+          </div>
           <div className="flex-1 flex flex-col min-w-0">
-            <Topbar title={title} subtitle={subtitle} />
-            <main className="flex-1 p-8 overflow-y-auto">
+            <div className="print:hidden">
+              <Topbar title={title} subtitle={subtitle} />
+            </div>
+            <main className="flex-1 p-8 overflow-y-auto print:p-0 print:overflow-visible">
               {view === 'clients' && (
                 <ClientsListView
                   onSelectClient={(id) => {
@@ -93,7 +99,8 @@ function App() {
                 />
               )}
               {view === 'compta' && <ComptaView />}
-              {view === 'newsletter' && <ComingSoon title="Newsletter" />}
+              {view === 'sms' && <SmsView />}
+              {view === 'newsletter' && <NewsletterView />}
             </main>
           </div>
         </div>

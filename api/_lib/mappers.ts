@@ -197,9 +197,33 @@ export function parseFactureInput(
     fields['Payée'] = false
   }
 
+  if ('categorieFacture' in b) {
+    const v = b.categorieFacture
+    if (typeof v === 'string' && (CATEGORIE_FACTURE_VALUES as readonly string[]).includes(v)) {
+      fields['Catégorie de facture'] = v
+    } else {
+      errors.push('Catégorie de facture invalide.')
+    }
+  } else if (requireCore) {
+    fields['Catégorie de facture'] = 'Commercial'
+  }
+
+  if ('promoId' in b) {
+    const v = b.promoId
+    if (v === '' || v === null) {
+      fields['Promo appliquée'] = []
+    } else if (typeof v === 'string' && RECORD_ID_RE.test(v)) {
+      fields['Promo appliquée'] = [v]
+    } else {
+      errors.push('Promotion invalide.')
+    }
+  }
+
   if (errors.length > 0) return { errors }
   return { fields }
 }
+
+export const CATEGORIE_FACTURE_VALUES = ['Commercial', 'Associatif ou formation'] as const
 
 /**
  * Validates and maps a raw request body into Airtable field names for the
@@ -322,6 +346,67 @@ export function parseRendezVousInput(
     const v = typeof b.notes === 'string' ? b.notes.trim() : ''
     if (v.length > MAX_NOTES) errors.push(`La note est trop longue (${MAX_NOTES} caractères max).`)
     else fields['Notes du RDV'] = v
+  }
+
+  if (errors.length > 0) return { errors }
+  return { fields }
+}
+
+export const ABSENCE_TYPE_VALUES = ['Vacances', 'Jour off', 'Autre'] as const
+
+/**
+ * Validates and maps a raw request body into Airtable field names for the
+ * Absences table. `requireCore` enforces libellé/dateDebut/dateFin as
+ * mandatory (create only).
+ */
+export function parseAbsenceInput(
+  body: unknown,
+  { requireCore }: { requireCore: boolean },
+): { fields: Record<string, unknown> } | ClientInputErrors {
+  if (typeof body !== 'object' || body === null) {
+    return { errors: ['Corps de requête invalide.'] }
+  }
+  const b = body as Record<string, unknown>
+  const errors: string[] = []
+  const fields: Record<string, unknown> = {}
+
+  if ('libelle' in b || requireCore) {
+    const v = typeof b.libelle === 'string' ? b.libelle.trim() : ''
+    if (requireCore && v.length === 0) {
+      errors.push('Le libellé est obligatoire.')
+    } else if (v.length > 200) {
+      errors.push('Le libellé est trop long.')
+    }
+    if (v.length > 0) fields['Libellé'] = v
+  }
+
+  if ('dateDebut' in b || requireCore) {
+    const v = b.dateDebut
+    if (typeof v === 'string' && DATE_RE.test(v)) {
+      fields['Date début'] = v
+    } else if (requireCore) {
+      errors.push('La date de début est obligatoire (format AAAA-MM-JJ).')
+    }
+  }
+
+  if ('dateFin' in b || requireCore) {
+    const v = b.dateFin
+    if (typeof v === 'string' && DATE_RE.test(v)) {
+      fields['Date fin'] = v
+    } else if (requireCore) {
+      errors.push('La date de fin est obligatoire (format AAAA-MM-JJ).')
+    }
+  }
+
+  if ('type' in b) {
+    const v = b.type
+    if (typeof v === 'string' && (ABSENCE_TYPE_VALUES as readonly string[]).includes(v)) {
+      fields['Type'] = v
+    } else {
+      errors.push('Type invalide.')
+    }
+  } else if (requireCore) {
+    fields['Type'] = 'Vacances'
   }
 
   if (errors.length > 0) return { errors }

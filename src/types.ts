@@ -1,1 +1,10 @@
-export type View = 'dashboard' | 'stats' | 'clients' | 'client-detail' | 'agenda' | 'billing' | 'compta' | 'newsletter'
+export type View =
+  | 'dashboard'
+  | 'stats'
+  | 'clients'
+  | 'client-detail'
+  | 'agenda'
+  | 'billing'
+  | 'compta'
+  | 'sms'
+  | 'newsletter'

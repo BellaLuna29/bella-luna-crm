@@ -8,10 +8,19 @@ interface ClientOption {
   nomComplet: string
 }
 
+interface PromoOption {
+  id: string
+  nom: string
+  reduction: number | null
+  active: boolean
+}
+
 interface FactureFormModalProps {
   onClose: () => void
   onSaved: () => void
 }
+
+const CATEGORIE_FACTURE_OPTIONS = ['Commercial', 'Associatif ou formation'] as const
 
 function todayIso(): string {
   const d = new Date()
@@ -22,11 +31,14 @@ function todayIso(): string {
 function FactureFormModal({ onClose, onSaved }: FactureFormModalProps) {
   const { getToken } = useAuth()
   const [clients, setClients] = useState<ClientOption[] | null>(null)
+  const [promos, setPromos] = useState<PromoOption[] | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [clienteId, setClienteId] = useState('')
   const [montant, setMontant] = useState('')
   const [dateFacture, setDateFacture] = useState(todayIso())
   const [payee, setPayee] = useState(false)
+  const [categorieFacture, setCategorieFacture] = useState<(typeof CATEGORIE_FACTURE_OPTIONS)[number]>('Commercial')
+  const [promoId, setPromoId] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -36,6 +48,9 @@ function FactureFormModal({ onClose, onSaved }: FactureFormModalProps) {
       .catch((err: unknown) => {
         setLoadError(err instanceof ApiError ? err.message : 'Erreur inconnue.')
       })
+    apiFetch<{ promotions: PromoOption[] }>(getToken, '/api/promotions')
+      .then((data) => setPromos(data.promotions))
+      .catch(() => setPromos([]))
   }, [getToken])
 
   async function handleSubmit(e: React.FormEvent) {
@@ -52,7 +67,14 @@ function FactureFormModal({ onClose, onSaved }: FactureFormModalProps) {
     try {
       await apiFetch(getToken, '/api/factures', {
         method: 'POST',
-        body: { clienteId, montant: montantNum, dateFacture, payee },
+        body: {
+          clienteId,
+          montant: montantNum,
+          dateFacture,
+          payee,
+          categorieFacture,
+          promoId: promoId || null,
+        },
       })
       onSaved()
     } catch (err) {
@@ -104,6 +126,34 @@ function FactureFormModal({ onClose, onSaved }: FactureFormModalProps) {
                   required
                   className="input"
                 />
+              </Field>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Catégorie de facture">
+                <select
+                  value={categorieFacture}
+                  onChange={(e) => setCategorieFacture(e.target.value as (typeof CATEGORIE_FACTURE_OPTIONS)[number])}
+                  className="input"
+                >
+                  {CATEGORIE_FACTURE_OPTIONS.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Promotion">
+                <select value={promoId} onChange={(e) => setPromoId(e.target.value)} className="input">
+                  <option value="">Aucune</option>
+                  {(promos ?? []).map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.nom}
+                      {p.reduction ? ` (-${Math.round(p.reduction * 100)}%)` : ''}
+                      {!p.active ? ' (inactive)' : ''}
+                    </option>
+                  ))}
+                </select>
               </Field>
             </div>
 

@@ -12,6 +12,7 @@ import { parseFactureInput } from './_lib/mappers.js'
 
 const TABLE_FACTURES = 'tbl3C95q9hjjIVz8W'
 const TABLE_CLIENTES = 'tblMKV5WKQ7jtwXq4'
+const TABLE_PROMOTIONS = 'tbldqsJCBeZwve20n'
 
 function linkedIds(field: unknown): string[] {
   return Array.isArray(field) ? (field as string[]) : []
@@ -24,7 +25,10 @@ interface FactureItem {
   payee: boolean
   clienteId: string | null
   clienteNom: string
-  promoAppliquee: boolean
+  categorieFacture: string
+  promoId: string | null
+  promoNom: string
+  promoReduction: number | null
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
@@ -53,13 +57,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       const clienteIds = Array.from(
         new Set(records.flatMap((r) => linkedIds(r.fields['Cliente']))),
       )
-      const clienteRecords = await airtableGetByIds(TABLE_CLIENTES, clienteIds)
+      const promoIds = Array.from(
+        new Set(records.flatMap((r) => linkedIds(r.fields['Promo appliquée']))),
+      )
+      const [clienteRecords, promoRecords] = await Promise.all([
+        airtableGetByIds(TABLE_CLIENTES, clienteIds),
+        airtableGetByIds(TABLE_PROMOTIONS, promoIds),
+      ])
       const clienteMap = new Map<string, AirtableRecord>(clienteRecords.map((c) => [c.id, c]))
+      const promoMap = new Map<string, AirtableRecord>(promoRecords.map((p) => [p.id, p]))
 
       const factures: FactureItem[] = records
         .map((r) => {
           const clienteId = linkedIds(r.fields['Cliente'])[0] ?? null
           const cliente = clienteId ? clienteMap.get(clienteId) : undefined
+          const promoId = linkedIds(r.fields['Promo appliquée'])[0] ?? null
+          const promo = promoId ? promoMap.get(promoId) : undefined
           return {
             id: r.id,
             date: (r.fields['Date de facture'] as string) ?? null,
@@ -67,7 +80,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
             payee: Boolean(r.fields['Payée']),
             clienteId,
             clienteNom: (cliente?.fields['Nom complet'] as string) ?? '',
-            promoAppliquee: linkedIds(r.fields['Promo appliquée']).length > 0,
+            categorieFacture: (r.fields['Catégorie de facture'] as string) ?? 'Commercial',
+            promoId,
+            promoNom: (promo?.fields['Nom'] as string) ?? '',
+            promoReduction: (promo?.fields['Réduction'] as number) ?? null,
           }
         })
         .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''))

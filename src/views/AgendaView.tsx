@@ -3,6 +3,7 @@ import { useAuth } from '@clerk/react'
 import { apiFetch, ApiError } from '../lib/api'
 import RdvStatusPill from '../components/RdvStatusPill'
 import RdvFormModal, { type RdvFormInitial } from '../components/RdvFormModal'
+import AbsenceFormModal from '../components/AbsenceFormModal'
 
 interface RdvItem {
   id: string
@@ -16,10 +17,24 @@ interface RdvItem {
   prix: number | null
 }
 
+interface AbsenceItem {
+  id: string
+  libelle: string
+  dateDebut: string | null
+  dateFin: string | null
+  type: string
+}
+
 type State =
   | { status: 'loading' }
   | { status: 'error'; message: string }
   | { status: 'success'; items: RdvItem[] }
+
+const ABSENCE_STYLES: Record<string, string> = {
+  Vacances: 'bg-gold-pale text-gold-text',
+  'Jour off': 'bg-sage-light text-sage-dark',
+  Autre: 'bg-danger-pale text-danger',
+}
 
 const DAY_LABELS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche']
 
@@ -75,6 +90,11 @@ function toDateTimeLocalFromIso(iso: string | null): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
+function isoDate(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
 function RdvCard({ item, onClick }: { item: RdvItem; onClick: () => void }) {
   return (
     <button
@@ -98,6 +118,8 @@ function AgendaView() {
   const { getToken } = useAuth()
   const [state, setState] = useState<State>({ status: 'loading' })
   const [weekStart, setWeekStart] = useState(() => getMonday(new Date()))
+  const [absences, setAbsences] = useState<AbsenceItem[]>([])
+  const [absenceModal, setAbsenceModal] = useState<{ initialDate?: string } | null>(null)
   const [modal, setModal] = useState<
     | { mode: 'create'; initialValues?: Partial<RdvFormInitial> }
     | { mode: 'edit'; rdvId: string; initialValues: Partial<RdvFormInitial> }
@@ -116,9 +138,25 @@ function AgendaView() {
       })
   }, [getToken])
 
+  const loadAbsences = useCallback(() => {
+    apiFetch<{ absences: AbsenceItem[] }>(getToken, '/api/absences')
+      .then((data) => setAbsences(data.absences))
+      .catch(() => setAbsences([]))
+  }, [getToken])
+
   useEffect(() => {
     load()
-  }, [load])
+    loadAbsences()
+  }, [load, loadAbsences])
+
+  async function handleDeleteAbsence(id: string) {
+    try {
+      await apiFetch(getToken, `/api/absences/${id}`, { method: 'DELETE' })
+      loadAbsences()
+    } catch {
+      // silent — best effort
+    }
+  }
 
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart])
   const today = useMemo(() => startOfDay(new Date()), [])
@@ -141,6 +179,19 @@ function AgendaView() {
     return map
   }, [state])
 
+  function absencesForDay(day: Date): AbsenceItem[] {
+    const key = isoDate(day)
+    return absences.filter((a) => a.dateDebut && a.dateFin && a.dateDebut <= key && key <= a.dateFin)
+  }
+
+  function jumpToDate(dateStr: string) {
+    if (!dateStr) return
+    const [y, m, d] = dateStr.split('-').map(Number)
+    const picked = new Date(y, m - 1, d)
+    if (Number.isNaN(picked.getTime())) return
+    setWeekStart(getMonday(picked))
+  }
+
   function openEdit(item: RdvItem) {
     setModal({
       mode: 'edit',
@@ -162,10 +213,15 @@ function AgendaView() {
     })
   }
 
+  const currentAbsences = useMemo(
+    () => absences.filter((a) => a.dateFin && a.dateFin >= isoDate(today)).slice(0, 6),
+    [absences, today],
+  )
+
   return (
     <div>
-      <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between mb-5 flex-wrap gap-3 print:hidden">
+        <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={() => setWeekStart((w) => addDays(w, -7))}
             className="bg-white border border-border text-sage-dark w-9 h-9 rounded-[10px] text-sm font-semibold hover:bg-sage-pale"
@@ -186,27 +242,69 @@ function AgendaView() {
           >
             →
           </button>
-          <span className="ml-2 font-serif text-base font-semibold text-sage-dark">
+          <input
+            type="date"
+            value={isoDate(weekStart)}
+            onChange={(e) => jumpToDate(e.target.value)}
+            className="input h-9 w-auto"
+            aria-label="Aller à une date"
+          />
+          <span className="ml-1 font-serif text-base font-semibold text-sage-dark">
             {formatWeekRange(weekStart)}
           </span>
         </div>
-        <button
-          onClick={() => openCreate()}
-          className="bg-sage-dark text-white px-4.5 py-2.5 rounded-[10px] text-sm font-semibold hover:bg-sage-dark/90"
-        >
-          Nouveau rendez-vous
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setAbsenceModal({ initialDate: isoDate(weekStart) })}
+            className="bg-white border border-border text-sage-dark px-4 py-2.5 rounded-[10px] text-sm font-semibold hover:bg-sage-pale"
+          >
+            Poser une absence
+          </button>
+          <button
+            onClick={() => window.print()}
+            className="bg-white border border-border text-sage-dark px-4 py-2.5 rounded-[10px] text-sm font-semibold hover:bg-sage-pale"
+          >
+            Exporter en PDF
+          </button>
+          <button
+            onClick={() => openCreate()}
+            className="bg-sage-dark text-white px-4.5 py-2.5 rounded-[10px] text-sm font-semibold hover:bg-sage-dark/90"
+          >
+            Nouveau rendez-vous
+          </button>
+        </div>
       </div>
+
+      {currentAbsences.length > 0 && (
+        <div className="flex flex-wrap gap-2 mb-4 print:hidden">
+          {currentAbsences.map((a) => (
+            <span
+              key={a.id}
+              className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold ${ABSENCE_STYLES[a.type] ?? 'bg-sage-light text-sage-dark'}`}
+            >
+              {a.libelle} ({a.dateDebut} → {a.dateFin})
+              <button
+                onClick={() => handleDeleteAbsence(a.id)}
+                className="hover:opacity-70"
+                aria-label={`Supprimer l'absence ${a.libelle}`}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
 
       {state.status === 'loading' && <p className="text-sm text-text-muted">Chargement…</p>}
       {state.status === 'error' && <p className="text-sm text-danger">{state.message}</p>}
 
       {state.status === 'success' && (
-        <div className="overflow-x-auto pb-2">
-          <div className="grid grid-cols-7 gap-3 min-w-[980px]">
+        <div className="overflow-x-auto pb-2 print:overflow-visible">
+          <div className="grid grid-cols-7 gap-3 min-w-[980px] print:min-w-0 print:gap-1.5">
             {days.map((day, i) => {
               const isToday = dayKey(day) === dayKey(today)
               const items = byDay.get(dayKey(day)) ?? []
+              const dayAbsences = absencesForDay(day)
               return (
                 <div
                   key={dayKey(day)}
@@ -223,12 +321,26 @@ function AgendaView() {
                     </div>
                     <button
                       onClick={() => openCreate(day)}
-                      className="text-sage-dark hover:bg-sage-pale rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold"
+                      className="text-sage-dark hover:bg-sage-pale rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold print:hidden"
                       aria-label={`Ajouter un rendez-vous le ${day.toLocaleDateString('fr-FR')}`}
                     >
                       +
                     </button>
                   </div>
+
+                  {dayAbsences.length > 0 && (
+                    <div className="flex flex-col gap-1">
+                      {dayAbsences.map((a) => (
+                        <span
+                          key={a.id}
+                          className={`text-[11px] font-semibold px-2 py-1 rounded-md ${ABSENCE_STYLES[a.type] ?? 'bg-sage-light text-sage-dark'}`}
+                        >
+                          {a.type === 'Vacances' ? '🌴 ' : ''}
+                          {a.libelle}
+                        </span>
+                      ))}
+                    </div>
+                  )}
 
                   <div className="flex flex-col gap-1.5 flex-1">
                     {items.length === 0 ? (
@@ -255,6 +367,17 @@ function AgendaView() {
           onSaved={() => {
             setModal(null)
             load()
+          }}
+        />
+      )}
+
+      {absenceModal && (
+        <AbsenceFormModal
+          initialDate={absenceModal.initialDate}
+          onClose={() => setAbsenceModal(null)}
+          onSaved={() => {
+            setAbsenceModal(null)
+            loadAbsences()
           }}
         />
       )}

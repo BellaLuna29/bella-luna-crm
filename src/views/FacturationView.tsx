@@ -10,7 +10,9 @@ interface FactureItem {
   payee: boolean
   clienteId: string | null
   clienteNom: string
-  promoAppliquee: boolean
+  categorieFacture: string
+  promoId: string | null
+  promoNom: string
 }
 
 type State =
@@ -19,6 +21,7 @@ type State =
   | { status: 'success'; factures: FactureItem[] }
 
 type Filter = 'toutes' | 'payees' | 'impayees'
+type CategorieFilter = 'toutes' | 'Commercial' | 'Associatif ou formation'
 
 function formatDate(iso: string | null): string {
   if (!iso) return '—'
@@ -47,6 +50,7 @@ function FacturationView({ onSelectClient }: FacturationViewProps) {
   const { getToken } = useAuth()
   const [state, setState] = useState<State>({ status: 'loading' })
   const [filter, setFilter] = useState<Filter>('toutes')
+  const [categorieFilter, setCategorieFilter] = useState<CategorieFilter>('Commercial')
   const [showCreate, setShowCreate] = useState(false)
   const [togglingId, setTogglingId] = useState<string | null>(null)
 
@@ -68,27 +72,32 @@ function FacturationView({ onSelectClient }: FacturationViewProps) {
 
   const now = useMemo(() => new Date(), [])
 
+  const scoped = useMemo(() => {
+    if (state.status !== 'success') return []
+    if (categorieFilter === 'toutes') return state.factures
+    return state.factures.filter((f) => f.categorieFacture === categorieFilter)
+  }, [state, categorieFilter])
+
   const stats = useMemo(() => {
     if (state.status !== 'success') return null
-    const encaisseMois = state.factures
+    const encaisseMois = scoped
       .filter((f) => f.payee && isThisMonth(f.date, now))
       .reduce((sum, f) => sum + (f.montant ?? 0), 0)
-    const impayees = state.factures.filter((f) => !f.payee)
+    const impayees = scoped.filter((f) => !f.payee)
     const totalImpaye = impayees.reduce((sum, f) => sum + (f.montant ?? 0), 0)
     return {
       encaisseMois,
       totalImpaye,
       nbImpayees: impayees.length,
-      total: state.factures.length,
+      total: scoped.length,
     }
-  }, [state, now])
+  }, [state, scoped, now])
 
   const filtered = useMemo(() => {
-    if (state.status !== 'success') return []
-    if (filter === 'payees') return state.factures.filter((f) => f.payee)
-    if (filter === 'impayees') return state.factures.filter((f) => !f.payee)
-    return state.factures
-  }, [state, filter])
+    if (filter === 'payees') return scoped.filter((f) => f.payee)
+    if (filter === 'impayees') return scoped.filter((f) => !f.payee)
+    return scoped
+  }, [scoped, filter])
 
   async function togglePayee(facture: FactureItem) {
     setTogglingId(facture.id)
@@ -105,7 +114,7 @@ function FacturationView({ onSelectClient }: FacturationViewProps) {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
         <div className="flex items-center gap-2">
           {(['toutes', 'impayees', 'payees'] as Filter[]).map((f) => (
             <button
@@ -125,6 +134,18 @@ function FacturationView({ onSelectClient }: FacturationViewProps) {
         >
           Nouvelle facture
         </button>
+      </div>
+
+      <div className="mb-5">
+        <select
+          value={categorieFilter}
+          onChange={(e) => setCategorieFilter(e.target.value as CategorieFilter)}
+          className="input w-auto"
+        >
+          <option value="Commercial">Commercial uniquement</option>
+          <option value="Associatif ou formation">Associatif ou formation uniquement</option>
+          <option value="toutes">Toutes catégories</option>
+        </select>
       </div>
 
       {state.status === 'success' && stats && (
@@ -156,7 +177,7 @@ function FacturationView({ onSelectClient }: FacturationViewProps) {
           <table className="w-full border-collapse">
             <thead>
               <tr>
-                {['Cliente', 'Date', 'Montant', 'Promo', 'Statut', ''].map((h) => (
+                {['Cliente', 'Date', 'Montant', 'Catégorie', 'Promo', 'Statut', ''].map((h) => (
                   <th
                     key={h}
                     className="text-left text-[11px] text-text-muted font-semibold uppercase tracking-wide px-4 pb-2.5 pt-4 border-b border-border"
@@ -179,8 +200,19 @@ function FacturationView({ onSelectClient }: FacturationViewProps) {
                   <td className="px-4 py-3.5 border-b border-sage-light text-sm font-semibold">
                     {formatMontant(f.montant)}
                   </td>
+                  <td className="px-4 py-3.5 border-b border-sage-light">
+                    <span
+                      className={`text-xs font-semibold px-2.5 py-1 rounded-full inline-block ${
+                        f.categorieFacture === 'Associatif ou formation'
+                          ? 'bg-gold-pale text-gold-text'
+                          : 'bg-sage-light text-sage-dark'
+                      }`}
+                    >
+                      {f.categorieFacture === 'Associatif ou formation' ? 'Associatif' : 'Commercial'}
+                    </span>
+                  </td>
                   <td className="px-4 py-3.5 border-b border-sage-light text-sm text-text-muted">
-                    {f.promoAppliquee ? 'Oui' : '—'}
+                    {f.promoNom || '—'}
                   </td>
                   <td className="px-4 py-3.5 border-b border-sage-light">
                     <span
@@ -204,7 +236,7 @@ function FacturationView({ onSelectClient }: FacturationViewProps) {
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-sm text-text-muted">
+                  <td colSpan={7} className="px-4 py-8 text-center text-sm text-text-muted">
                     Aucune facture à afficher.
                   </td>
                 </tr>

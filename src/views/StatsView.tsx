@@ -20,6 +20,9 @@ interface FactureItem {
   id: string
   date: string | null
   montant: number | null
+  categorieFacture: string
+  promoId: string | null
+  promoNom: string
 }
 
 interface DepenseItem {
@@ -39,19 +42,36 @@ type State =
       depenses: DepenseItem[]
     }
 
-function startOfMonth(d: Date): Date {
-  return new Date(d.getFullYear(), d.getMonth(), 1)
+function todayIso(): string {
+  const d = new Date()
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
-function isInMonth(iso: string | null, monthStart: Date): boolean {
+function startOfMonthIso(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-01`
+}
+
+function monthInputValue(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`
+}
+
+function inRange(iso: string | null, start: string, end: string): boolean {
   if (!iso) return false
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return false
-  return d.getFullYear() === monthStart.getFullYear() && d.getMonth() === monthStart.getMonth()
+  const day = iso.slice(0, 10)
+  return day >= start && day <= end
 }
 
-function formatMonthLabel(d: Date): string {
-  return d.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
+function isInMonthValue(iso: string | null, monthValue: string): boolean {
+  if (!iso) return false
+  return iso.slice(0, 7) === monthValue
+}
+
+function formatMonthLabel(monthValue: string): string {
+  const [y, m] = monthValue.split('-').map(Number)
+  return new Date(y, m - 1, 1).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
 }
 
 function formatEuros(n: number): string {
@@ -85,7 +105,7 @@ function ComparisonCard({
         {formatValue(current)}
       </div>
       <div className={`text-xs font-semibold mt-1.5 ${deltaColor}`}>
-        {delta >= 0 ? '▲' : '▼'} {Math.abs(pct)} % vs mois précédent ({formatValue(previous)})
+        {delta >= 0 ? '▲' : '▼'} {Math.abs(pct)} % vs période B ({formatValue(previous)})
       </div>
     </div>
   )
@@ -94,6 +114,22 @@ function ComparisonCard({
 function StatsView() {
   const { getToken } = useAuth()
   const [state, setState] = useState<State>({ status: 'loading' })
+
+  const now = useMemo(() => new Date(), [])
+  const defaultThisMonthStart = useMemo(() => startOfMonthIso(now), [now])
+  const defaultLastMonth = useMemo(() => new Date(now.getFullYear(), now.getMonth() - 1, 1), [now])
+  const defaultLastMonthStart = useMemo(() => startOfMonthIso(defaultLastMonth), [defaultLastMonth])
+  const defaultLastMonthEnd = useMemo(() => {
+    const end = new Date(now.getFullYear(), now.getMonth(), 0)
+    const pad = (n: number) => String(n).padStart(2, '0')
+    return `${end.getFullYear()}-${pad(end.getMonth() + 1)}-${pad(end.getDate())}`
+  }, [now])
+
+  const [periodADebut, setPeriodADebut] = useState(defaultThisMonthStart)
+  const [periodAFin, setPeriodAFin] = useState(todayIso())
+  const [periodBDebut, setPeriodBDebut] = useState(defaultLastMonthStart)
+  const [periodBFin, setPeriodBFin] = useState(defaultLastMonthEnd)
+  const [prestationsMonth, setPrestationsMonth] = useState(monthInputValue(now))
 
   const load = useCallback(() => {
     setState({ status: 'loading' })
@@ -124,37 +160,31 @@ function StatsView() {
     load()
   }, [load])
 
-  const now = useMemo(() => new Date(), [])
-  const thisMonth = useMemo(() => startOfMonth(now), [now])
-  const lastMonth = useMemo(() => new Date(thisMonth.getFullYear(), thisMonth.getMonth() - 1, 1), [thisMonth])
-
   const data = useMemo(() => {
     if (state.status !== 'success') return null
 
-    const sumFactures = (monthStart: Date) =>
-      state.factures
-        .filter((f) => isInMonth(f.date, monthStart))
-        .reduce((sum, f) => sum + (f.montant ?? 0), 0)
+    const commerciales = state.factures.filter((f) => f.categorieFacture !== 'Associatif ou formation')
 
-    const sumDepenses = (monthStart: Date) =>
-      state.depenses
-        .filter((d) => isInMonth(d.date, monthStart))
-        .reduce((sum, d) => sum + (d.montant ?? 0), 0)
+    const sumFactures = (start: string, end: string) =>
+      commerciales.filter((f) => inRange(f.date, start, end)).reduce((sum, f) => sum + (f.montant ?? 0), 0)
 
-    const countRdv = (monthStart: Date) =>
-      state.rendezvous.filter((r) => isInMonth(r.date, monthStart)).length
+    const sumDepenses = (start: string, end: string) =>
+      state.depenses.filter((d) => inRange(d.date, start, end)).reduce((sum, d) => sum + (d.montant ?? 0), 0)
 
-    const countNouvelles = (monthStart: Date) =>
-      state.clients.filter((c) => isInMonth(c.dateCreation, monthStart)).length
+    const countRdv = (start: string, end: string) =>
+      state.rendezvous.filter((r) => inRange(r.date, start, end)).length
 
-    const caThisMonth = sumFactures(thisMonth)
-    const caLastMonth = sumFactures(lastMonth)
-    const depensesThisMonth = sumDepenses(thisMonth)
-    const depensesLastMonth = sumDepenses(lastMonth)
+    const countNouvelles = (start: string, end: string) =>
+      state.clients.filter((c) => inRange(c.dateCreation, start, end)).length
+
+    const caA = sumFactures(periodADebut, periodAFin)
+    const caB = sumFactures(periodBDebut, periodBFin)
+    const depensesA = sumDepenses(periodADebut, periodAFin)
+    const depensesB = sumDepenses(periodBDebut, periodBFin)
 
     const prestationStats = new Map<string, { count: number; ca: number }>()
     for (const r of state.rendezvous) {
-      if (!isInMonth(r.date, thisMonth)) continue
+      if (!isInMonthValue(r.date, prestationsMonth)) continue
       const nom = r.prestationNom || 'Prestation inconnue'
       const entry = prestationStats.get(nom) ?? { count: 0, ca: 0 }
       entry.count += 1
@@ -166,20 +196,43 @@ function StatsView() {
       .sort((a, b) => b.count - a.count)
       .slice(0, 5)
 
-    return {
-      caThisMonth,
-      caLastMonth,
-      depensesThisMonth,
-      depensesLastMonth,
-      resultatThisMonth: caThisMonth - depensesThisMonth,
-      resultatLastMonth: caLastMonth - depensesLastMonth,
-      rdvThisMonth: countRdv(thisMonth),
-      rdvLastMonth: countRdv(lastMonth),
-      nouvellesThisMonth: countNouvelles(thisMonth),
-      nouvellesLastMonth: countNouvelles(lastMonth),
-      topPrestations,
+    const promoStats = new Map<string, { count: number; ca: number }>()
+    let sansPromoCount = 0
+    let sansPromoCa = 0
+    for (const f of commerciales) {
+      if (!inRange(f.date, periodADebut, periodAFin)) continue
+      if (f.promoId) {
+        const entry = promoStats.get(f.promoNom || 'Promotion') ?? { count: 0, ca: 0 }
+        entry.count += 1
+        entry.ca += f.montant ?? 0
+        promoStats.set(f.promoNom || 'Promotion', entry)
+      } else {
+        sansPromoCount += 1
+        sansPromoCa += f.montant ?? 0
+      }
     }
-  }, [state, thisMonth, lastMonth])
+    const promoRows = Array.from(promoStats.entries())
+      .map(([nom, v]) => ({ nom, count: v.count, ca: v.ca, panierMoyen: v.count > 0 ? v.ca / v.count : 0 }))
+      .sort((a, b) => b.count - a.count)
+
+    return {
+      caA,
+      caB,
+      depensesA,
+      depensesB,
+      resultatA: caA - depensesA,
+      resultatB: caB - depensesB,
+      rdvA: countRdv(periodADebut, periodAFin),
+      rdvB: countRdv(periodBDebut, periodBFin),
+      nouvellesA: countNouvelles(periodADebut, periodAFin),
+      nouvellesB: countNouvelles(periodBDebut, periodBFin),
+      topPrestations,
+      promoRows,
+      sansPromoCount,
+      sansPromoCa,
+      sansPromoPanierMoyen: sansPromoCount > 0 ? sansPromoCa / sansPromoCount : 0,
+    }
+  }, [state, periodADebut, periodAFin, periodBDebut, periodBFin, prestationsMonth])
 
   return (
     <div>
@@ -188,49 +241,63 @@ function StatsView() {
 
       {state.status === 'success' && data && (
         <div className="flex flex-col gap-6">
-          <p className="text-sm text-text-muted -mt-1">
-            Comparaison <span className="font-semibold capitalize">{formatMonthLabel(thisMonth)}</span> vs{' '}
-            <span className="font-semibold capitalize">{formatMonthLabel(lastMonth)}</span>
-          </p>
+          <div className="bg-white border border-border rounded-2xl p-5">
+            <h3 className="font-serif text-lg font-semibold text-sage-dark mb-3">Comparer deux périodes</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <div className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-1.5">
+                  Période A
+                </div>
+                <div className="flex items-center gap-2">
+                  <input type="date" value={periodADebut} onChange={(e) => setPeriodADebut(e.target.value)} className="input" />
+                  <span className="text-text-muted text-sm">→</span>
+                  <input type="date" value={periodAFin} onChange={(e) => setPeriodAFin(e.target.value)} className="input" />
+                </div>
+              </div>
+              <div>
+                <div className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-1.5">
+                  Période B
+                </div>
+                <div className="flex items-center gap-2">
+                  <input type="date" value={periodBDebut} onChange={(e) => setPeriodBDebut(e.target.value)} className="input" />
+                  <span className="text-text-muted text-sm">→</span>
+                  <input type="date" value={periodBFin} onChange={(e) => setPeriodBFin(e.target.value)} className="input" />
+                </div>
+              </div>
+            </div>
+            <p className="text-xs text-text-muted mt-3">
+              Le chiffre d'affaires et le résultat net excluent les factures « Associatif ou formation ».
+            </p>
+          </div>
 
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            <ComparisonCard
-              label="Chiffre d'affaires facturé"
-              current={data.caThisMonth}
-              previous={data.caLastMonth}
-              formatValue={formatEuros}
-            />
+            <ComparisonCard label="Chiffre d'affaires facturé" current={data.caA} previous={data.caB} formatValue={formatEuros} />
             <ComparisonCard
               label="Dépenses"
-              current={data.depensesThisMonth}
-              previous={data.depensesLastMonth}
+              current={data.depensesA}
+              previous={data.depensesB}
               formatValue={formatEuros}
               positiveIsGood={false}
             />
-            <ComparisonCard
-              label="Résultat net"
-              current={data.resultatThisMonth}
-              previous={data.resultatLastMonth}
-              formatValue={formatEuros}
-            />
-            <ComparisonCard
-              label="Rendez-vous"
-              current={data.rdvThisMonth}
-              previous={data.rdvLastMonth}
-            />
-            <ComparisonCard
-              label="Nouvelles clientes"
-              current={data.nouvellesThisMonth}
-              previous={data.nouvellesLastMonth}
-            />
+            <ComparisonCard label="Résultat net" current={data.resultatA} previous={data.resultatB} formatValue={formatEuros} />
+            <ComparisonCard label="Rendez-vous" current={data.rdvA} previous={data.rdvB} />
+            <ComparisonCard label="Nouvelles clientes" current={data.nouvellesA} previous={data.nouvellesB} />
           </div>
 
           <div className="bg-white border border-border rounded-2xl p-5">
-            <h3 className="font-serif text-lg font-semibold text-sage-dark mb-4">
-              Prestations les plus demandées ce mois-ci
-            </h3>
+            <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
+              <h3 className="font-serif text-lg font-semibold text-sage-dark">Prestations les plus demandées</h3>
+              <input
+                type="month"
+                value={prestationsMonth}
+                onChange={(e) => setPrestationsMonth(e.target.value)}
+                className="input w-auto"
+              />
+            </div>
             {data.topPrestations.length === 0 ? (
-              <p className="text-sm text-text-muted">Aucun rendez-vous ce mois-ci.</p>
+              <p className="text-sm text-text-muted">
+                Aucun rendez-vous en {formatMonthLabel(prestationsMonth)}.
+              </p>
             ) : (
               <table className="w-full border-collapse">
                 <thead>
@@ -255,6 +322,47 @@ function StatsView() {
                       </td>
                     </tr>
                   ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+
+          <div className="bg-white border border-border rounded-2xl p-5">
+            <h3 className="font-serif text-lg font-semibold text-sage-dark mb-1">Rentabilité des promotions</h3>
+            <p className="text-xs text-text-muted mb-4">Sur la période A, comparé au panier moyen sans promotion.</p>
+            {data.promoRows.length === 0 && data.sansPromoCount === 0 ? (
+              <p className="text-sm text-text-muted">Aucune facture sur cette période.</p>
+            ) : (
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr>
+                    {['Promotion', 'Factures', 'CA généré', 'Panier moyen'].map((h) => (
+                      <th
+                        key={h}
+                        className="text-left text-[11px] text-text-muted font-semibold uppercase tracking-wide pb-2.5 border-b border-border"
+                      >
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.promoRows.map((p) => (
+                    <tr key={p.nom}>
+                      <td className="py-2.5 border-b border-sage-light text-sm">{p.nom}</td>
+                      <td className="py-2.5 border-b border-sage-light text-sm">{p.count}</td>
+                      <td className="py-2.5 border-b border-sage-light text-sm font-semibold text-sage-dark">
+                        {formatEuros(p.ca)}
+                      </td>
+                      <td className="py-2.5 border-b border-sage-light text-sm">{formatEuros(p.panierMoyen)}</td>
+                    </tr>
+                  ))}
+                  <tr>
+                    <td className="py-2.5 text-sm text-text-muted italic">Sans promotion</td>
+                    <td className="py-2.5 text-sm text-text-muted">{data.sansPromoCount}</td>
+                    <td className="py-2.5 text-sm font-semibold text-sage-dark">{formatEuros(data.sansPromoCa)}</td>
+                    <td className="py-2.5 text-sm text-text-muted">{formatEuros(data.sansPromoPanierMoyen)}</td>
+                  </tr>
                 </tbody>
               </table>
             )}

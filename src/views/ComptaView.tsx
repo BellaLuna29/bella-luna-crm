@@ -21,6 +21,8 @@ interface FactureItem {
   montant: number | null
   payee: boolean
   clienteNom: string
+  categorieFacture: string
+  promoNom: string
 }
 
 type State =
@@ -61,6 +63,7 @@ function ComptaView() {
   const [showCreate, setShowCreate] = useState(false)
   const [exporting, setExporting] = useState<string | null>(null)
   const [exportError, setExportError] = useState<string | null>(null)
+  const [includeAssociatif, setIncludeAssociatif] = useState(false)
 
   const load = useCallback(() => {
     setState({ status: 'loading' })
@@ -83,10 +86,13 @@ function ComptaView() {
     setExporting('factures')
     try {
       const { factures } = await apiFetch<{ factures: FactureItem[] }>(getToken, '/api/factures')
-      const rows = factures.map((f) => ({
+      const scoped = includeAssociatif ? factures : factures.filter((f) => f.categorieFacture !== 'Associatif ou formation')
+      const rows = scoped.map((f) => ({
         Date: formatDate(f.date),
         Cliente: f.clienteNom || 'Cliente inconnue',
         'Montant (€)': f.montant ?? 0,
+        Catégorie: f.categorieFacture,
+        Promo: f.promoNom || '—',
         Statut: f.payee ? 'Payée' : 'Impayée',
       }))
       exportRowsToExcel(rows, 'Factures', `factures-${todayStamp()}.xlsx`)
@@ -126,8 +132,12 @@ function ComptaView() {
         apiFetch<{ depenses: DepenseItem[] }>(getToken, '/api/depenses'),
       ])
 
+      const facturesScoped = includeAssociatif
+        ? factures
+        : factures.filter((f) => f.categorieFacture !== 'Associatif ou formation')
+
       const months = new Map<string, { ca: number; depenses: number }>()
-      for (const f of factures) {
+      for (const f of facturesScoped) {
         const key = monthKey(f.date)
         if (!key) continue
         const entry = months.get(key) ?? { ca: 0, depenses: 0 }
@@ -260,6 +270,15 @@ function ComptaView() {
           <p className="text-sm text-text-muted mb-4">
             Génère un fichier .xlsx que tu peux transmettre directement à ton comptable.
           </p>
+          <label className="flex items-center gap-2 text-sm mb-4">
+            <input
+              type="checkbox"
+              checked={includeAssociatif}
+              onChange={(e) => setIncludeAssociatif(e.target.checked)}
+              className="w-4 h-4"
+            />
+            Inclure les factures « Associatif ou formation » dans les exports
+          </label>
           <div className="flex flex-col gap-3 max-w-sm">
             <button
               onClick={exportFactures}

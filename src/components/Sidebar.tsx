@@ -8,6 +8,7 @@ const NAV_ITEMS: { view: View; label: string }[] = [
   { view: 'agenda', label: 'Rendez-vous' },
   { view: 'billing', label: 'Facturation' },
   { view: 'compta', label: 'Compta' },
+  { view: 'sms', label: 'SMS' },
   { view: 'newsletter', label: 'Newsletter' },
 ]
 
