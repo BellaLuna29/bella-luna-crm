@@ -46,7 +46,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
   }
 
   try {
-    await airtableUploadAttachment('tblHXhydmHUKycaHd', id, 'Justificatif', filename, contentType, dataBase64)
+    await airtableUploadAttachment(id, 'Justificatif', filename, contentType, dataBase64)
     res.status(200).json({ ok: true })
   } catch (error) {
     if (error instanceof AirtableConfigError) {

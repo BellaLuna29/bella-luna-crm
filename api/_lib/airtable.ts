@@ -121,7 +121,6 @@ export async function airtableUpdate(
 }
 
 export async function airtableUploadAttachment(
-  tableId: string,
   recordId: string,
   fieldName: string,
   filename: string,
