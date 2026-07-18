@@ -48,7 +48,7 @@ function FactureFormModal({ onClose, onSaved }: FactureFormModalProps) {
       .catch((err: unknown) => {
         setLoadError(err instanceof ApiError ? err.message : 'Erreur inconnue.')
       })
-    apiFetch<{ promotions: PromoOption[] }>(getToken, '/api/promotions')
+    apiFetch<{ promotions: PromoOption[] }>(getToken, '/api/prestations?resource=promotions')
       .then((data) => setPromos(data.promotions))
       .catch(() => setPromos([]))
   }, [getToken])

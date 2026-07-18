@@ -151,7 +151,7 @@ function AgendaView() {
 
   async function handleDeleteAbsence(id: string) {
     try {
-      await apiFetch(getToken, `/api/absences/${id}`, { method: 'DELETE' })
+      await apiFetch(getToken, `/api/absences?id=${id}`, { method: 'DELETE' })
       loadAbsences()
     } catch {
       // silent — best effort
