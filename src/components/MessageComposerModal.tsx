@@ -1,6 +1,15 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useAuth } from '@clerk/react'
+import { apiFetch } from '../lib/api'
 import { MESSAGE_TEMPLATES, type TemplateContext } from '../lib/messageTemplates'
 import { buildSmsLink, buildMailtoLink } from '../lib/contactLinks'
+
+interface Questionnaire {
+  id: string
+  nom: string
+  categorie: string
+  lien: string
+}
 
 interface MessageComposerModalProps {
   context: TemplateContext
@@ -10,16 +19,71 @@ interface MessageComposerModalProps {
   onClose: () => void
 }
 
+const COMBINING_MARKS_START = 0x0300
+const COMBINING_MARKS_END = 0x036f
+
+function normalize(s: string): string {
+  const decomposed = s.toLowerCase().normalize('NFD')
+  let out = ''
+  for (const ch of decomposed) {
+    const cp = ch.codePointAt(0) ?? 0
+    if (cp < COMBINING_MARKS_START || cp > COMBINING_MARKS_END) out += ch
+  }
+  return out
+}
+
+function findBestQuestionnaire(questionnaires: Questionnaire[], prestation?: string): Questionnaire | null {
+  if (!prestation || questionnaires.length === 0) return null
+  const p = normalize(prestation)
+  for (const q of questionnaires) {
+    const cat = normalize(q.categorie)
+    const nom = normalize(q.nom)
+    if ((cat && (p.includes(cat) || cat.includes(p))) || (nom && (p.includes(nom) || nom.includes(p)))) {
+      return q
+    }
+  }
+  return null
+}
+
 function MessageComposerModal({ context, telephone, email, initialTemplateKey, onClose }: MessageComposerModalProps) {
+  const { getToken } = useAuth()
   const initialTemplate = MESSAGE_TEMPLATES.find((t) => t.key === initialTemplateKey) ?? MESSAGE_TEMPLATES[0]
   const [templateKey, setTemplateKey] = useState(initialTemplate.key)
+  const [questionnaires, setQuestionnaires] = useState<Questionnaire[]>([])
+  const [questionnaireId, setQuestionnaireId] = useState('')
   const [body, setBody] = useState(initialTemplate.build(context))
   const template = MESSAGE_TEMPLATES.find((t) => t.key === templateKey) ?? MESSAGE_TEMPLATES[0]
 
+  useEffect(() => {
+    apiFetch<{ questionnaires: Questionnaire[] }>(getToken, '/api/prestations?resource=questionnaires')
+      .then((data) => {
+        setQuestionnaires(data.questionnaires)
+        const best = findBestQuestionnaire(data.questionnaires, context.prestation)
+        if (best) {
+          setQuestionnaireId(best.id)
+          if (initialTemplate.key === 'rappel') {
+            setBody(initialTemplate.build({ ...context, lienQuestionnaire: best.lien }))
+          }
+        }
+      })
+      .catch(() => setQuestionnaires([]))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  function rebuild(nextTemplateKey: string, nextQuestionnaireId: string) {
+    const t = MESSAGE_TEMPLATES.find((tpl) => tpl.key === nextTemplateKey) ?? MESSAGE_TEMPLATES[0]
+    const lien = questionnaires.find((q) => q.id === nextQuestionnaireId)?.lien
+    setBody(t.build({ ...context, lienQuestionnaire: lien }))
+  }
+
   function handleTemplateChange(key: string) {
     setTemplateKey(key)
-    const t = MESSAGE_TEMPLATES.find((tpl) => tpl.key === key)
-    if (t) setBody(t.build(context))
+    rebuild(key, questionnaireId)
+  }
+
+  function handleQuestionnaireChange(id: string) {
+    setQuestionnaireId(id)
+    rebuild(templateKey, id)
   }
 
   const smsHref = telephone ? buildSmsLink(telephone, body) : null
@@ -44,12 +108,26 @@ function MessageComposerModal({ context, telephone, email, initialTemplateKey, o
           </select>
         </label>
 
+        {templateKey === 'rappel' && (
+          <label className="block mb-3">
+            <span className="block text-xs font-semibold text-text-muted mb-1">Formulaire à insérer</span>
+            <select value={questionnaireId} onChange={(e) => handleQuestionnaireChange(e.target.value)} className="input">
+              <option value="">Aucun (garder « [Lien à insérer] »)</option>
+              {questionnaires.map((q) => (
+                <option key={q.id} value={q.id}>
+                  {q.nom}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+
         <label className="block mb-4">
           <span className="block text-xs font-semibold text-text-muted mb-1">Message</span>
           <textarea
             value={body}
             onChange={(e) => setBody(e.target.value)}
-            rows={5}
+            rows={8}
             className="input resize-none"
           />
         </label>

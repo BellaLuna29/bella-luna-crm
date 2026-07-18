@@ -352,6 +352,53 @@ export function parseRendezVousInput(
   return { fields }
 }
 
+/**
+ * Validates and maps a raw request body into Airtable field names for the
+ * Questionnaires table. `requireCore` enforces nom/lien as mandatory (create only).
+ */
+export function parseQuestionnaireInput(
+  body: unknown,
+  { requireCore }: { requireCore: boolean },
+): { fields: Record<string, unknown> } | ClientInputErrors {
+  if (typeof body !== 'object' || body === null) {
+    return { errors: ['Corps de requête invalide.'] }
+  }
+  const b = body as Record<string, unknown>
+  const errors: string[] = []
+  const fields: Record<string, unknown> = {}
+
+  if ('nom' in b || requireCore) {
+    const v = typeof b.nom === 'string' ? b.nom.trim() : ''
+    if (requireCore && v.length === 0) errors.push('Le nom est obligatoire.')
+    else if (v.length > 200) errors.push('Le nom est trop long.')
+    if (v.length > 0) fields['Nom'] = v
+  }
+
+  if ('categorie' in b) {
+    const v = typeof b.categorie === 'string' ? b.categorie.trim() : ''
+    fields['Catégorie'] = v
+  }
+
+  if ('lien' in b || requireCore) {
+    const v = typeof b.lien === 'string' ? b.lien.trim() : ''
+    if (requireCore && v.length === 0) errors.push('Le lien du formulaire est obligatoire.')
+    else if (v.length > 0 && !/^https?:\/\//i.test(v)) errors.push('Le lien doit être une URL valide.')
+    if (v.length > 0) fields['Lien Google Form'] = v
+  }
+
+  if ('clienteIds' in b) {
+    const v = b.clienteIds
+    if (Array.isArray(v) && v.every((id) => typeof id === 'string' && RECORD_ID_RE.test(id))) {
+      fields['Clientes ciblées'] = v
+    } else {
+      errors.push('Liste de clientes invalide.')
+    }
+  }
+
+  if (errors.length > 0) return { errors }
+  return { fields }
+}
+
 export const ABSENCE_TYPE_VALUES = ['Vacances', 'Jour off', 'Autre'] as const
 
 /**

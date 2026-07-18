@@ -20,6 +20,7 @@ interface RdvItem {
   clienteId: string | null
   clienteNom: string
   prestationNom: string
+  prix: number | null
 }
 
 interface FactureItem {
@@ -64,6 +65,17 @@ function formatDateCourte(iso: string | null): string {
   const date = new Date(iso)
   if (Number.isNaN(date.getTime())) return '—'
   return date.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
+}
+
+function formatDateHeureNaturel(iso: string | null): string {
+  if (!iso) return '—'
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return '—'
+  const jour = date.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })
+  const h = date.getHours()
+  const m = date.getMinutes()
+  const heure = m === 0 ? `${h}h` : `${h}h${String(m).padStart(2, '0')}`
+  return `${jour} à ${heure}`
 }
 
 interface ContactRowProps {
@@ -181,8 +193,9 @@ function SmsView() {
     setComposer({
       context: {
         nomComplet: r.clienteNom || client?.nomComplet || 'cliente',
-        date: formatDateCourte(r.date),
+        date: formatDateHeureNaturel(r.date),
         prestation: r.prestationNom,
+        montant: r.prix ?? undefined,
       },
       telephone: client?.telephone ?? '',
       email: client?.email ?? '',

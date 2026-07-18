@@ -4,6 +4,7 @@ export interface TemplateContext {
   prestation?: string
   montant?: number
   promoNom?: string
+  lienQuestionnaire?: string
 }
 
 export interface MessageTemplate {
@@ -13,13 +14,37 @@ export interface MessageTemplate {
   build: (ctx: TemplateContext) => string
 }
 
+const ADRESSE_INFO = `Voici les informations pratiques :
+Adresse : 8 allée Charles Godeby, 29000 Quimper
+Interphone : « Clémence. Mgr » et je suis en rez-de-chaussée
+Des places de parking sont disponibles à proximité, vous pourrez vous garer facilement 😊
+
+Tenue conseillée : en sous-vêtement type boxer, short ou slip de bain (selon ce qui est le plus confortable pour vous).`
+
 export const MESSAGE_TEMPLATES: MessageTemplate[] = [
   {
     key: 'rappel',
     label: 'Rappel de rendez-vous',
     subject: 'Rappel de votre rendez-vous — Bella Luna',
-    build: (ctx) =>
-      `Bonjour ${ctx.nomComplet}, un petit rappel de votre rendez-vous${ctx.prestation ? ` (${ctx.prestation})` : ''}${ctx.date ? ` le ${ctx.date}` : ''} à l'institut Bella Luna. À très bientôt !`,
+    build: (ctx) => {
+      const prestation = ctx.prestation || 'massage'
+      const quandLabel = ctx.date ? ` prévu le ${ctx.date}` : ''
+      const lien = ctx.lienQuestionnaire || '[Lien à insérer]'
+      return `Bonjour !
+Je reviens vers vous concernant votre ${prestation}${quandLabel} 💆🏽‍♀️
+
+Petit rappel pratique : merci d'arriver à l'heure indiquée ou jusqu'à 5 minutes avant maximum. Il n'est pas nécessaire d'arriver plus tôt, afin de me permettre de vous accueillir dans les meilleures conditions. ✨
+
+${ADRESSE_INFO}
+
+Le Tarif du ${prestation} est à : ${ctx.montant ? ctx.montant.toFixed(0) : '—'} €
+Moyens de paiement acceptés : espèces et virement (Wero).
+
+📝 Avant notre rendez-vous, je vous invite à remplir ce petit questionnaire pour que je puisse adapter le ${prestation} à vos besoins : ${lien}
+
+N'hésitez pas si vous avez des questions, je suis disponible 🤗
+Très belle journée à vous`
+    },
   },
   {
     key: 'recontact',

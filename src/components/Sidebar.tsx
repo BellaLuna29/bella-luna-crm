@@ -1,56 +1,83 @@
 import { UserButton } from '@clerk/react'
 import type { View } from '../types'
 
-const NAV_ITEMS: { view: View; label: string }[] = [
-  { view: 'dashboard', label: 'Tableau de bord' },
-  { view: 'stats', label: 'Statistiques' },
-  { view: 'clients', label: 'Clientes' },
-  { view: 'agenda', label: 'Rendez-vous' },
-  { view: 'billing', label: 'Facturation' },
-  { view: 'compta', label: 'Compta' },
-  { view: 'sms', label: 'SMS' },
-  { view: 'newsletter', label: 'Newsletter' },
+const NAV_ITEMS: { view: View; label: string; icon: string }[] = [
+  { view: 'dashboard', label: 'Tableau de bord', icon: '🏠' },
+  { view: 'stats', label: 'Statistiques', icon: '📈' },
+  { view: 'clients', label: 'Clientes', icon: '👥' },
+  { view: 'agenda', label: 'Rendez-vous', icon: '📅' },
+  { view: 'billing', label: 'Facturation', icon: '💶' },
+  { view: 'compta', label: 'Compta', icon: '🧾' },
+  { view: 'sms', label: 'SMS', icon: '💬' },
+  { view: 'formulaires', label: 'Formulaires', icon: '📝' },
+  { view: 'newsletter', label: 'Newsletter', icon: '📧' },
 ]
 
 interface SidebarProps {
   activeView: View
   onNavigate: (view: View) => void
+  collapsed: boolean
+  onToggleCollapsed: () => void
+  mobileOpen: boolean
+  onCloseMobile: () => void
 }
 
-function Sidebar({ activeView, onNavigate }: SidebarProps) {
+function Sidebar({ activeView, onNavigate, collapsed, onToggleCollapsed, mobileOpen, onCloseMobile }: SidebarProps) {
+  const collapsedDesktop = collapsed ? 'md:justify-center md:px-0' : ''
+  const hideOnCollapse = collapsed ? 'md:hidden' : ''
+
   return (
-    <nav className="w-60 bg-sage-dark text-white flex flex-col p-7 px-4.5 shrink-0">
-      <div className="flex items-center gap-2.5 mb-9 px-2">
-        <div className="w-9 h-9 rounded-full bg-gold flex items-center justify-center font-serif font-semibold text-sage-dark text-base shrink-0">
-          B
+    <>
+      {mobileOpen && (
+        <div className="fixed inset-0 bg-black/30 z-30 md:hidden" onClick={onCloseMobile} aria-hidden="true" />
+      )}
+      <nav
+        className={`bg-sage-dark text-white flex flex-col p-7 px-4.5 shrink-0 fixed inset-y-0 left-0 z-40 transition-transform duration-200 w-60 md:static md:translate-x-0 ${
+          mobileOpen ? 'translate-x-0' : '-translate-x-full'
+        } ${collapsed ? 'md:w-[72px] md:px-3' : ''}`}
+      >
+        <div className={`flex items-center gap-2.5 mb-9 px-2 ${collapsedDesktop}`}>
+          <div className="w-9 h-9 rounded-full bg-gold flex items-center justify-center font-serif font-semibold text-sage-dark text-base shrink-0">
+            B
+          </div>
+          <div className={hideOnCollapse}>
+            <div className="font-serif text-lg font-semibold tracking-wide">Bella Luna</div>
+            <div className="text-[10px] text-white/60 tracking-widest -mt-0.5">ESPACE GESTION</div>
+          </div>
         </div>
-        <div>
-          <div className="font-serif text-lg font-semibold tracking-wide">Bella Luna</div>
-          <div className="text-[10px] text-white/60 tracking-widest -mt-0.5">ESPACE GESTION</div>
+
+        <div className="flex flex-col gap-1 overflow-y-auto">
+          {NAV_ITEMS.map((item) => (
+            <button
+              key={item.view}
+              onClick={() => {
+                onNavigate(item.view)
+                onCloseMobile()
+              }}
+              title={item.label}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-[10px] text-sm font-medium text-left transition-colors ${collapsedDesktop} ${
+                activeView === item.view ? 'bg-white/15 text-white' : 'text-white/85 hover:bg-white/10'
+              }`}
+            >
+              <span className="text-base shrink-0">{item.icon}</span>
+              <span className={hideOnCollapse}>{item.label}</span>
+            </button>
+          ))}
         </div>
-      </div>
 
-      <div className="flex flex-col gap-1">
-        {NAV_ITEMS.map((item) => (
-          <button
-            key={item.view}
-            onClick={() => onNavigate(item.view)}
-            className={`flex items-center gap-3 px-3 py-2.5 rounded-[10px] text-sm font-medium text-left transition-colors ${
-              activeView === item.view
-                ? 'bg-white/15 text-white'
-                : 'text-white/85 hover:bg-white/10'
-            }`}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
+        <button
+          onClick={onToggleCollapsed}
+          className="hidden md:flex items-center justify-center gap-2 mt-4 px-3 py-2 rounded-[10px] text-xs font-semibold text-white/70 hover:bg-white/10"
+        >
+          {collapsed ? '»' : '« Réduire le menu'}
+        </button>
 
-      <div className="mt-auto flex items-center gap-3 px-3 py-3 bg-white/5 rounded-[10px]">
-        <UserButton />
-        <span className="text-xs text-white/70">Connecté</span>
-      </div>
-    </nav>
+        <div className={`mt-auto flex items-center gap-3 px-3 py-3 bg-white/5 rounded-[10px] ${collapsedDesktop}`}>
+          <UserButton />
+          <span className={`text-xs text-white/70 ${hideOnCollapse}`}>Connecté</span>
+        </div>
+      </nav>
+    </>
   )
 }
 

@@ -10,6 +10,7 @@ import StatsView from './views/StatsView'
 import FacturationView from './views/FacturationView'
 import ComptaView from './views/ComptaView'
 import SmsView from './views/SmsView'
+import FormulairesView from './views/FormulairesView'
 import NewsletterView from './views/NewsletterView'
 import type { View } from './types'
 
@@ -22,18 +23,31 @@ const TITLES: Record<View, [string, string]> = {
   billing: ['Facturation', 'Factures, promotions et suivi des paiements'],
   compta: ['Compta', 'Dépenses et exports pour ta comptabilité'],
   sms: ['SMS', 'Messages pré-remplis à envoyer par SMS ou e-mail'],
+  formulaires: ['Formulaires', 'Questionnaires envoyés aux clientes'],
   newsletter: ['Newsletter', 'Offres du moment et ciblage clientes'],
 }
+
+const SIDEBAR_COLLAPSED_KEY = 'bella-luna-sidebar-collapsed'
 
 function App() {
   const [view, setView] = useState<View>('clients')
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null)
+  const [collapsed, setCollapsed] = useState(() => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1')
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   const [title, subtitle] = TITLES[view]
 
   function navigate(next: View) {
     setSelectedClientId(null)
     setView(next)
+  }
+
+  function toggleCollapsed() {
+    setCollapsed((prev) => {
+      const next = !prev
+      localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? '1' : '0')
+      return next
+    })
   }
 
   return (
@@ -56,13 +70,20 @@ function App() {
       <Show when="signed-in">
         <div className="flex min-h-screen">
           <div className="print:hidden">
-            <Sidebar activeView={view} onNavigate={navigate} />
+            <Sidebar
+              activeView={view}
+              onNavigate={navigate}
+              collapsed={collapsed}
+              onToggleCollapsed={toggleCollapsed}
+              mobileOpen={mobileMenuOpen}
+              onCloseMobile={() => setMobileMenuOpen(false)}
+            />
           </div>
           <div className="flex-1 flex flex-col min-w-0">
             <div className="print:hidden">
-              <Topbar title={title} subtitle={subtitle} />
+              <Topbar title={title} subtitle={subtitle} onOpenMobileMenu={() => setMobileMenuOpen(true)} />
             </div>
-            <main className="flex-1 p-8 overflow-y-auto print:p-0 print:overflow-visible">
+            <main className="flex-1 p-4 md:p-8 overflow-y-auto overflow-x-hidden print:p-0 print:overflow-visible">
               {view === 'clients' && (
                 <ClientsListView
                   onSelectClient={(id) => {
@@ -100,6 +121,7 @@ function App() {
               )}
               {view === 'compta' && <ComptaView />}
               {view === 'sms' && <SmsView />}
+              {view === 'formulaires' && <FormulairesView />}
               {view === 'newsletter' && <NewsletterView />}
             </main>
           </div>

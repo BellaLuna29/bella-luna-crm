@@ -7,4 +7,5 @@ export type View =
   | 'billing'
   | 'compta'
   | 'sms'
+  | 'formulaires'
   | 'newsletter'
