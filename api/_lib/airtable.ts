@@ -99,6 +99,7 @@ export async function airtableUpdate(
   tableId: string,
   recordId: string,
   fields: Record<string, unknown>,
+  options?: { typecast?: boolean },
 ): Promise<AirtableRecord> {
   const { apiKey, baseId } = getConfig()
   const url = `${AIRTABLE_API_BASE}/${baseId}/${tableId}/${recordId}`
@@ -109,7 +110,7 @@ export async function airtableUpdate(
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ fields }),
+    body: JSON.stringify({ fields, typecast: options?.typecast ?? false }),
   })
 
   if (!response.ok) {

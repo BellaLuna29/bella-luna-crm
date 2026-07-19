@@ -207,6 +207,7 @@ function ComptaView() {
             {state.status === 'error' && <p className="p-6 text-sm text-danger">{state.message}</p>}
 
             {state.status === 'success' && (
+              <div className="overflow-x-auto">
               <table className="w-full border-collapse">
                 <thead>
                   <tr>
@@ -259,6 +260,7 @@ function ComptaView() {
                   )}
                 </tbody>
               </table>
+              </div>
             )}
           </div>
         </div>

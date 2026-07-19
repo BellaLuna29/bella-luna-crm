@@ -6,6 +6,7 @@ import ClientsListView from './views/ClientsListView'
 import ClientDetailView from './views/ClientDetailView'
 import AgendaView from './views/AgendaView'
 import DashboardView from './views/DashboardView'
+import AlertesView from './views/AlertesView'
 import StatsView from './views/StatsView'
 import FacturationView from './views/FacturationView'
 import ComptaView from './views/ComptaView'
@@ -16,6 +17,7 @@ import type { View } from './types'
 
 const TITLES: Record<View, [string, string]> = {
   dashboard: ['Tableau de bord', "Vue d'ensemble de votre activité"],
+  alertes: ['Alertes', 'Ce qui mérite ton attention en ce moment'],
   stats: ['Statistiques', 'Comparaison des performances mois par mois'],
   clients: ['Clientes', 'Liste des fiches clientes'],
   'client-detail': ['Fiche cliente', 'Informations, historique et notes'],
@@ -107,6 +109,16 @@ function App() {
                   onNavigateAgenda={() => setView('agenda')}
                   onNavigateClients={() => setView('clients')}
                   onNavigateFacturation={() => setView('billing')}
+                />
+              )}
+              {view === 'alertes' && (
+                <AlertesView
+                  onSelectClient={(id) => {
+                    setSelectedClientId(id)
+                    setView('client-detail')
+                  }}
+                  onNavigateFacturation={() => setView('billing')}
+                  onNavigateNewsletter={() => setView('newsletter')}
                 />
               )}
               {view === 'stats' && <StatsView />}

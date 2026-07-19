@@ -4,6 +4,7 @@ import { apiFetch, ApiError } from '../lib/api'
 import MessageComposerModal from '../components/MessageComposerModal'
 import SearchableSelect from '../components/SearchableSelect'
 import type { TemplateContext } from '../lib/messageTemplates'
+import { formatDateHeureNaturel } from '../lib/formatDate'
 
 interface Client {
   id: string
@@ -65,17 +66,6 @@ function formatDateCourte(iso: string | null): string {
   const date = new Date(iso)
   if (Number.isNaN(date.getTime())) return '—'
   return date.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })
-}
-
-function formatDateHeureNaturel(iso: string | null): string {
-  if (!iso) return '—'
-  const date = new Date(iso)
-  if (Number.isNaN(date.getTime())) return '—'
-  const jour = date.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })
-  const h = date.getHours()
-  const m = date.getMinutes()
-  const heure = m === 0 ? `${h}h` : `${h}h${String(m).padStart(2, '0')}`
-  return `${jour} à ${heure}`
 }
 
 interface ContactRowProps {
@@ -253,7 +243,7 @@ function SmsView() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-5">
+      <div className="flex items-center justify-between mb-5 gap-3 flex-wrap">
         <p className="text-sm text-text-muted">
           Prépare des SMS ou e-mails pré-remplis à partir de suggestions, puis envoie-les depuis l'app native de ta tablette.
         </p>

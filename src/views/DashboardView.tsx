@@ -2,6 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@clerk/react'
 import { apiFetch, ApiError } from '../lib/api'
 import RdvStatusPill from '../components/RdvStatusPill'
+import {
+  computeAnniversaires,
+  computeFacturesImpayeesEnRetard,
+  computeClientesARecontacter,
+  computeCuresBientotTerminees,
+  daysSince,
+} from '../lib/alerts'
 
 interface Client {
   id: string
@@ -94,25 +101,6 @@ function formatDateLongue(iso: string | null): string {
   const date = new Date(iso)
   if (Number.isNaN(date.getTime())) return ''
   return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })
-}
-
-const DAY_MS = 24 * 60 * 60 * 1000
-
-function daysUntilBirthday(dateNaissance: string, now: Date): number | null {
-  const d = new Date(dateNaissance)
-  if (Number.isNaN(d.getTime())) return null
-  const today = startOfDay(now)
-  let next = new Date(now.getFullYear(), d.getMonth(), d.getDate())
-  next = startOfDay(next)
-  if (next.getTime() < today.getTime()) {
-    next = startOfDay(new Date(now.getFullYear() + 1, d.getMonth(), d.getDate()))
-  }
-  return Math.round((next.getTime() - today.getTime()) / DAY_MS)
-}
-
-function daysSince(iso: string, now: Date): number {
-  const d = startOfDay(new Date(iso))
-  return Math.round((startOfDay(now).getTime() - d.getTime()) / DAY_MS)
 }
 
 interface StatCardProps {
@@ -224,36 +212,10 @@ function DashboardView({
   const alerts = useMemo(() => {
     if (state.status !== 'success') return null
 
-    const anniversaires = state.clients
-      .filter((c) => c.dateNaissance)
-      .map((c) => ({ client: c, jours: daysUntilBirthday(c.dateNaissance as string, now) }))
-      .filter((x): x is { client: Client; jours: number } => x.jours !== null && x.jours <= 7)
-      .sort((a, b) => a.jours - b.jours)
-
-    const facturesImpayeesEnRetard = state.factures
-      .filter((f) => !f.payee && f.date && daysSince(f.date, now) > 14)
-      .sort((a, b) => daysSince(b.date as string, now) - daysSince(a.date as string, now))
-
-    const lastRdvByClient = new Map<string, number>()
-    for (const r of state.rendezvous) {
-      if (!r.clienteId || !r.date) continue
-      const t = new Date(r.date).getTime()
-      if (Number.isNaN(t) || t > now.getTime()) continue
-      const prev = lastRdvByClient.get(r.clienteId)
-      if (!prev || t > prev) lastRdvByClient.set(r.clienteId, t)
-    }
-
-    const clientesARecontacter = state.clients
-      .filter((c) => c.statut === 'Régulière')
-      .map((c) => {
-        const lastTime = lastRdvByClient.get(c.id)
-        const jours = lastTime ? Math.round((now.getTime() - lastTime) / DAY_MS) : null
-        return { client: c, jours }
-      })
-      .filter((x) => x.jours === null || x.jours > 60)
-      .sort((a, b) => (b.jours ?? Infinity) - (a.jours ?? Infinity))
-
-    const curesBientotTerminees = state.cures.filter((c) => c.seancesRestantes === 1)
+    const anniversaires = computeAnniversaires(state.clients, now)
+    const facturesImpayeesEnRetard = computeFacturesImpayeesEnRetard(state.factures, now)
+    const clientesARecontacter = computeClientesARecontacter(state.clients, state.rendezvous, now)
+    const curesBientotTerminees = computeCuresBientotTerminees(state.cures)
 
     return {
       anniversaires,

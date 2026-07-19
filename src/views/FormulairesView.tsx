@@ -125,7 +125,7 @@ function FormulairesView() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-5">
+      <div className="flex items-center justify-between mb-5 gap-3 flex-wrap">
         <p className="text-sm text-text-muted">
           Gère les questionnaires envoyés avant les rendez-vous et lie-les aux clientes concernées.
         </p>

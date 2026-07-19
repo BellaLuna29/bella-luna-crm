@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@clerk/react'
 import { apiFetch, ApiError } from '../lib/api'
 import FactureFormModal from '../components/FactureFormModal'
+import PromotionsManager from '../components/PromotionsManager'
 
 interface FactureItem {
   id: string
@@ -22,6 +23,7 @@ type State =
 
 type Filter = 'toutes' | 'payees' | 'impayees'
 type CategorieFilter = 'toutes' | 'Commercial' | 'Associatif ou formation'
+type SubTab = 'factures' | 'promotions'
 
 function formatDate(iso: string | null): string {
   if (!iso) return '—'
@@ -48,6 +50,7 @@ interface FacturationViewProps {
 
 function FacturationView({ onSelectClient }: FacturationViewProps) {
   const { getToken } = useAuth()
+  const [subTab, setSubTab] = useState<SubTab>('factures')
   const [state, setState] = useState<State>({ status: 'loading' })
   const [filter, setFilter] = useState<Filter>('toutes')
   const [categorieFilter, setCategorieFilter] = useState<CategorieFilter>('Commercial')
@@ -114,6 +117,24 @@ function FacturationView({ onSelectClient }: FacturationViewProps) {
 
   return (
     <div>
+      <div className="flex items-center gap-2 mb-5">
+        {(['factures', 'promotions'] as SubTab[]).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setSubTab(tab)}
+            className={`px-3.5 py-2 rounded-[10px] text-sm font-semibold transition-colors ${
+              subTab === tab ? 'bg-sage-dark text-white' : 'bg-white border border-border text-text-muted hover:bg-sage-pale'
+            }`}
+          >
+            {tab === 'factures' ? 'Factures' : 'Promotions'}
+          </button>
+        ))}
+      </div>
+
+      {subTab === 'promotions' && <PromotionsManager />}
+
+      {subTab === 'factures' && (
+        <>
       <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
         <div className="flex items-center gap-2">
           {(['toutes', 'impayees', 'payees'] as Filter[]).map((f) => (
@@ -174,6 +195,7 @@ function FacturationView({ onSelectClient }: FacturationViewProps) {
         {state.status === 'error' && <p className="p-6 text-sm text-danger">{state.message}</p>}
 
         {state.status === 'success' && (
+          <div className="overflow-x-auto">
           <table className="w-full border-collapse">
             <thead>
               <tr>
@@ -243,6 +265,7 @@ function FacturationView({ onSelectClient }: FacturationViewProps) {
               )}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 
@@ -254,6 +277,8 @@ function FacturationView({ onSelectClient }: FacturationViewProps) {
             load()
           }}
         />
+      )}
+        </>
       )}
     </div>
   )

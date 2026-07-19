@@ -8,11 +8,12 @@ import {
 } from './_lib/airtable.js'
 import { setCorsHeaders } from './_lib/cors.js'
 import { requireAuth, AuthError } from './_lib/auth.js'
-import { parseQuestionnaireInput } from './_lib/mappers.js'
+import { parseQuestionnaireInput, parsePromotionInput, parseAlerteInput } from './_lib/mappers.js'
 
 const TABLE_PRESTATIONS = 'tblDeJttMEKXpYR8X'
 const TABLE_PROMOTIONS = 'tbldqsJCBeZwve20n'
 const TABLE_QUESTIONNAIRES = 'tblhPRz9gsVHoq6mb'
+const TABLE_ALERTES = 'tblk5PC1ALEQpHovg'
 const RECORD_ID_RE = /^rec[a-zA-Z0-9]{14}$/
 
 interface Prestation {
@@ -29,6 +30,7 @@ interface PromotionItem {
   nom: string
   reduction: number | null
   active: boolean
+  dateExpiration: string | null
 }
 
 interface QuestionnaireItem {
@@ -39,8 +41,94 @@ interface QuestionnaireItem {
   clienteIds: string[]
 }
 
+interface AlerteItem {
+  id: string
+  titre: string
+  description: string
+  date: string | null
+  active: boolean
+}
+
 function linkedIds(field: unknown): string[] {
   return Array.isArray(field) ? (field as string[]) : []
+}
+
+type ParseFn = (
+  body: unknown,
+  opts: { requireCore: boolean },
+) => { fields: Record<string, unknown> } | { errors: string[] }
+
+async function handleCrud(
+  req: VercelRequest,
+  res: VercelResponse,
+  {
+    tableId,
+    parse,
+    notFoundLabel,
+  }: { tableId: string; parse: ParseFn; notFoundLabel: string },
+): Promise<void> {
+  if (req.method === 'POST') {
+    const parsed = parse(req.body, { requireCore: true })
+    if ('errors' in parsed) {
+      res.status(400).json({ error: parsed.errors.join(' ') })
+      return
+    }
+    try {
+      const record = await airtableCreate(tableId, parsed.fields, { typecast: true })
+      res.status(201).json({ id: record.id })
+    } catch (error) {
+      if (error instanceof AirtableConfigError) {
+        res.status(500).json({ error: error.message })
+        return
+      }
+      console.error(error)
+      res.status(502).json({ error: `Impossible de créer ${notFoundLabel} dans Airtable.` })
+    }
+    return
+  }
+
+  const id = req.query.id
+  if (typeof id !== 'string' || !RECORD_ID_RE.test(id)) {
+    res.status(400).json({ error: 'Identifiant invalide.' })
+    return
+  }
+
+  if (req.method === 'PATCH') {
+    const parsed = parse(req.body, { requireCore: false })
+    if ('errors' in parsed) {
+      res.status(400).json({ error: parsed.errors.join(' ') })
+      return
+    }
+    try {
+      await airtableUpdate(tableId, id, parsed.fields, { typecast: true })
+      res.status(200).json({ ok: true })
+    } catch (error) {
+      if (error instanceof AirtableConfigError) {
+        res.status(500).json({ error: error.message })
+        return
+      }
+      console.error(error)
+      res.status(502).json({ error: `Impossible de mettre à jour ${notFoundLabel} dans Airtable.` })
+    }
+    return
+  }
+
+  if (req.method === 'DELETE') {
+    try {
+      await airtableDelete(tableId, id)
+      res.status(200).json({ ok: true })
+    } catch (error) {
+      if (error instanceof AirtableConfigError) {
+        res.status(500).json({ error: error.message })
+        return
+      }
+      console.error(error)
+      res.status(502).json({ error: `Impossible de supprimer ${notFoundLabel} dans Airtable.` })
+    }
+    return
+  }
+
+  res.status(405).json({ error: 'Méthode non autorisée.' })
 }
 
 async function handleQuestionnaires(req: VercelRequest, res: VercelResponse): Promise<void> {
@@ -67,69 +155,62 @@ async function handleQuestionnaires(req: VercelRequest, res: VercelResponse): Pr
     }
     return
   }
+  await handleCrud(req, res, { tableId: TABLE_QUESTIONNAIRES, parse: parseQuestionnaireInput, notFoundLabel: 'le formulaire' })
+}
 
-  if (req.method === 'POST') {
-    const parsed = parseQuestionnaireInput(req.body, { requireCore: true })
-    if ('errors' in parsed) {
-      res.status(400).json({ error: parsed.errors.join(' ') })
-      return
-    }
+async function handlePromotions(req: VercelRequest, res: VercelResponse): Promise<void> {
+  if (req.method === 'GET') {
     try {
-      const record = await airtableCreate(TABLE_QUESTIONNAIRES, parsed.fields, { typecast: true })
-      res.status(201).json({ id: record.id })
+      const records = await airtableList(TABLE_PROMOTIONS)
+      const promotions: PromotionItem[] = records
+        .map((r) => ({
+          id: r.id,
+          nom: (r.fields['Nom'] as string) ?? '',
+          reduction: (r.fields['Réduction'] as number) ?? null,
+          active: Boolean(r.fields['Active']),
+          dateExpiration: (r.fields["Date d'expiration"] as string) ?? null,
+        }))
+        .sort((a, b) => Number(b.active) - Number(a.active) || a.nom.localeCompare(b.nom))
+
+      res.status(200).json({ promotions })
     } catch (error) {
       if (error instanceof AirtableConfigError) {
         res.status(500).json({ error: error.message })
         return
       }
       console.error(error)
-      res.status(502).json({ error: 'Impossible de créer le formulaire dans Airtable.' })
+      res.status(502).json({ error: 'Impossible de récupérer les promotions depuis Airtable.' })
     }
     return
   }
+  await handleCrud(req, res, { tableId: TABLE_PROMOTIONS, parse: parsePromotionInput, notFoundLabel: 'le code promo' })
+}
 
-  const id = req.query.id
-  if (typeof id !== 'string' || !RECORD_ID_RE.test(id)) {
-    res.status(400).json({ error: 'Identifiant de formulaire invalide.' })
-    return
-  }
-
-  if (req.method === 'PATCH') {
-    const parsed = parseQuestionnaireInput(req.body, { requireCore: false })
-    if ('errors' in parsed) {
-      res.status(400).json({ error: parsed.errors.join(' ') })
-      return
-    }
+async function handleAlertes(req: VercelRequest, res: VercelResponse): Promise<void> {
+  if (req.method === 'GET') {
     try {
-      await airtableUpdate(TABLE_QUESTIONNAIRES, id, parsed.fields)
-      res.status(200).json({ ok: true })
+      const records = await airtableList(TABLE_ALERTES)
+      const alertes: AlerteItem[] = records
+        .map((r) => ({
+          id: r.id,
+          titre: (r.fields['Titre'] as string) ?? '',
+          description: (r.fields['Description'] as string) ?? '',
+          date: (r.fields['Date'] as string) ?? null,
+          active: r.fields['Active'] !== false,
+        }))
+        .sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''))
+      res.status(200).json({ alertes })
     } catch (error) {
       if (error instanceof AirtableConfigError) {
         res.status(500).json({ error: error.message })
         return
       }
       console.error(error)
-      res.status(502).json({ error: 'Impossible de mettre à jour le formulaire dans Airtable.' })
+      res.status(502).json({ error: 'Impossible de récupérer les alertes depuis Airtable.' })
     }
     return
   }
-
-  if (req.method === 'DELETE') {
-    try {
-      await airtableDelete(TABLE_QUESTIONNAIRES, id)
-      res.status(200).json({ ok: true })
-    } catch (error) {
-      if (error instanceof AirtableConfigError) {
-        res.status(500).json({ error: error.message })
-        return
-      }
-      console.error(error)
-      res.status(502).json({ error: 'Impossible de supprimer le formulaire dans Airtable.' })
-    }
-    return
-  }
-
-  res.status(405).json({ error: 'Méthode non autorisée.' })
+  await handleCrud(req, res, { tableId: TABLE_ALERTES, parse: parseAlerteInput, notFoundLabel: "l'alerte" })
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
@@ -151,33 +232,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     await handleQuestionnaires(req, res)
     return
   }
-
-  if (req.method !== 'GET') {
-    res.status(405).json({ error: 'Méthode non autorisée.' })
+  if (req.query.resource === 'promotions') {
+    await handlePromotions(req, res)
+    return
+  }
+  if (req.query.resource === 'alertes') {
+    await handleAlertes(req, res)
     return
   }
 
-  if (req.query.resource === 'promotions') {
-    try {
-      const records = await airtableList(TABLE_PROMOTIONS)
-      const promotions: PromotionItem[] = records
-        .map((r) => ({
-          id: r.id,
-          nom: (r.fields['Nom'] as string) ?? '',
-          reduction: (r.fields['Réduction'] as number) ?? null,
-          active: Boolean(r.fields['Active']),
-        }))
-        .sort((a, b) => Number(b.active) - Number(a.active) || a.nom.localeCompare(b.nom))
-
-      res.status(200).json({ promotions })
-    } catch (error) {
-      if (error instanceof AirtableConfigError) {
-        res.status(500).json({ error: error.message })
-        return
-      }
-      console.error(error)
-      res.status(502).json({ error: 'Impossible de récupérer les promotions depuis Airtable.' })
-    }
+  if (req.method !== 'GET') {
+    res.status(405).json({ error: 'Méthode non autorisée.' })
     return
   }
 

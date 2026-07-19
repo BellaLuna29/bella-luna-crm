@@ -299,6 +299,7 @@ function StatsView() {
                 Aucun rendez-vous en {formatMonthLabel(prestationsMonth)}.
               </p>
             ) : (
+              <div className="overflow-x-auto">
               <table className="w-full border-collapse">
                 <thead>
                   <tr>
@@ -324,6 +325,7 @@ function StatsView() {
                   ))}
                 </tbody>
               </table>
+              </div>
             )}
           </div>
 
@@ -333,6 +335,7 @@ function StatsView() {
             {data.promoRows.length === 0 && data.sansPromoCount === 0 ? (
               <p className="text-sm text-text-muted">Aucune facture sur cette période.</p>
             ) : (
+              <div className="overflow-x-auto">
               <table className="w-full border-collapse">
                 <thead>
                   <tr>
@@ -365,6 +368,7 @@ function StatsView() {
                   </tr>
                 </tbody>
               </table>
+              </div>
             )}
           </div>
         </div>

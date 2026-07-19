@@ -136,7 +136,7 @@ function ClientDetailView({ clientId, onBack }: ClientDetailViewProps) {
       {state.status === 'error' && <p className="text-sm text-danger">{state.message}</p>}
 
       {state.status === 'success' && (
-        <div className="grid grid-cols-[280px_1fr] gap-5 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-5 items-start">
           <div className="bg-white border border-border rounded-2xl p-6 text-center">
             <div className="w-18 h-18 rounded-full bg-sage-light text-sage-dark flex items-center justify-center font-serif font-semibold text-2xl mx-auto mb-3.5">
               {initials(state.data.client.nomComplet)}

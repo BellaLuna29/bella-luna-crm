@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@clerk/react'
 import { apiFetch, ApiError } from '../lib/api'
+import { NEWSLETTER_TEMPLATES } from '../lib/newsletterTemplates'
+import { LAST_NEWSLETTER_KEY } from '../lib/alertsConfig'
 
 interface Client {
   id: string
@@ -34,9 +36,23 @@ function NewsletterView() {
   const [optInOnly, setOptInOnly] = useState(true)
   const [categories, setCategories] = useState<string[]>([])
   const [excluded, setExcluded] = useState<Set<string>>(new Set())
-  const [subject, setSubject] = useState('')
-  const [body, setBody] = useState('')
+  const [templateKey, setTemplateKey] = useState(NEWSLETTER_TEMPLATES[0].key)
+  const [subject, setSubject] = useState(NEWSLETTER_TEMPLATES[0].subject)
+  const [body, setBody] = useState(NEWSLETTER_TEMPLATES[0].body)
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null)
+
+  function handleTemplateChange(key: string) {
+    setTemplateKey(key)
+    const t = NEWSLETTER_TEMPLATES.find((tpl) => tpl.key === key)
+    if (t) {
+      setSubject(t.subject)
+      setBody(t.body)
+    }
+  }
+
+  function recordNewsletterSent() {
+    localStorage.setItem(LAST_NEWSLETTER_KEY, new Date().toISOString())
+  }
 
   const load = useCallback(() => {
     setState({ status: 'loading' })
@@ -145,17 +161,17 @@ function NewsletterView() {
           ) : (
             <div className="max-h-64 overflow-y-auto flex flex-col gap-1">
               {matching.map((c) => (
-                <label key={c.id} className="flex items-center gap-2 text-sm py-1">
+                <label key={c.id} className="flex items-center gap-2 text-sm py-1 min-w-0">
                   <input
                     type="checkbox"
                     checked={!excluded.has(c.id)}
                     onChange={() => toggleExcluded(c.id)}
-                    className="w-4 h-4"
+                    className="w-4 h-4 shrink-0"
                   />
-                  <span className="font-medium">{c.nomComplet}</span>
-                  <span className="text-text-muted text-xs">{c.email}</span>
+                  <span className="font-medium truncate">{c.nomComplet}</span>
+                  <span className="text-text-muted text-xs truncate min-w-0">{c.email}</span>
                   {c.categorieMetier && (
-                    <span className="ml-auto text-[11px] font-semibold px-2 py-0.5 rounded-full bg-sage-light text-sage-dark">
+                    <span className="ml-auto shrink-0 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-sage-light text-sage-dark">
                       {c.categorieMetier}
                     </span>
                   )}
@@ -168,6 +184,16 @@ function NewsletterView() {
 
       <div className="bg-white border border-border rounded-2xl p-5">
         <h3 className="font-serif text-lg font-semibold text-sage-dark mb-4">Composer le message</h3>
+        <label className="block mb-3">
+          <span className="block text-xs font-semibold text-text-muted mb-1">Modèle prédéfini</span>
+          <select value={templateKey} onChange={(e) => handleTemplateChange(e.target.value)} className="input">
+            {NEWSLETTER_TEMPLATES.map((t) => (
+              <option key={t.key} value={t.key}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+        </label>
         <label className="block mb-3">
           <span className="block text-xs font-semibold text-text-muted mb-1">Sujet</span>
           <input
@@ -207,6 +233,7 @@ function NewsletterView() {
           </button>
           <a
             href={mailtoHref}
+            onClick={recordNewsletterSent}
             className={`bg-sage-dark text-white px-5 py-2.5 rounded-[10px] text-sm font-semibold hover:bg-sage-dark/90 ${
               selected.length === 0 ? 'pointer-events-none opacity-50' : ''
             }`}

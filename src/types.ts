@@ -1,5 +1,6 @@
 export type View =
   | 'dashboard'
+  | 'alertes'
   | 'stats'
   | 'clients'
   | 'client-detail'

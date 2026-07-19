@@ -3,6 +3,7 @@ import type { View } from '../types'
 
 const NAV_ITEMS: { view: View; label: string; icon: string }[] = [
   { view: 'dashboard', label: 'Tableau de bord', icon: '🏠' },
+  { view: 'alertes', label: 'Alertes', icon: '🔔' },
   { view: 'stats', label: 'Statistiques', icon: '📈' },
   { view: 'clients', label: 'Clientes', icon: '👥' },
   { view: 'agenda', label: 'Rendez-vous', icon: '📅' },

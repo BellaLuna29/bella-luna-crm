@@ -4,6 +4,9 @@ import { apiFetch, ApiError } from '../lib/api'
 import RdvStatusPill from '../components/RdvStatusPill'
 import RdvFormModal, { type RdvFormInitial } from '../components/RdvFormModal'
 import AbsenceFormModal from '../components/AbsenceFormModal'
+import MessageComposerModal from '../components/MessageComposerModal'
+import { formatDateHeureNaturel } from '../lib/formatDate'
+import type { TemplateContext } from '../lib/messageTemplates'
 
 interface RdvItem {
   id: string
@@ -15,6 +18,12 @@ interface RdvItem {
   prestationId: string | null
   prestationNom: string
   prix: number | null
+}
+
+interface Client {
+  id: string
+  telephone: string
+  email: string
 }
 
 interface AbsenceItem {
@@ -95,22 +104,42 @@ function isoDate(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
-function RdvCard({ item, onClick }: { item: RdvItem; onClick: () => void }) {
+function RdvCard({
+  item,
+  onClick,
+  onSendReminder,
+}: {
+  item: RdvItem
+  onClick: () => void
+  onSendReminder: () => void
+}) {
   return (
-    <button
-      onClick={onClick}
-      className="w-full text-left bg-sage-pale hover:bg-sage-light transition-colors rounded-lg p-2.5 flex flex-col gap-1"
-    >
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold text-sage-dark">{formatHeure(item.date)}</span>
-        <RdvStatusPill statut={item.statut} />
+    <div className="w-full text-left bg-sage-pale hover:bg-sage-light transition-colors rounded-lg p-2.5 flex flex-col gap-1">
+      <div className="flex items-start justify-between gap-1">
+        <button onClick={onClick} className="flex-1 min-w-0 text-left">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-sage-dark">{formatHeure(item.date)}</span>
+            <RdvStatusPill statut={item.statut} />
+          </div>
+          <div className="text-sm font-semibold truncate">{item.clienteNom || 'Cliente inconnue'}</div>
+          <div className="text-xs text-text-muted truncate">
+            {item.prestationNom || 'Prestation inconnue'}
+            {item.prix !== null ? ` — ${item.prix} €` : ''}
+          </div>
+        </button>
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            onSendReminder()
+          }}
+          className="shrink-0 w-6 h-6 flex items-center justify-center rounded-full bg-white hover:bg-sage-light text-sage-dark text-xs print:hidden"
+          aria-label={`Envoyer le rappel à ${item.clienteNom || 'la cliente'}`}
+          title="Envoyer le rappel"
+        >
+          💬
+        </button>
       </div>
-      <div className="text-sm font-semibold truncate">{item.clienteNom || 'Cliente inconnue'}</div>
-      <div className="text-xs text-text-muted truncate">
-        {item.prestationNom || 'Prestation inconnue'}
-        {item.prix !== null ? ` — ${item.prix} €` : ''}
-      </div>
-    </button>
+    </div>
   )
 }
 
@@ -120,6 +149,10 @@ function AgendaView() {
   const [weekStart, setWeekStart] = useState(() => getMonday(new Date()))
   const [absences, setAbsences] = useState<AbsenceItem[]>([])
   const [absenceModal, setAbsenceModal] = useState<{ initialDate?: string } | null>(null)
+  const [clients, setClients] = useState<Client[]>([])
+  const [composer, setComposer] = useState<{ context: TemplateContext; telephone: string; email: string } | null>(
+    null,
+  )
   const [modal, setModal] = useState<
     | { mode: 'create'; initialValues?: Partial<RdvFormInitial> }
     | { mode: 'edit'; rdvId: string; initialValues: Partial<RdvFormInitial> }
@@ -147,7 +180,26 @@ function AgendaView() {
   useEffect(() => {
     load()
     loadAbsences()
-  }, [load, loadAbsences])
+    apiFetch<{ clients: Client[] }>(getToken, '/api/clients')
+      .then((data) => setClients(data.clients))
+      .catch(() => setClients([]))
+  }, [load, loadAbsences, getToken])
+
+  const clientById = useMemo(() => new Map(clients.map((c) => [c.id, c])), [clients])
+
+  function sendReminder(item: RdvItem) {
+    const client = item.clienteId ? clientById.get(item.clienteId) : undefined
+    setComposer({
+      context: {
+        nomComplet: item.clienteNom || 'cliente',
+        date: formatDateHeureNaturel(item.date),
+        prestation: item.prestationNom,
+        montant: item.prix ?? undefined,
+      },
+      telephone: client?.telephone ?? '',
+      email: client?.email ?? '',
+    })
+  }
 
   async function handleDeleteAbsence(id: string) {
     try {
@@ -253,7 +305,7 @@ function AgendaView() {
             {formatWeekRange(weekStart)}
           </span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={() => setAbsenceModal({ initialDate: isoDate(weekStart) })}
             className="bg-white border border-border text-sage-dark px-4 py-2.5 rounded-[10px] text-sm font-semibold hover:bg-sage-pale"
@@ -347,7 +399,12 @@ function AgendaView() {
                       <p className="text-xs text-text-muted px-0.5">Aucun RDV</p>
                     ) : (
                       items.map((item) => (
-                        <RdvCard key={item.id} item={item} onClick={() => openEdit(item)} />
+                        <RdvCard
+                          key={item.id}
+                          item={item}
+                          onClick={() => openEdit(item)}
+                          onSendReminder={() => sendReminder(item)}
+                        />
                       ))
                     )}
                   </div>
@@ -379,6 +436,16 @@ function AgendaView() {
             setAbsenceModal(null)
             loadAbsences()
           }}
+        />
+      )}
+
+      {composer && (
+        <MessageComposerModal
+          context={composer.context}
+          telephone={composer.telephone}
+          email={composer.email}
+          initialTemplateKey="rappel"
+          onClose={() => setComposer(null)}
         />
       )}
     </div>

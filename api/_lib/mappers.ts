@@ -354,6 +354,101 @@ export function parseRendezVousInput(
 
 /**
  * Validates and maps a raw request body into Airtable field names for the
+ * Promotions table. `requireCore` enforces nom/réduction as mandatory (create only).
+ */
+export function parsePromotionInput(
+  body: unknown,
+  { requireCore }: { requireCore: boolean },
+): { fields: Record<string, unknown> } | ClientInputErrors {
+  if (typeof body !== 'object' || body === null) {
+    return { errors: ['Corps de requête invalide.'] }
+  }
+  const b = body as Record<string, unknown>
+  const errors: string[] = []
+  const fields: Record<string, unknown> = {}
+
+  if ('nom' in b || requireCore) {
+    const v = typeof b.nom === 'string' ? b.nom.trim() : ''
+    if (requireCore && v.length === 0) errors.push('Le nom du code promo est obligatoire.')
+    else if (v.length > 200) errors.push('Le nom est trop long.')
+    if (v.length > 0) fields['Nom'] = v
+  }
+
+  if ('reduction' in b || requireCore) {
+    const v = b.reduction
+    const num = typeof v === 'number' ? v : Number(v)
+    if (typeof v === 'number' || (requireCore && v !== undefined)) {
+      if (Number.isFinite(num) && num > 0 && num <= 1) fields['Réduction'] = num
+      else errors.push('La réduction doit être comprise entre 0 et 1 (ex. 0.1 pour 10%).')
+    } else if (requireCore) {
+      errors.push('La réduction est obligatoire.')
+    }
+  }
+
+  if ('dateExpiration' in b) {
+    const v = b.dateExpiration
+    if (v === '' || v === null) fields["Date d'expiration"] = null
+    else if (typeof v === 'string' && DATE_RE.test(v)) fields["Date d'expiration"] = v
+    else errors.push("Date d'expiration invalide (format AAAA-MM-JJ).")
+  }
+
+  if ('active' in b) {
+    fields['Active'] = Boolean(b.active)
+  } else if (requireCore) {
+    fields['Active'] = true
+  }
+
+  if (errors.length > 0) return { errors }
+  return { fields }
+}
+
+/**
+ * Validates and maps a raw request body into Airtable field names for the
+ * Alertes table. `requireCore` enforces titre as mandatory (create only).
+ */
+export function parseAlerteInput(
+  body: unknown,
+  { requireCore }: { requireCore: boolean },
+): { fields: Record<string, unknown> } | ClientInputErrors {
+  if (typeof body !== 'object' || body === null) {
+    return { errors: ['Corps de requête invalide.'] }
+  }
+  const b = body as Record<string, unknown>
+  const errors: string[] = []
+  const fields: Record<string, unknown> = {}
+
+  if ('titre' in b || requireCore) {
+    const v = typeof b.titre === 'string' ? b.titre.trim() : ''
+    if (requireCore && v.length === 0) errors.push('Le titre est obligatoire.')
+    else if (v.length > 200) errors.push('Le titre est trop long.')
+    if (v.length > 0) fields['Titre'] = v
+  }
+
+  if ('description' in b) {
+    const v = typeof b.description === 'string' ? b.description.trim() : ''
+    if (v.length > 2000) errors.push('La description est trop longue.')
+    else fields['Description'] = v
+  }
+
+  if ('date' in b) {
+    const v = b.date
+    if (v === '' || v === null) fields['Date'] = null
+    else if (typeof v === 'string' && DATE_RE.test(v)) fields['Date'] = v
+    else errors.push('Date invalide (format AAAA-MM-JJ).')
+  }
+
+  if ('active' in b) {
+    fields['Active'] = Boolean(b.active)
+  } else if (requireCore) {
+    fields['Active'] = true
+  }
+
+  if (errors.length > 0) return { errors }
+  return { fields }
+}
+
+/**
+ * Validates and maps a raw request body into Airtable field names for the
  * Questionnaires table. `requireCore` enforces nom/lien as mandatory (create only).
  */
 export function parseQuestionnaireInput(

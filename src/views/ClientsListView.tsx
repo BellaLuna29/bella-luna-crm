@@ -132,6 +132,7 @@ function ClientsListView({ onSelectClient }: ClientsListViewProps) {
         )}
 
         {state.status === 'success' && (
+          <div className="overflow-x-auto">
           <table className="w-full border-collapse">
             <thead>
               <tr>
@@ -195,6 +196,7 @@ function ClientsListView({ onSelectClient }: ClientsListViewProps) {
               )}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 
