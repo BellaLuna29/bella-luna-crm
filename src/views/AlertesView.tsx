@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@clerk/react'
 import { apiFetch, ApiError } from '../lib/api'
+import AlertRow from '../components/AlertRow'
 import {
   computeAnniversaires,
   computeFacturesImpayeesEnRetard,
@@ -12,6 +13,8 @@ import {
   daysUntil,
 } from '../lib/alerts'
 import { LAST_NEWSLETTER_KEY } from '../lib/alertsConfig'
+import { computeCureProgress } from '../lib/cureProgress'
+import { getDismissedSet, dismissAlert } from '../lib/dismissedAlerts'
 
 interface Client {
   id: string
@@ -22,7 +25,11 @@ interface Client {
 
 interface RdvItem {
   clienteId: string | null
+  clienteNom: string
   date: string | null
+  prestationId: string | null
+  prestationNom: string
+  statut: string
 }
 
 interface FactureItem {
@@ -34,12 +41,9 @@ interface FactureItem {
   clienteNom: string
 }
 
-interface CureItem {
+interface Prestation {
   id: string
-  clienteId: string | null
-  clienteNom: string
-  prestationNom: string
-  seancesRestantes: number
+  type: string
 }
 
 interface Promotion {
@@ -65,7 +69,7 @@ type State =
       clients: Client[]
       rendezvous: RdvItem[]
       factures: FactureItem[]
-      cures: CureItem[]
+      prestations: Prestation[]
       promotions: Promotion[]
     }
 
@@ -91,6 +95,7 @@ function AlertesView({ onSelectClient, onNavigateFacturation, onNavigateNewslett
   const { getToken } = useAuth()
   const [state, setState] = useState<State>({ status: 'loading' })
   const [manualState, setManualState] = useState<ManualState>({ status: 'loading' })
+  const [dismissed, setDismissed] = useState<Set<string>>(() => getDismissedSet())
   const [showCreate, setShowCreate] = useState(false)
   const [titre, setTitre] = useState('')
   const [description, setDescription] = useState('')
@@ -104,16 +109,16 @@ function AlertesView({ onSelectClient, onNavigateFacturation, onNavigateNewslett
       apiFetch<{ clients: Client[] }>(getToken, '/api/clients'),
       apiFetch<{ rendezvous: RdvItem[] }>(getToken, '/api/rendezvous'),
       apiFetch<{ factures: FactureItem[] }>(getToken, '/api/factures'),
-      apiFetch<{ cures: CureItem[] }>(getToken, '/api/cures'),
+      apiFetch<{ prestations: Prestation[] }>(getToken, '/api/prestations'),
       apiFetch<{ promotions: Promotion[] }>(getToken, '/api/prestations?resource=promotions'),
     ])
-      .then(([clientsData, rdvData, facturesData, curesData, promosData]) => {
+      .then(([clientsData, rdvData, facturesData, prestationsData, promosData]) => {
         setState({
           status: 'success',
           clients: clientsData.clients,
           rendezvous: rdvData.rendezvous,
           factures: facturesData.factures,
-          cures: curesData.cures,
+          prestations: prestationsData.prestations,
           promotions: promosData.promotions,
         })
       })
@@ -136,20 +141,35 @@ function AlertesView({ onSelectClient, onNavigateFacturation, onNavigateNewslett
     loadManual()
   }, [load, loadManual])
 
+  function handleDismiss(key: string) {
+    dismissAlert(key)
+    setDismissed(getDismissedSet())
+  }
+
   const now = useMemo(() => new Date(), [])
   const lastNewsletterSentAt = useMemo(() => localStorage.getItem(LAST_NEWSLETTER_KEY), [])
 
   const computed = useMemo(() => {
     if (state.status !== 'success') return null
+    const cureProgress = computeCureProgress(state.rendezvous, state.prestations)
+
     return {
-      anniversaires: computeAnniversaires(state.clients, now),
-      facturesImpayeesEnRetard: computeFacturesImpayeesEnRetard(state.factures, now),
-      clientesARecontacter: computeClientesARecontacter(state.clients, state.rendezvous, now),
-      curesBientotTerminees: computeCuresBientotTerminees(state.cures),
-      promosBientotExpirees: computePromosBientotExpirees(state.promotions, now),
-      newsletterStale: isNewsletterStale(lastNewsletterSentAt, now),
+      newsletterStale: isNewsletterStale(lastNewsletterSentAt, now) && !dismissed.has('newsletter'),
+      promosBientotExpirees: computePromosBientotExpirees(state.promotions, now).filter(
+        (p) => !dismissed.has(`promo-${p.id}`),
+      ),
+      anniversaires: computeAnniversaires(state.clients, now).filter(
+        ({ client }) => !dismissed.has(`anniv-${client.id}-${now.getFullYear()}`),
+      ),
+      facturesImpayeesEnRetard: computeFacturesImpayeesEnRetard(state.factures, now).filter(
+        (f) => !dismissed.has(`facture-${f.id}`),
+      ),
+      clientesARecontacter: computeClientesARecontacter(state.clients, state.rendezvous, now).filter(
+        ({ client }) => !dismissed.has(`recontact-${client.id}`),
+      ),
+      curesBientotTerminees: computeCuresBientotTerminees(cureProgress).filter((c) => !dismissed.has(`cure-${c.id}`)),
     }
-  }, [state, now, lastNewsletterSentAt])
+  }, [state, now, lastNewsletterSentAt, dismissed])
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
@@ -223,88 +243,83 @@ function AlertesView({ onSelectClient, onNavigateFacturation, onNavigateNewslett
         {computed && totalComputed > 0 && (
           <div className="flex flex-col gap-1.5">
             {computed.newsletterStale && (
-              <button
+              <AlertRow
+                colorClass="bg-gold-pale hover:bg-gold/20 transition-colors"
+                subtitleClassName="text-gold-text"
                 onClick={onNavigateNewsletter}
-                className="w-full text-left bg-gold-pale hover:bg-gold/20 transition-colors rounded-lg p-3 flex items-center justify-between gap-3"
-              >
-                <span className="text-sm font-semibold truncate">📧 Newsletter pas envoyée depuis longtemps</span>
-                <span className="text-xs font-semibold text-gold-text shrink-0">
-                  {lastNewsletterSentAt ? `Depuis ${daysSince(lastNewsletterSentAt, now)} jours` : 'Jamais envoyée'}
-                </span>
-              </button>
+                onDismiss={() => handleDismiss('newsletter')}
+                title="📧 Newsletter pas envoyée depuis longtemps"
+                subtitle={lastNewsletterSentAt ? `Depuis ${daysSince(lastNewsletterSentAt, now)} jours` : 'Jamais envoyée'}
+              />
             )}
 
             {computed.promosBientotExpirees.map((p) => (
-              <button
+              <AlertRow
                 key={`promo-${p.id}`}
+                colorClass="bg-gold-pale hover:bg-gold/20 transition-colors"
+                subtitleClassName="text-gold-text"
                 onClick={onNavigateFacturation}
-                className="w-full text-left bg-gold-pale hover:bg-gold/20 transition-colors rounded-lg p-3 flex items-center justify-between gap-3"
-              >
-                <span className="text-sm font-semibold truncate">🏷️ Code promo bientôt expiré — {p.nom}</span>
-                <span className="text-xs font-semibold text-gold-text shrink-0">
-                  {daysUntil(p.dateExpiration as string, now) === 0
+                onDismiss={() => handleDismiss(`promo-${p.id}`)}
+                title={`🏷️ Code promo bientôt expiré — ${p.nom}`}
+                subtitle={
+                  daysUntil(p.dateExpiration as string, now) === 0
                     ? "Expire aujourd'hui"
-                    : `Expire dans ${daysUntil(p.dateExpiration as string, now)} jours`}
-                </span>
-              </button>
+                    : `Expire dans ${daysUntil(p.dateExpiration as string, now)} jours`
+                }
+              />
             ))}
 
             {computed.anniversaires.map(({ client, jours }) => (
-              <button
+              <AlertRow
                 key={`anniv-${client.id}`}
+                colorClass="bg-gold-pale hover:bg-gold/20 transition-colors"
+                subtitleClassName="text-gold-text"
                 onClick={() => onSelectClient(client.id)}
-                className="w-full text-left bg-gold-pale hover:bg-gold/20 transition-colors rounded-lg p-3 flex items-center justify-between gap-3"
-              >
-                <span className="text-sm font-semibold truncate">
-                  🎂 {client.nomComplet}
-                  <span className="text-text-muted font-normal"> — {formatDateLongue(client.dateNaissance)}</span>
-                </span>
-                <span className="text-xs font-semibold text-gold-text shrink-0">
-                  {jours === 0 ? "Aujourd'hui" : jours === 1 ? 'Demain' : `Dans ${jours} jours`}
-                </span>
-              </button>
+                onDismiss={() => handleDismiss(`anniv-${client.id}-${now.getFullYear()}`)}
+                title={
+                  <>
+                    🎂 {client.nomComplet}
+                    <span className="text-text-muted font-normal"> — {formatDateLongue(client.dateNaissance)}</span>
+                  </>
+                }
+                subtitle={jours === 0 ? "Aujourd'hui" : jours === 1 ? 'Demain' : `Dans ${jours} jours`}
+              />
             ))}
 
             {computed.facturesImpayeesEnRetard.map((f) => (
-              <button
+              <AlertRow
                 key={`facture-${f.id}`}
+                colorClass="bg-danger-pale hover:bg-danger/10 transition-colors"
+                subtitleClassName="text-danger"
                 onClick={onNavigateFacturation}
-                className="w-full text-left bg-danger-pale hover:bg-danger/10 transition-colors rounded-lg p-3 flex items-center justify-between gap-3"
-              >
-                <span className="text-sm font-semibold truncate">
-                  💶 Facture impayée — {f.clienteNom || 'Cliente inconnue'}
-                </span>
-                <span className="text-xs font-semibold text-danger shrink-0">
-                  {f.montant !== null ? `${f.montant} € — ` : ''}
-                  en retard depuis {daysSince(f.date as string, now)} jours
-                </span>
-              </button>
+                onDismiss={() => handleDismiss(`facture-${f.id}`)}
+                title={`💶 Facture impayée — ${f.clienteNom || 'Cliente inconnue'}`}
+                subtitle={`${f.montant !== null ? `${f.montant} € — ` : ''}en retard depuis ${daysSince(f.date as string, now)} jours`}
+              />
             ))}
 
             {computed.clientesARecontacter.map(({ client, jours }) => (
-              <button
+              <AlertRow
                 key={`recontact-${client.id}`}
+                colorClass="bg-sage-pale hover:bg-sage-light transition-colors"
+                subtitleClassName="text-sage-dark"
                 onClick={() => onSelectClient(client.id)}
-                className="w-full text-left bg-sage-pale hover:bg-sage-light transition-colors rounded-lg p-3 flex items-center justify-between gap-3"
-              >
-                <span className="text-sm font-semibold truncate">📞 À recontacter — {client.nomComplet}</span>
-                <span className="text-xs font-semibold text-sage-dark shrink-0">
-                  {jours === null ? 'Aucun RDV enregistré' : `Vue il y a ${jours} jours`}
-                </span>
-              </button>
+                onDismiss={() => handleDismiss(`recontact-${client.id}`)}
+                title={`📞 À recontacter — ${client.nomComplet}`}
+                subtitle={jours === null ? 'Aucun RDV enregistré' : `Vue il y a ${jours} jours`}
+              />
             ))}
 
             {computed.curesBientotTerminees.map((c) => (
-              <button
+              <AlertRow
                 key={`cure-${c.id}`}
-                onClick={() => c.clienteId && onSelectClient(c.clienteId)}
-                className="w-full text-left bg-sage-pale hover:bg-sage-light transition-colors rounded-lg p-3 flex items-center justify-between gap-3"
-              >
-                <span className="text-sm font-semibold truncate">
-                  ✨ Dernière séance de cure — {c.clienteNom || 'Cliente inconnue'}
-                </span>
-                <span className="text-xs font-semibold text-sage-dark shrink-0">{c.prestationNom}</span>
-              </button>
+                colorClass="bg-sage-pale hover:bg-sage-light transition-colors"
+                subtitleClassName="text-sage-dark"
+                onClick={() => onSelectClient(c.clienteId)}
+                onDismiss={() => handleDismiss(`cure-${c.id}`)}
+                title={`✨ Dernière séance de cure — ${c.clienteNom || 'Cliente inconnue'}`}
+                subtitle={c.prestationNom}
+              />
             ))}
           </div>
         )}

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@clerk/react'
 import { apiFetch, ApiError } from '../lib/api'
 import RdvStatusPill from '../components/RdvStatusPill'
+import AlertRow from '../components/AlertRow'
 import {
   computeAnniversaires,
   computeFacturesImpayeesEnRetard,
@@ -9,6 +10,8 @@ import {
   computeCuresBientotTerminees,
   daysSince,
 } from '../lib/alerts'
+import { computeCureProgress } from '../lib/cureProgress'
+import { getDismissedSet, dismissAlert } from '../lib/dismissedAlerts'
 
 interface Client {
   id: string
@@ -24,6 +27,7 @@ interface RdvItem {
   statut: string
   clienteId: string | null
   clienteNom: string
+  prestationId: string | null
   prestationNom: string
   prix: number | null
 }
@@ -37,12 +41,9 @@ interface FactureItem {
   clienteNom: string
 }
 
-interface CureItem {
+interface Prestation {
   id: string
-  clienteId: string | null
-  clienteNom: string
-  prestationNom: string
-  seancesRestantes: number
+  type: string
 }
 
 type State =
@@ -53,7 +54,7 @@ type State =
       clients: Client[]
       rendezvous: RdvItem[]
       factures: FactureItem[]
-      cures: CureItem[]
+      prestations: Prestation[]
     }
 
 function startOfDay(d: Date): Date {
@@ -103,6 +104,10 @@ function formatDateLongue(iso: string | null): string {
   return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })
 }
 
+function formatEuros(n: number): string {
+  return `${n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`
+}
+
 interface StatCardProps {
   label: string
   value: string | number
@@ -125,18 +130,17 @@ function StatCard({ label, value, onClick }: StatCardProps) {
 interface DashboardViewProps {
   onSelectClient: (id: string) => void
   onNavigateAgenda: () => void
-  onNavigateClients: () => void
   onNavigateFacturation: () => void
 }
 
 function DashboardView({
   onSelectClient,
   onNavigateAgenda,
-  onNavigateClients,
   onNavigateFacturation,
 }: DashboardViewProps) {
   const { getToken } = useAuth()
   const [state, setState] = useState<State>({ status: 'loading' })
+  const [dismissed, setDismissed] = useState<Set<string>>(() => getDismissedSet())
 
   const load = useCallback(() => {
     setState({ status: 'loading' })
@@ -144,15 +148,15 @@ function DashboardView({
       apiFetch<{ clients: Client[] }>(getToken, '/api/clients'),
       apiFetch<{ rendezvous: RdvItem[] }>(getToken, '/api/rendezvous'),
       apiFetch<{ factures: FactureItem[] }>(getToken, '/api/factures'),
-      apiFetch<{ cures: CureItem[] }>(getToken, '/api/cures'),
+      apiFetch<{ prestations: Prestation[] }>(getToken, '/api/prestations'),
     ])
-      .then(([clientsData, rdvData, facturesData, curesData]) => {
+      .then(([clientsData, rdvData, facturesData, prestationsData]) => {
         setState({
           status: 'success',
           clients: clientsData.clients,
           rendezvous: rdvData.rendezvous,
           factures: facturesData.factures,
-          cures: curesData.cures,
+          prestations: prestationsData.prestations,
         })
       })
       .catch((error: unknown) => {
@@ -166,6 +170,11 @@ function DashboardView({
   useEffect(() => {
     load()
   }, [load])
+
+  function handleDismiss(key: string) {
+    dismissAlert(key)
+    setDismissed(getDismissedSet())
+  }
 
   const now = useMemo(() => new Date(), [])
 
@@ -196,15 +205,22 @@ function DashboardView({
       .sort((a, b) => new Date(a.date as string).getTime() - new Date(b.date as string).getTime())
       .slice(0, 5)
 
-    const activesCount = state.clients.filter((c) => c.statut === 'Régulière').length
-    const nouvellesCount = state.clients.filter((c) => c.statut === 'Nouvelle').length
+    const caCeMois = state.factures
+      .filter((f) => {
+        if (!f.date) return false
+        const d = new Date(f.date)
+        return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth()
+      })
+      .reduce((sum, f) => sum + (f.montant ?? 0), 0)
+
+    const facturesImpayeesCount = state.factures.filter((f) => !f.payee).length
 
     return {
-      totalClients: state.clients.length,
-      activesCount,
-      nouvellesCount,
-      todayRdv,
+      todayCount: todayRdv.length,
       weekRdvCount,
+      caCeMois,
+      facturesImpayeesCount,
+      todayRdv,
       upcoming,
     }
   }, [state, now])
@@ -212,10 +228,20 @@ function DashboardView({
   const alerts = useMemo(() => {
     if (state.status !== 'success') return null
 
-    const anniversaires = computeAnniversaires(state.clients, now)
-    const facturesImpayeesEnRetard = computeFacturesImpayeesEnRetard(state.factures, now)
-    const clientesARecontacter = computeClientesARecontacter(state.clients, state.rendezvous, now)
-    const curesBientotTerminees = computeCuresBientotTerminees(state.cures)
+    const cureProgress = computeCureProgress(state.rendezvous, state.prestations)
+
+    const anniversaires = computeAnniversaires(state.clients, now).filter(
+      ({ client }) => !dismissed.has(`anniv-${client.id}-${now.getFullYear()}`),
+    )
+    const facturesImpayeesEnRetard = computeFacturesImpayeesEnRetard(state.factures, now).filter(
+      (f) => !dismissed.has(`facture-${f.id}`),
+    )
+    const clientesARecontacter = computeClientesARecontacter(state.clients, state.rendezvous, now).filter(
+      ({ client }) => !dismissed.has(`recontact-${client.id}`),
+    )
+    const curesBientotTerminees = computeCuresBientotTerminees(cureProgress).filter(
+      (c) => !dismissed.has(`cure-${c.id}`),
+    )
 
     return {
       anniversaires,
@@ -228,7 +254,7 @@ function DashboardView({
         clientesARecontacter.length +
         curesBientotTerminees.length,
     }
-  }, [state, now])
+  }, [state, now, dismissed])
 
   return (
     <div>
@@ -238,10 +264,10 @@ function DashboardView({
       {state.status === 'success' && stats && (
         <div className="flex flex-col gap-6">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <StatCard label="Clientes au total" value={stats.totalClients} onClick={onNavigateClients} />
-            <StatCard label="Clientes régulières" value={stats.activesCount} onClick={onNavigateClients} />
-            <StatCard label="Nouvelles clientes" value={stats.nouvellesCount} onClick={onNavigateClients} />
+            <StatCard label="RDV aujourd'hui" value={stats.todayCount} onClick={onNavigateAgenda} />
             <StatCard label="RDV cette semaine" value={stats.weekRdvCount} onClick={onNavigateAgenda} />
+            <StatCard label="Chiffre d'affaires ce mois-ci" value={formatEuros(stats.caCeMois)} onClick={onNavigateFacturation} />
+            <StatCard label="Factures impayées" value={stats.facturesImpayeesCount} onClick={onNavigateFacturation} />
           </div>
 
           {alerts && alerts.total > 0 && (
@@ -251,65 +277,56 @@ function DashboardView({
               </h3>
               <div className="flex flex-col gap-1.5">
                 {alerts.anniversaires.map(({ client, jours }) => (
-                  <button
+                  <AlertRow
                     key={`anniv-${client.id}`}
+                    colorClass="bg-gold-pale hover:bg-gold/20 transition-colors"
+                    subtitleClassName="text-gold-text"
                     onClick={() => onSelectClient(client.id)}
-                    className="w-full text-left bg-gold-pale hover:bg-gold/20 transition-colors rounded-lg p-3 flex items-center justify-between gap-3"
-                  >
-                    <span className="text-sm font-semibold truncate">
-                      🎂 {client.nomComplet}
-                      <span className="text-text-muted font-normal"> — {formatDateLongue(client.dateNaissance)}</span>
-                    </span>
-                    <span className="text-xs font-semibold text-gold-text shrink-0">
-                      {jours === 0 ? "Aujourd'hui" : jours === 1 ? 'Demain' : `Dans ${jours} jours`}
-                    </span>
-                  </button>
+                    onDismiss={() => handleDismiss(`anniv-${client.id}-${now.getFullYear()}`)}
+                    title={
+                      <>
+                        🎂 {client.nomComplet}
+                        <span className="text-text-muted font-normal"> — {formatDateLongue(client.dateNaissance)}</span>
+                      </>
+                    }
+                    subtitle={jours === 0 ? "Aujourd'hui" : jours === 1 ? 'Demain' : `Dans ${jours} jours`}
+                  />
                 ))}
 
                 {alerts.facturesImpayeesEnRetard.map((f) => (
-                  <button
+                  <AlertRow
                     key={`facture-${f.id}`}
+                    colorClass="bg-danger-pale hover:bg-danger/10 transition-colors"
+                    subtitleClassName="text-danger"
                     onClick={onNavigateFacturation}
-                    className="w-full text-left bg-danger-pale hover:bg-danger/10 transition-colors rounded-lg p-3 flex items-center justify-between gap-3"
-                  >
-                    <span className="text-sm font-semibold truncate">
-                      💶 Facture impayée — {f.clienteNom || 'Cliente inconnue'}
-                    </span>
-                    <span className="text-xs font-semibold text-danger shrink-0">
-                      {f.montant !== null ? `${f.montant} € — ` : ''}
-                      en retard depuis {daysSince(f.date as string, now)} jours
-                    </span>
-                  </button>
+                    onDismiss={() => handleDismiss(`facture-${f.id}`)}
+                    title={`💶 Facture impayée — ${f.clienteNom || 'Cliente inconnue'}`}
+                    subtitle={`${f.montant !== null ? `${f.montant} € — ` : ''}en retard depuis ${daysSince(f.date as string, now)} jours`}
+                  />
                 ))}
 
                 {alerts.clientesARecontacter.map(({ client, jours }) => (
-                  <button
+                  <AlertRow
                     key={`recontact-${client.id}`}
+                    colorClass="bg-sage-pale hover:bg-sage-light transition-colors"
+                    subtitleClassName="text-sage-dark"
                     onClick={() => onSelectClient(client.id)}
-                    className="w-full text-left bg-sage-pale hover:bg-sage-light transition-colors rounded-lg p-3 flex items-center justify-between gap-3"
-                  >
-                    <span className="text-sm font-semibold truncate">
-                      📞 À recontacter — {client.nomComplet}
-                    </span>
-                    <span className="text-xs font-semibold text-sage-dark shrink-0">
-                      {jours === null ? 'Aucun RDV enregistré' : `Vue il y a ${jours} jours`}
-                    </span>
-                  </button>
+                    onDismiss={() => handleDismiss(`recontact-${client.id}`)}
+                    title={`📞 À recontacter — ${client.nomComplet}`}
+                    subtitle={jours === null ? 'Aucun RDV enregistré' : `Vue il y a ${jours} jours`}
+                  />
                 ))}
 
                 {alerts.curesBientotTerminees.map((c) => (
-                  <button
+                  <AlertRow
                     key={`cure-${c.id}`}
-                    onClick={() => c.clienteId && onSelectClient(c.clienteId)}
-                    className="w-full text-left bg-sage-pale hover:bg-sage-light transition-colors rounded-lg p-3 flex items-center justify-between gap-3"
-                  >
-                    <span className="text-sm font-semibold truncate">
-                      ✨ Dernière séance de cure — {c.clienteNom || 'Cliente inconnue'}
-                    </span>
-                    <span className="text-xs font-semibold text-sage-dark shrink-0">
-                      {c.prestationNom}
-                    </span>
-                  </button>
+                    colorClass="bg-sage-pale hover:bg-sage-light transition-colors"
+                    subtitleClassName="text-sage-dark"
+                    onClick={() => onSelectClient(c.clienteId)}
+                    onDismiss={() => handleDismiss(`cure-${c.id}`)}
+                    title={`✨ Dernière séance de cure — ${c.clienteNom || 'Cliente inconnue'}`}
+                    subtitle={c.prestationNom}
+                  />
                 ))}
               </div>
             </div>

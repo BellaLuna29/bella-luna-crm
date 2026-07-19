@@ -146,7 +146,9 @@ function RdvCard({
 function AgendaView() {
   const { getToken } = useAuth()
   const [state, setState] = useState<State>({ status: 'loading' })
-  const [weekStart, setWeekStart] = useState(() => getMonday(new Date()))
+  const [viewMode, setViewMode] = useState<'semaine' | 'jour'>('semaine')
+  const [focusDate, setFocusDate] = useState(() => startOfDay(new Date()))
+  const weekStart = useMemo(() => getMonday(focusDate), [focusDate])
   const [absences, setAbsences] = useState<AbsenceItem[]>([])
   const [absenceModal, setAbsenceModal] = useState<{ initialDate?: string } | null>(null)
   const [clients, setClients] = useState<Client[]>([])
@@ -241,7 +243,7 @@ function AgendaView() {
     const [y, m, d] = dateStr.split('-').map(Number)
     const picked = new Date(y, m - 1, d)
     if (Number.isNaN(picked.getTime())) return
-    setWeekStart(getMonday(picked))
+    setFocusDate(startOfDay(picked))
   }
 
   function openEdit(item: RdvItem) {
@@ -274,40 +276,60 @@ function AgendaView() {
     <div>
       <div className="flex items-center justify-between mb-5 flex-wrap gap-3 print:hidden">
         <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center bg-white border border-border rounded-[10px] p-0.5">
+            <button
+              onClick={() => setViewMode('semaine')}
+              className={`px-3 h-8 rounded-[8px] text-sm font-semibold ${
+                viewMode === 'semaine' ? 'bg-sage-dark text-white' : 'text-text-muted hover:bg-sage-pale'
+              }`}
+            >
+              Semaine
+            </button>
+            <button
+              onClick={() => setViewMode('jour')}
+              className={`px-3 h-8 rounded-[8px] text-sm font-semibold ${
+                viewMode === 'jour' ? 'bg-sage-dark text-white' : 'text-text-muted hover:bg-sage-pale'
+              }`}
+            >
+              Jour
+            </button>
+          </div>
           <button
-            onClick={() => setWeekStart((w) => addDays(w, -7))}
+            onClick={() => setFocusDate((d) => addDays(d, viewMode === 'jour' ? -1 : -7))}
             className="bg-white border border-border text-sage-dark w-9 h-9 rounded-[10px] text-sm font-semibold hover:bg-sage-pale"
-            aria-label="Semaine précédente"
+            aria-label={viewMode === 'jour' ? 'Jour précédent' : 'Semaine précédente'}
           >
             ←
           </button>
           <button
-            onClick={() => setWeekStart(getMonday(new Date()))}
+            onClick={() => setFocusDate(startOfDay(new Date()))}
             className="bg-white border border-border text-sage-dark px-3 h-9 rounded-[10px] text-sm font-semibold hover:bg-sage-pale"
           >
             Aujourd'hui
           </button>
           <button
-            onClick={() => setWeekStart((w) => addDays(w, 7))}
+            onClick={() => setFocusDate((d) => addDays(d, viewMode === 'jour' ? 1 : 7))}
             className="bg-white border border-border text-sage-dark w-9 h-9 rounded-[10px] text-sm font-semibold hover:bg-sage-pale"
-            aria-label="Semaine suivante"
+            aria-label={viewMode === 'jour' ? 'Jour suivant' : 'Semaine suivante'}
           >
             →
           </button>
           <input
             type="date"
-            value={isoDate(weekStart)}
+            value={isoDate(focusDate)}
             onChange={(e) => jumpToDate(e.target.value)}
             className="input h-9 w-auto"
             aria-label="Aller à une date"
           />
           <span className="ml-1 font-serif text-base font-semibold text-sage-dark">
-            {formatWeekRange(weekStart)}
+            {viewMode === 'jour'
+              ? focusDate.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+              : formatWeekRange(weekStart)}
           </span>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <button
-            onClick={() => setAbsenceModal({ initialDate: isoDate(weekStart) })}
+            onClick={() => setAbsenceModal({ initialDate: isoDate(focusDate) })}
             className="bg-white border border-border text-sage-dark px-4 py-2.5 rounded-[10px] text-sm font-semibold hover:bg-sage-pale"
           >
             Poser une absence
@@ -350,7 +372,71 @@ function AgendaView() {
       {state.status === 'loading' && <p className="text-sm text-text-muted">Chargement…</p>}
       {state.status === 'error' && <p className="text-sm text-danger">{state.message}</p>}
 
-      {state.status === 'success' && (
+      {state.status === 'success' && viewMode === 'jour' && (
+        <div className="bg-white border border-border rounded-2xl p-5 max-w-2xl">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-serif text-lg font-semibold text-sage-dark capitalize">
+              {focusDate.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
+            </h3>
+            <button
+              onClick={() => openCreate(focusDate)}
+              className="bg-sage-dark text-white w-8 h-8 rounded-full flex items-center justify-center text-lg font-bold print:hidden"
+              aria-label={`Ajouter un rendez-vous le ${focusDate.toLocaleDateString('fr-FR')}`}
+            >
+              +
+            </button>
+          </div>
+
+          {absencesForDay(focusDate).length > 0 && (
+            <div className="flex flex-col gap-2 mb-4">
+              {absencesForDay(focusDate).map((a) => (
+                <span
+                  key={a.id}
+                  className={`text-sm font-semibold px-3 py-2 rounded-lg ${ABSENCE_STYLES[a.type] ?? 'bg-sage-light text-sage-dark'}`}
+                >
+                  {a.type === 'Vacances' ? '🌴 ' : ''}
+                  {a.libelle}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {(byDay.get(dayKey(focusDate)) ?? []).length === 0 ? (
+            <p className="text-sm text-text-muted">Aucun rendez-vous ce jour-là.</p>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {(byDay.get(dayKey(focusDate)) ?? []).map((item) => (
+                <div key={item.id} className="border border-border rounded-2xl p-4 flex items-start gap-4">
+                  <div className="font-serif text-xl font-semibold text-sage-dark w-16 shrink-0">
+                    {formatHeure(item.date)}
+                  </div>
+                  <button onClick={() => openEdit(item)} className="flex-1 min-w-0 text-left">
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                      <span className="text-base font-semibold">{item.clienteNom || 'Cliente inconnue'}</span>
+                      <RdvStatusPill statut={item.statut} />
+                    </div>
+                    <div className="text-sm text-text-muted">
+                      {item.prestationNom || 'Prestation inconnue'}
+                      {item.prix !== null ? ` — ${item.prix} €` : ''}
+                    </div>
+                    {item.notes && <div className="text-xs text-text-muted mt-1.5 italic">{item.notes}</div>}
+                  </button>
+                  <button
+                    onClick={() => sendReminder(item)}
+                    className="shrink-0 w-8 h-8 flex items-center justify-center rounded-full bg-sage-pale hover:bg-sage-light text-sage-dark print:hidden"
+                    aria-label={`Envoyer le rappel à ${item.clienteNom || 'la cliente'}`}
+                    title="Envoyer le rappel"
+                  >
+                    💬
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {state.status === 'success' && viewMode === 'semaine' && (
         <div className="overflow-x-auto pb-2 print:overflow-visible">
           <div className="grid grid-cols-7 gap-3 min-w-[980px] print:min-w-0 print:gap-1.5">
             {days.map((day, i) => {

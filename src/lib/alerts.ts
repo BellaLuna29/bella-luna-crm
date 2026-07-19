@@ -81,7 +81,7 @@ export function computeClientesARecontacter<C extends ClientLike, R extends RdvL
   clients: C[],
   rendezvous: R[],
   now: Date,
-  minDays = 60,
+  minDays = 30,
 ) {
   const lastRdvByClient = new Map<string, number>()
   for (const r of rendezvous) {

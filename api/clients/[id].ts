@@ -16,7 +16,8 @@ const TABLE_CLIENTES = 'tblMKV5WKQ7jtwXq4'
 const TABLE_RENDEZVOUS = 'tblFF89VWARwjPxus'
 const TABLE_PRESTATIONS = 'tblDeJttMEKXpYR8X'
 const TABLE_FACTURES = 'tbl3C95q9hjjIVz8W'
-const TABLE_CURES = 'tbl2xO96EFuH4Ypfs'
+
+const CURE_TYPE_RE = /cure\s+(\d+)\s*s[ée]ances?/i
 
 function linkedIds(field: unknown): string[] {
   return Array.isArray(field) ? (field as string[]) : []
@@ -99,12 +100,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
 
     const rdvIds = linkedIds(clientRecord.fields['Historique RDV'])
     const factureIds = linkedIds(clientRecord.fields['Historique factures'])
-    const cureIds = linkedIds(clientRecord.fields['Cures'])
 
-    const [rdvRecords, factureRecords, cureRecords] = await Promise.all([
+    const [rdvRecords, factureRecords] = await Promise.all([
       airtableGetByIds(TABLE_RENDEZVOUS, rdvIds),
       airtableGetByIds(TABLE_FACTURES, factureIds),
-      airtableGetByIds(TABLE_CURES, cureIds),
     ])
 
     const prestationIds = Array.from(
@@ -139,12 +138,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       }))
       .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''))
 
-    const cures: CureItem[] = cureRecords.map((c) => ({
-      id: c.id,
-      nom: (c.fields['Cure'] as string) ?? '',
-      seancesTotales: (c.fields['Séances totales'] as number) ?? 0,
-      seancesFaites: (c.fields['Séances faites'] as number) ?? 0,
-    }))
+    // Séances de cure calculées automatiquement à partir de l'historique RDV
+    // (une "Prestation" de type "Cure X séances" réservée plusieurs fois),
+    // plutôt que d'une table Cures maintenue à la main.
+    const cureProgress = new Map<string, CureItem>()
+    for (const r of rdvRecords) {
+      const prestationId = linkedIds(r.fields['Prestation'])[0]
+      const prestation = prestationId ? prestationMap.get(prestationId) : undefined
+      const type = (prestation?.fields['Type'] as string) ?? ''
+      const match = CURE_TYPE_RE.exec(type)
+      if (!prestationId || !prestation || !match) continue
+      const total = Number(match[1])
+      if (!Number.isFinite(total) || total <= 0) continue
+
+      const entry = cureProgress.get(prestationId) ?? {
+        id: prestationId,
+        nom: (prestation.fields['Nom de la prestation'] as string) ?? '',
+        seancesTotales: total,
+        seancesFaites: 0,
+      }
+      if (r.fields['Statut'] === 'Honoré') entry.seancesFaites += 1
+      cureProgress.set(prestationId, entry)
+    }
+    const cures: CureItem[] = Array.from(cureProgress.values()).filter((c) => c.seancesFaites < c.seancesTotales)
 
     res.status(200).json({
       client: mapClient(clientRecord),

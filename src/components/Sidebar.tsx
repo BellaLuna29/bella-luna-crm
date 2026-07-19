@@ -8,7 +8,7 @@ const NAV_ITEMS: { view: View; label: string; icon: string }[] = [
   { view: 'clients', label: 'Clientes', icon: '👥' },
   { view: 'agenda', label: 'Rendez-vous', icon: '📅' },
   { view: 'billing', label: 'Facturation', icon: '💶' },
-  { view: 'compta', label: 'Compta', icon: '🧾' },
+  { view: 'compta', label: 'Comptabilité', icon: '🧾' },
   { view: 'sms', label: 'SMS', icon: '💬' },
   { view: 'formulaires', label: 'Formulaires', icon: '📝' },
   { view: 'newsletter', label: 'Newsletter', icon: '📧' },

@@ -1,30 +1,22 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useAuth } from '@clerk/react'
 import { apiFetch, ApiError } from '../lib/api'
-import SearchableSelect from '../components/SearchableSelect'
 
 interface Questionnaire {
   id: string
   nom: string
   categorie: string
   lien: string
-  clienteIds: string[]
-}
-
-interface Client {
-  id: string
-  nomComplet: string
 }
 
 type State =
   | { status: 'loading' }
   | { status: 'error'; message: string }
-  | { status: 'success'; questionnaires: Questionnaire[]; clients: Client[] }
+  | { status: 'success'; questionnaires: Questionnaire[] }
 
 function FormulairesView() {
   const { getToken } = useAuth()
   const [state, setState] = useState<State>({ status: 'loading' })
-  const [pickCliente, setPickCliente] = useState<Record<string, string>>({})
   const [showCreate, setShowCreate] = useState(false)
   const [nom, setNom] = useState('')
   const [categorie, setCategorie] = useState('')
@@ -35,13 +27,8 @@ function FormulairesView() {
 
   const load = useCallback(() => {
     setState({ status: 'loading' })
-    Promise.all([
-      apiFetch<{ questionnaires: Questionnaire[] }>(getToken, '/api/prestations?resource=questionnaires'),
-      apiFetch<{ clients: Client[] }>(getToken, '/api/clients'),
-    ])
-      .then(([qData, cData]) => {
-        setState({ status: 'success', questionnaires: qData.questionnaires, clients: cData.clients })
-      })
+    apiFetch<{ questionnaires: Questionnaire[] }>(getToken, '/api/prestations?resource=questionnaires')
+      .then((data) => setState({ status: 'success', questionnaires: data.questionnaires }))
       .catch((error: unknown) => {
         setState({
           status: 'error',
@@ -53,11 +40,6 @@ function FormulairesView() {
   useEffect(() => {
     load()
   }, [load])
-
-  const clientById = useMemo(() => {
-    if (state.status !== 'success') return new Map<string, Client>()
-    return new Map(state.clients.map((c) => [c.id, c]))
-  }, [state])
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
@@ -94,40 +76,11 @@ function FormulairesView() {
     }
   }
 
-  async function handleLinkCliente(q: Questionnaire) {
-    const clienteId = pickCliente[q.id]
-    if (!clienteId || q.clienteIds.includes(clienteId)) return
-    setRowError(null)
-    try {
-      await apiFetch(getToken, `/api/prestations?resource=questionnaires&id=${q.id}`, {
-        method: 'PATCH',
-        body: { clienteIds: [...q.clienteIds, clienteId] },
-      })
-      setPickCliente((prev) => ({ ...prev, [q.id]: '' }))
-      load()
-    } catch (err) {
-      setRowError(err instanceof ApiError ? err.message : 'Erreur inconnue.')
-    }
-  }
-
-  async function handleUnlinkCliente(q: Questionnaire, clienteId: string) {
-    setRowError(null)
-    try {
-      await apiFetch(getToken, `/api/prestations?resource=questionnaires&id=${q.id}`, {
-        method: 'PATCH',
-        body: { clienteIds: q.clienteIds.filter((id) => id !== clienteId) },
-      })
-      load()
-    } catch (err) {
-      setRowError(err instanceof ApiError ? err.message : 'Erreur inconnue.')
-    }
-  }
-
   return (
     <div>
       <div className="flex items-center justify-between mb-5 gap-3 flex-wrap">
         <p className="text-sm text-text-muted">
-          Gère les questionnaires envoyés avant les rendez-vous et lie-les aux clientes concernées.
+          Gère les questionnaires envoyés avant les rendez-vous.
         </p>
         <button
           onClick={() => setShowCreate((v) => !v)}
@@ -214,49 +167,6 @@ function FormulairesView() {
                   >
                     Supprimer
                   </button>
-                </div>
-
-                <div className="mt-4 pt-4 border-t border-sage-light">
-                  <div className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-2">
-                    Clientes liées
-                  </div>
-                  {q.clienteIds.length === 0 ? (
-                    <p className="text-sm text-text-muted mb-3">Aucune cliente liée.</p>
-                  ) : (
-                    <div className="flex flex-wrap gap-2 mb-3">
-                      {q.clienteIds.map((id) => (
-                        <span
-                          key={id}
-                          className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-sage-pale text-sage-dark"
-                        >
-                          {clientById.get(id)?.nomComplet ?? 'Cliente inconnue'}
-                          <button onClick={() => handleUnlinkCliente(q, id)} className="hover:opacity-70">
-                            ×
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  <div className="flex items-center gap-2 max-w-sm">
-                    <div className="flex-1">
-                      <SearchableSelect
-                        options={state.clients
-                          .filter((c) => !q.clienteIds.includes(c.id))
-                          .map((c) => ({ id: c.id, label: c.nomComplet }))}
-                        value={pickCliente[q.id] ?? ''}
-                        onChange={(id) => setPickCliente((prev) => ({ ...prev, [q.id]: id }))}
-                        placeholder="Ajouter une cliente..."
-                        emptyLabel="Aucune cliente trouvée."
-                      />
-                    </div>
-                    <button
-                      onClick={() => handleLinkCliente(q)}
-                      disabled={!pickCliente[q.id]}
-                      className="bg-white border border-border text-sage-dark px-3.5 py-2.5 rounded-[10px] text-sm font-semibold hover:bg-sage-pale disabled:opacity-50 shrink-0"
-                    >
-                      Lier
-                    </button>
-                  </div>
                 </div>
               </div>
             ))

@@ -5,6 +5,8 @@ import MessageComposerModal from '../components/MessageComposerModal'
 import SearchableSelect from '../components/SearchableSelect'
 import type { TemplateContext } from '../lib/messageTemplates'
 import { formatDateHeureNaturel } from '../lib/formatDate'
+import { computeAnniversaires, computeFacturesImpayeesEnRetard, computeClientesARecontacter, daysSince } from '../lib/alerts'
+import { getDismissedSet, dismissAlert } from '../lib/dismissedAlerts'
 
 interface Client {
   id: string
@@ -40,27 +42,6 @@ type State =
 
 const DAY_MS = 24 * 60 * 60 * 1000
 
-function startOfDay(d: Date): Date {
-  const copy = new Date(d)
-  copy.setHours(0, 0, 0, 0)
-  return copy
-}
-
-function daysSince(iso: string, now: Date): number {
-  return Math.round((startOfDay(now).getTime() - startOfDay(new Date(iso)).getTime()) / DAY_MS)
-}
-
-function daysUntilBirthday(dateNaissance: string, now: Date): number | null {
-  const d = new Date(dateNaissance)
-  if (Number.isNaN(d.getTime())) return null
-  const today = startOfDay(now)
-  let next = startOfDay(new Date(now.getFullYear(), d.getMonth(), d.getDate()))
-  if (next.getTime() < today.getTime()) {
-    next = startOfDay(new Date(now.getFullYear() + 1, d.getMonth(), d.getDate()))
-  }
-  return Math.round((next.getTime() - today.getTime()) / DAY_MS)
-}
-
 function formatDateCourte(iso: string | null): string {
   if (!iso) return '—'
   const date = new Date(iso)
@@ -73,21 +54,34 @@ interface ContactRowProps {
   subtitle: string
   colorClass: string
   onContact: () => void
+  onDismiss?: () => void
 }
 
-function ContactRow({ title, subtitle, colorClass, onContact }: ContactRowProps) {
+function ContactRow({ title, subtitle, colorClass, onContact, onDismiss }: ContactRowProps) {
   return (
     <div className={`flex items-center justify-between gap-3 rounded-lg p-3 ${colorClass}`}>
       <div className="min-w-0">
         <div className="text-sm font-semibold truncate">{title}</div>
         <div className="text-xs text-text-muted truncate">{subtitle}</div>
       </div>
-      <button
-        onClick={onContact}
-        className="shrink-0 bg-white border border-border text-sage-dark px-3.5 py-1.5 rounded-[10px] text-xs font-semibold hover:bg-sage-pale"
-      >
-        Contacter
-      </button>
+      <div className="flex items-center gap-2 shrink-0">
+        <button
+          onClick={onContact}
+          className="bg-white border border-border text-sage-dark px-3.5 py-1.5 rounded-[10px] text-xs font-semibold hover:bg-sage-pale"
+        >
+          Contacter
+        </button>
+        {onDismiss && (
+          <button
+            onClick={onDismiss}
+            className="w-7 h-7 flex items-center justify-center rounded-full bg-white hover:bg-sage-light text-text-muted"
+            aria-label="Ne plus me rappeler cette alerte"
+            title="Ne plus me rappeler"
+          >
+            ×
+          </button>
+        )}
+      </div>
     </div>
   )
 }
@@ -95,6 +89,7 @@ function ContactRow({ title, subtitle, colorClass, onContact }: ContactRowProps)
 function SmsView() {
   const { getToken } = useAuth()
   const [state, setState] = useState<State>({ status: 'loading' })
+  const [dismissed, setDismissed] = useState<Set<string>>(() => getDismissedSet())
   const [composer, setComposer] = useState<{
     context: TemplateContext
     telephone: string
@@ -131,52 +126,36 @@ function SmsView() {
     load()
   }, [load])
 
+  function handleDismissRecontact(clientId: string) {
+    dismissAlert(`recontact-${clientId}`)
+    setDismissed(getDismissedSet())
+  }
+
   const now = useMemo(() => new Date(), [])
 
   const sections = useMemo(() => {
     if (state.status !== 'success') return null
     const clientById = new Map(state.clients.map((c) => [c.id, c]))
 
-    const in48h = state.rendezvous
+    const in24h = state.rendezvous
       .filter((r) => {
         if (!r.date) return false
         const t = new Date(r.date).getTime()
         if (Number.isNaN(t)) return false
         const diff = t - now.getTime()
-        return diff > 0 && diff <= 2 * DAY_MS
+        return diff > 0 && diff <= DAY_MS
       })
       .sort((a, b) => new Date(a.date as string).getTime() - new Date(b.date as string).getTime())
 
-    const lastRdvByClient = new Map<string, number>()
-    for (const r of state.rendezvous) {
-      if (!r.clienteId || !r.date) continue
-      const t = new Date(r.date).getTime()
-      if (Number.isNaN(t) || t > now.getTime()) continue
-      const prev = lastRdvByClient.get(r.clienteId)
-      if (!prev || t > prev) lastRdvByClient.set(r.clienteId, t)
-    }
-    const aRecontacter = state.clients
-      .filter((c) => c.statut === 'Régulière')
-      .map((c) => {
-        const lastTime = lastRdvByClient.get(c.id)
-        const jours = lastTime ? Math.round((now.getTime() - lastTime) / DAY_MS) : null
-        return { client: c, jours }
-      })
-      .filter((x) => x.jours === null || x.jours > 60)
-      .sort((a, b) => (b.jours ?? Infinity) - (a.jours ?? Infinity))
+    const aRecontacter = computeClientesARecontacter(state.clients, state.rendezvous, now).filter(
+      ({ client }) => !dismissed.has(`recontact-${client.id}`),
+    )
 
-    const anniversaires = state.clients
-      .filter((c) => c.dateNaissance)
-      .map((c) => ({ client: c, jours: daysUntilBirthday(c.dateNaissance as string, now) }))
-      .filter((x): x is { client: Client; jours: number } => x.jours !== null && x.jours <= 7)
-      .sort((a, b) => a.jours - b.jours)
+    const anniversaires = computeAnniversaires(state.clients, now)
+    const facturesImpayees = computeFacturesImpayeesEnRetard(state.factures, now)
 
-    const facturesImpayees = state.factures
-      .filter((f) => !f.payee && f.date && daysSince(f.date, now) > 14)
-      .sort((a, b) => daysSince(b.date as string, now) - daysSince(a.date as string, now))
-
-    return { in48h, aRecontacter, anniversaires, facturesImpayees, clientById }
-  }, [state, now])
+    return { in24h, aRecontacter, anniversaires, facturesImpayees, clientById }
+  }, [state, now, dismissed])
 
   function contactFromRdv(r: RdvItem) {
     const client = sections?.clientById.get(r.clienteId ?? '')
@@ -262,13 +241,13 @@ function SmsView() {
         <div className="flex flex-col gap-6">
           <div className="bg-white border border-border rounded-2xl p-5">
             <h3 className="font-serif text-lg font-semibold text-sage-dark mb-4">
-              Rappels de rendez-vous (48h)
+              Rappels de rendez-vous (24h)
             </h3>
-            {sections.in48h.length === 0 ? (
-              <p className="text-sm text-text-muted">Aucun rendez-vous dans les 48 prochaines heures.</p>
+            {sections.in24h.length === 0 ? (
+              <p className="text-sm text-text-muted">Aucun rendez-vous dans les 24 prochaines heures.</p>
             ) : (
               <div className="flex flex-col gap-1.5">
-                {sections.in48h.map((r) => (
+                {sections.in24h.map((r) => (
                   <ContactRow
                     key={r.id}
                     title={r.clienteNom || 'Cliente inconnue'}
@@ -282,7 +261,8 @@ function SmsView() {
           </div>
 
           <div className="bg-white border border-border rounded-2xl p-5">
-            <h3 className="font-serif text-lg font-semibold text-sage-dark mb-4">Clientes à recontacter</h3>
+            <h3 className="font-serif text-lg font-semibold text-sage-dark mb-1">Clientes à recontacter</h3>
+            <p className="text-xs text-text-muted mb-4">Clientes régulières sans rendez-vous depuis plus d'un mois.</p>
             {sections.aRecontacter.length === 0 ? (
               <p className="text-sm text-text-muted">Aucune cliente régulière à recontacter pour le moment.</p>
             ) : (
@@ -294,6 +274,7 @@ function SmsView() {
                     subtitle={jours === null ? 'Aucun rendez-vous enregistré' : `Vue il y a ${jours} jours`}
                     colorClass="bg-sage-pale"
                     onContact={() => contactRecontact(client)}
+                    onDismiss={() => handleDismissRecontact(client.id)}
                   />
                 ))}
               </div>

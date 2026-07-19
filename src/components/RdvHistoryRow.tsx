@@ -8,9 +8,10 @@ interface RdvHistoryRowProps {
   prestation: string
   prix: string
   initialNotes: string
+  isUpcoming?: boolean
 }
 
-function RdvHistoryRow({ id, date, prestation, prix, initialNotes }: RdvHistoryRowProps) {
+function RdvHistoryRow({ id, date, prestation, prix, initialNotes, isUpcoming }: RdvHistoryRowProps) {
   const { getToken } = useAuth()
   const [notes, setNotes] = useState(initialNotes)
   const [editing, setEditing] = useState(false)
@@ -36,12 +37,19 @@ function RdvHistoryRow({ id, date, prestation, prix, initialNotes }: RdvHistoryR
   }
 
   return (
-    <div className="py-3 border-b border-sage-light last:border-none">
+    <div
+      className={`py-3 px-3 -mx-3 border-b border-sage-light last:border-none rounded-lg ${
+        isUpcoming ? 'bg-gold-pale' : ''
+      }`}
+    >
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-3">
-          <div className="w-2 h-2 rounded-full bg-sage shrink-0" />
+          <div className={`w-2 h-2 rounded-full shrink-0 ${isUpcoming ? 'bg-gold' : 'bg-sage'}`} />
           <div>
-            <div className="text-xs text-text-muted">{date}</div>
+            <div className="text-xs text-text-muted">
+              {date}
+              {isUpcoming && <span className="ml-1.5 font-semibold text-gold-text">· À venir</span>}
+            </div>
             <div className="text-sm font-semibold">{prestation}</div>
           </div>
         </div>

@@ -23,7 +23,7 @@ const TITLES: Record<View, [string, string]> = {
   'client-detail': ['Fiche cliente', 'Informations, historique et notes'],
   agenda: ['Rendez-vous', 'Votre agenda et le suivi des cures'],
   billing: ['Facturation', 'Factures, promotions et suivi des paiements'],
-  compta: ['Compta', 'Dépenses et exports pour ta comptabilité'],
+  compta: ['Comptabilité', 'Dépenses et exports pour ta comptabilité'],
   sms: ['SMS', 'Messages pré-remplis à envoyer par SMS ou e-mail'],
   formulaires: ['Formulaires', 'Questionnaires envoyés aux clientes'],
   newsletter: ['Newsletter', 'Offres du moment et ciblage clientes'],
@@ -107,7 +107,6 @@ function App() {
                     setView('client-detail')
                   }}
                   onNavigateAgenda={() => setView('agenda')}
-                  onNavigateClients={() => setView('clients')}
                   onNavigateFacturation={() => setView('billing')}
                 />
               )}

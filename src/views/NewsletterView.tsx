@@ -36,6 +36,7 @@ function NewsletterView() {
   const [optInOnly, setOptInOnly] = useState(true)
   const [categories, setCategories] = useState<string[]>([])
   const [excluded, setExcluded] = useState<Set<string>>(new Set())
+  const [showAllRecipients, setShowAllRecipients] = useState(false)
   const [templateKey, setTemplateKey] = useState(NEWSLETTER_TEMPLATES[0].key)
   const [subject, setSubject] = useState(NEWSLETTER_TEMPLATES[0].subject)
   const [body, setBody] = useState(NEWSLETTER_TEMPLATES[0].body)
@@ -159,25 +160,35 @@ function NewsletterView() {
           {matching.length === 0 ? (
             <p className="text-sm text-text-muted">Aucune cliente ne correspond à ces critères.</p>
           ) : (
-            <div className="max-h-64 overflow-y-auto flex flex-col gap-1">
-              {matching.map((c) => (
-                <label key={c.id} className="flex items-center gap-2 text-sm py-1 min-w-0">
-                  <input
-                    type="checkbox"
-                    checked={!excluded.has(c.id)}
-                    onChange={() => toggleExcluded(c.id)}
-                    className="w-4 h-4 shrink-0"
-                  />
-                  <span className="font-medium truncate">{c.nomComplet}</span>
-                  <span className="text-text-muted text-xs truncate min-w-0">{c.email}</span>
-                  {c.categorieMetier && (
-                    <span className="ml-auto shrink-0 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-sage-light text-sage-dark">
-                      {c.categorieMetier}
-                    </span>
-                  )}
-                </label>
-              ))}
-            </div>
+            <>
+              <div className={`flex flex-col gap-1 ${showAllRecipients ? 'max-h-64 overflow-y-auto' : ''}`}>
+                {(showAllRecipients ? matching : matching.slice(0, 5)).map((c) => (
+                  <label key={c.id} className="flex items-center gap-2 text-sm py-1 min-w-0">
+                    <input
+                      type="checkbox"
+                      checked={!excluded.has(c.id)}
+                      onChange={() => toggleExcluded(c.id)}
+                      className="w-4 h-4 shrink-0"
+                    />
+                    <span className="font-medium truncate">{c.nomComplet}</span>
+                    <span className="text-text-muted text-xs truncate min-w-0">{c.email}</span>
+                    {c.categorieMetier && (
+                      <span className="ml-auto shrink-0 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-sage-light text-sage-dark">
+                        {c.categorieMetier}
+                      </span>
+                    )}
+                  </label>
+                ))}
+              </div>
+              {matching.length > 5 && (
+                <button
+                  onClick={() => setShowAllRecipients((v) => !v)}
+                  className="mt-2 text-xs font-semibold text-sage-dark hover:underline"
+                >
+                  {showAllRecipients ? 'Réduire' : `Voir les ${matching.length - 5} autres`}
+                </button>
+              )}
+            </>
           )}
         </div>
       )}

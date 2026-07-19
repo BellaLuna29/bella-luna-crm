@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@clerk/react'
 import { apiFetch, ApiError } from '../lib/api'
 import { exportRowsToExcel } from '../lib/exportExcel'
@@ -56,6 +56,14 @@ function monthLabel(key: string): string {
   return new Date(year, month - 1, 1).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
 }
 
+function inRange(iso: string | null, start: string, end: string): boolean {
+  if (!iso) return false
+  const day = iso.slice(0, 10)
+  if (start && day < start) return false
+  if (end && day > end) return false
+  return true
+}
+
 function ComptaView() {
   const { getToken } = useAuth()
   const [state, setState] = useState<State>({ status: 'loading' })
@@ -64,6 +72,11 @@ function ComptaView() {
   const [exporting, setExporting] = useState<string | null>(null)
   const [exportError, setExportError] = useState<string | null>(null)
   const [includeAssociatif, setIncludeAssociatif] = useState(false)
+  const [exportDebut, setExportDebut] = useState('')
+  const [exportFin, setExportFin] = useState('')
+  const [depenseCategorie, setDepenseCategorie] = useState('toutes')
+  const [depenseDebut, setDepenseDebut] = useState('')
+  const [depenseFin, setDepenseFin] = useState('')
 
   const load = useCallback(() => {
     setState({ status: 'loading' })
@@ -81,12 +94,28 @@ function ComptaView() {
     load()
   }, [load])
 
+  const depenseCategories = useMemo(() => {
+    if (state.status !== 'success') return []
+    return Array.from(new Set(state.depenses.map((d) => d.categorie).filter(Boolean))).sort()
+  }, [state])
+
+  const filteredDepenses = useMemo(() => {
+    if (state.status !== 'success') return []
+    return state.depenses.filter((d) => {
+      if (depenseCategorie !== 'toutes' && d.categorie !== depenseCategorie) return false
+      if (!inRange(d.date, depenseDebut, depenseFin)) return false
+      return true
+    })
+  }, [state, depenseCategorie, depenseDebut, depenseFin])
+
   async function exportFactures() {
     setExportError(null)
     setExporting('factures')
     try {
       const { factures } = await apiFetch<{ factures: FactureItem[] }>(getToken, '/api/factures')
-      const scoped = includeAssociatif ? factures : factures.filter((f) => f.categorieFacture !== 'Associatif ou formation')
+      const scoped = factures
+        .filter((f) => includeAssociatif || f.categorieFacture !== 'Associatif ou formation')
+        .filter((f) => inRange(f.date, exportDebut, exportFin))
       const rows = scoped.map((f) => ({
         Date: formatDate(f.date),
         Cliente: f.clienteNom || 'Cliente inconnue',
@@ -108,7 +137,8 @@ function ComptaView() {
     setExporting('depenses')
     try {
       const { depenses } = await apiFetch<{ depenses: DepenseItem[] }>(getToken, '/api/depenses')
-      const rows = depenses.map((d) => ({
+      const scoped = depenses.filter((d) => inRange(d.date, exportDebut, exportFin))
+      const rows = scoped.map((d) => ({
         Date: formatDate(d.date),
         Catégorie: d.categorie || '—',
         Description: d.description,
@@ -132,9 +162,10 @@ function ComptaView() {
         apiFetch<{ depenses: DepenseItem[] }>(getToken, '/api/depenses'),
       ])
 
-      const facturesScoped = includeAssociatif
-        ? factures
-        : factures.filter((f) => f.categorieFacture !== 'Associatif ou formation')
+      const facturesScoped = factures
+        .filter((f) => includeAssociatif || f.categorieFacture !== 'Associatif ou formation')
+        .filter((f) => inRange(f.date, exportDebut, exportFin))
+      const depensesScoped = depenses.filter((d) => inRange(d.date, exportDebut, exportFin))
 
       const months = new Map<string, { ca: number; depenses: number }>()
       for (const f of facturesScoped) {
@@ -144,7 +175,7 @@ function ComptaView() {
         entry.ca += f.montant ?? 0
         months.set(key, entry)
       }
-      for (const d of depenses) {
+      for (const d of depensesScoped) {
         const key = monthKey(d.date)
         if (!key) continue
         const entry = months.get(key) ?? { ca: 0, depenses: 0 }
@@ -193,7 +224,48 @@ function ComptaView() {
 
       {subTab === 'depenses' && (
         <div>
-          <div className="flex justify-end mb-4">
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              <select
+                value={depenseCategorie}
+                onChange={(e) => setDepenseCategorie(e.target.value)}
+                className="input w-auto"
+              >
+                <option value="toutes">Toutes catégories</option>
+                {depenseCategories.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="date"
+                value={depenseDebut}
+                onChange={(e) => setDepenseDebut(e.target.value)}
+                className="input w-auto"
+                aria-label="Depuis le"
+              />
+              <span className="text-text-muted text-sm">→</span>
+              <input
+                type="date"
+                value={depenseFin}
+                onChange={(e) => setDepenseFin(e.target.value)}
+                className="input w-auto"
+                aria-label="Jusqu'au"
+              />
+              {(depenseCategorie !== 'toutes' || depenseDebut || depenseFin) && (
+                <button
+                  onClick={() => {
+                    setDepenseCategorie('toutes')
+                    setDepenseDebut('')
+                    setDepenseFin('')
+                  }}
+                  className="text-xs font-semibold text-sage-dark hover:underline"
+                >
+                  Réinitialiser
+                </button>
+              )}
+            </div>
             <button
               onClick={() => setShowCreate(true)}
               className="bg-sage-dark text-white px-4.5 py-2.5 rounded-[10px] text-sm font-semibold hover:bg-sage-dark/90"
@@ -222,7 +294,7 @@ function ComptaView() {
                   </tr>
                 </thead>
                 <tbody>
-                  {state.depenses.map((d) => (
+                  {filteredDepenses.map((d) => (
                     <tr key={d.id} className="hover:bg-sage-pale transition-colors">
                       <td className="px-4 py-3.5 border-b border-sage-light text-sm">{formatDate(d.date)}</td>
                       <td className="px-4 py-3.5 border-b border-sage-light text-sm text-text-muted">
@@ -251,10 +323,10 @@ function ComptaView() {
                       </td>
                     </tr>
                   ))}
-                  {state.depenses.length === 0 && (
+                  {filteredDepenses.length === 0 && (
                     <tr>
                       <td colSpan={6} className="px-4 py-8 text-center text-sm text-text-muted">
-                        Aucune dépense enregistrée.
+                        Aucune dépense à afficher.
                       </td>
                     </tr>
                   )}
@@ -272,6 +344,37 @@ function ComptaView() {
           <p className="text-sm text-text-muted mb-4">
             Génère un fichier .xlsx que tu peux transmettre directement à ton comptable.
           </p>
+
+          <div className="flex items-center gap-2 flex-wrap mb-4">
+            <span className="text-xs font-semibold text-text-muted uppercase tracking-wide">Période</span>
+            <input
+              type="date"
+              value={exportDebut}
+              onChange={(e) => setExportDebut(e.target.value)}
+              className="input w-auto"
+              aria-label="Depuis le"
+            />
+            <span className="text-text-muted text-sm">→</span>
+            <input
+              type="date"
+              value={exportFin}
+              onChange={(e) => setExportFin(e.target.value)}
+              className="input w-auto"
+              aria-label="Jusqu'au"
+            />
+            {(exportDebut || exportFin) && (
+              <button
+                onClick={() => {
+                  setExportDebut('')
+                  setExportFin('')
+                }}
+                className="text-xs font-semibold text-sage-dark hover:underline"
+              >
+                Réinitialiser
+              </button>
+            )}
+          </div>
+
           <label className="flex items-center gap-2 text-sm mb-4">
             <input
               type="checkbox"
