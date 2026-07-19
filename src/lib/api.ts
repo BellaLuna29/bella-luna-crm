@@ -24,9 +24,19 @@ export async function apiFetch<T>(
     headers,
     body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
   })
-  const data = await response.json()
+
+  let data: unknown
+  try {
+    data = await response.json()
+  } catch {
+    throw new ApiError(
+      `Le serveur a renvoyé une réponse inattendue (erreur ${response.status}). Réessaie dans un instant.`,
+    )
+  }
+
   if (!response.ok) {
-    throw new ApiError(data.error ?? `Erreur ${response.status}`)
+    const message = typeof (data as { error?: unknown })?.error === 'string' ? (data as { error: string }).error : undefined
+    throw new ApiError(message ?? `Erreur ${response.status}`)
   }
   return data as T
 }

@@ -147,6 +147,7 @@ function DashboardView({
   const [state, setState] = useState<State>({ status: 'loading' })
   const [dismissedRaw, setDismissedRaw] = useState<DismissedAlert[]>([])
   const [validDismissedKeys, setValidDismissedKeys] = useState<Set<string>>(new Set())
+  const [dismissError, setDismissError] = useState<string | null>(null)
 
   const load = useCallback(() => {
     setState({ status: 'loading' })
@@ -251,11 +252,16 @@ function DashboardView({
 
   async function handleDismiss(key: string) {
     setValidDismissedKeys((prev) => new Set(prev).add(key))
+    setDismissError(null)
     try {
       await dismissAlertKey(getToken, key)
       setDismissedRaw(await fetchDismissedAlerts(getToken))
-    } catch {
-      // best effort — stays hidden locally for this session even if the sync failed
+    } catch (err) {
+      setDismissError(
+        err instanceof ApiError
+          ? err.message
+          : "Impossible d'enregistrer sur tous tes appareils, mais l'alerte reste masquée ici.",
+      )
     }
   }
 
@@ -307,6 +313,7 @@ function DashboardView({
               <h3 className="font-serif text-lg font-semibold text-sage-dark mb-4">
                 Alertes &amp; rappels
               </h3>
+              {dismissError && <p className="text-sm text-danger mb-3">{dismissError}</p>}
               <div className="flex flex-col gap-1.5">
                 {alerts.anniversaires.map(({ client, jours }) => (
                   <AlertRow

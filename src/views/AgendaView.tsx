@@ -151,6 +151,7 @@ function AgendaView() {
   const weekStart = useMemo(() => getMonday(focusDate), [focusDate])
   const [absences, setAbsences] = useState<AbsenceItem[]>([])
   const [absenceModal, setAbsenceModal] = useState<{ initialDate?: string } | null>(null)
+  const [absenceError, setAbsenceError] = useState<string | null>(null)
   const [clients, setClients] = useState<Client[]>([])
   const [composer, setComposer] = useState<{ context: TemplateContext; telephone: string; email: string } | null>(
     null,
@@ -204,11 +205,12 @@ function AgendaView() {
   }
 
   async function handleDeleteAbsence(id: string) {
+    setAbsenceError(null)
     try {
       await apiFetch(getToken, `/api/absences?id=${id}`, { method: 'DELETE' })
       loadAbsences()
-    } catch {
-      // silent — best effort
+    } catch (err) {
+      setAbsenceError(err instanceof ApiError ? err.message : "Impossible de supprimer l'absence.")
     }
   }
 
@@ -348,6 +350,8 @@ function AgendaView() {
           </button>
         </div>
       </div>
+
+      {absenceError && <p className="text-sm text-danger mb-3 print:hidden">{absenceError}</p>}
 
       {currentAbsences.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-4 print:hidden">

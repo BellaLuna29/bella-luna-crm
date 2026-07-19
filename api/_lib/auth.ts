@@ -15,10 +15,21 @@ export async function requireAuth(req: VercelRequest): Promise<string> {
     throw new AuthError('Authentification requise.')
   }
 
+  let sub: string
   try {
     const payload = await verifyToken(token, { secretKey })
-    return payload.sub
+    sub = payload.sub
   } catch {
     throw new AuthError('Session invalide ou expirée.')
   }
+
+  const allowedUserIds = process.env.ALLOWED_USER_IDS
+  if (allowedUserIds) {
+    const allowList = allowedUserIds.split(',').map((id) => id.trim())
+    if (!allowList.includes(sub)) {
+      throw new AuthError('Accès non autorisé.')
+    }
+  }
+
+  return sub
 }

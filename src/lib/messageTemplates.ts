@@ -1,3 +1,5 @@
+import { formatMontant } from './formatMontant'
+
 export interface TemplateContext {
   nomComplet: string
   date?: string
@@ -65,7 +67,7 @@ Très belle journée à vous`
     label: 'Facture impayée',
     subject: 'Rappel de facture — Bella Luna',
     build: (ctx) =>
-      `Bonjour ${ctx.nomComplet}, nous nous permettons de vous rappeler qu'une facture${ctx.montant ? ` de ${ctx.montant.toFixed(2)} €` : ''} est toujours en attente de règlement. Merci de votre compréhension.`,
+      `Bonjour ${ctx.nomComplet}, nous nous permettons de vous rappeler qu'une facture${ctx.montant ? ` de ${formatMontant(ctx.montant)}` : ''} est toujours en attente de règlement. Merci de votre compréhension.`,
   },
   {
     key: 'promo',

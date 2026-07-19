@@ -20,6 +20,7 @@ const TABLE_PROMOTIONS = 'tbldqsJCBeZwve20n'
 const TABLE_QUESTIONNAIRES = 'tblhPRz9gsVHoq6mb'
 const TABLE_ALERTES = 'tblk5PC1ALEQpHovg'
 const TABLE_ALERTES_LUES = 'tblqKRi9GGYhxdXM3'
+const TABLE_NEWSLETTER_STATUT = 'tblHtw5e4no105cyq'
 const RECORD_ID_RE = /^rec[a-zA-Z0-9]{14}$/
 
 interface Prestation {
@@ -250,6 +251,49 @@ async function handleDismissedAlertes(req: VercelRequest, res: VercelResponse): 
   })
 }
 
+async function handleNewsletterStatut(req: VercelRequest, res: VercelResponse): Promise<void> {
+  if (req.method === 'GET') {
+    try {
+      const records = await airtableList(TABLE_NEWSLETTER_STATUT)
+      const lastSentAt = records
+        .map((r) => (r.fields['Dernier envoi'] as string) ?? null)
+        .filter((v): v is string => Boolean(v))
+        .sort()
+        .at(-1) ?? null
+      res.status(200).json({ lastSentAt })
+    } catch (error) {
+      if (error instanceof AirtableConfigError) {
+        res.status(500).json({ error: error.message })
+        return
+      }
+      console.error(error)
+      res.status(502).json({ error: "Impossible de récupérer le statut de la newsletter depuis Airtable." })
+    }
+    return
+  }
+
+  if (req.method === 'POST') {
+    try {
+      const record = await airtableCreate(
+        TABLE_NEWSLETTER_STATUT,
+        { Libellé: 'Envoi newsletter', 'Dernier envoi': new Date().toISOString() },
+        { typecast: true },
+      )
+      res.status(201).json({ id: record.id })
+    } catch (error) {
+      if (error instanceof AirtableConfigError) {
+        res.status(500).json({ error: error.message })
+        return
+      }
+      console.error(error)
+      res.status(502).json({ error: "Impossible d'enregistrer l'envoi de la newsletter dans Airtable." })
+    }
+    return
+  }
+
+  res.status(405).json({ error: 'Méthode non autorisée.' })
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
   setCorsHeaders(req, res)
 
@@ -281,6 +325,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     await handleDismissedAlertes(req, res)
     return
   }
+  if (req.query.resource === 'newsletter-status') {
+    await handleNewsletterStatut(req, res)
+    return
+  }
 
   if (req.method !== 'GET') {
     res.status(405).json({ error: 'Méthode non autorisée.' })
@@ -298,7 +346,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
         prix: (r.fields['Prix'] as number) ?? 0,
         type: (r.fields['Type'] as string) ?? '',
       }))
-      .sort((a, b) => a.categorie.localeCompare(a.categorie) || a.nom.localeCompare(b.nom))
+      .sort((a, b) => a.categorie.localeCompare(b.categorie) || a.nom.localeCompare(b.nom))
     res.status(200).json({ prestations })
   } catch (error) {
     if (error instanceof AirtableConfigError) {

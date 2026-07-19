@@ -3,6 +3,7 @@ import { useAuth } from '@clerk/react'
 import { apiFetch, ApiError } from '../lib/api'
 import { exportRowsToExcel } from '../lib/exportExcel'
 import DepenseFormModal from '../components/DepenseFormModal'
+import { formatMontant } from '../lib/formatMontant'
 
 interface DepenseItem {
   id: string
@@ -36,12 +37,7 @@ function formatDate(iso: string | null): string {
   if (!iso) return '—'
   const date = new Date(iso)
   if (Number.isNaN(date.getTime())) return '—'
-  return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })
-}
-
-function formatMontant(montant: number | null): string {
-  if (montant === null) return '—'
-  return `${montant.toFixed(2)} €`
+  return date.toLocaleDateString('fr-FR')
 }
 
 function monthKey(iso: string | null): string | null {

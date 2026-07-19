@@ -19,7 +19,7 @@ function formatDate(iso: string | null): string {
   if (!iso) return '—'
   const date = new Date(iso)
   if (Number.isNaN(date.getTime())) return '—'
-  return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })
+  return date.toLocaleDateString('fr-FR')
 }
 
 interface FormState {
@@ -40,6 +40,7 @@ function PromotionsManager() {
   const [editForm, setEditForm] = useState<FormState>(EMPTY_FORM)
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
+  const [rowError, setRowError] = useState<string | null>(null)
 
   const load = useCallback(() => {
     setState({ status: 'loading' })
@@ -123,23 +124,25 @@ function PromotionsManager() {
   }
 
   async function toggleActive(p: Promotion) {
+    setRowError(null)
     try {
       await apiFetch(getToken, `/api/prestations?resource=promotions&id=${p.id}`, {
         method: 'PATCH',
         body: { active: !p.active },
       })
       load()
-    } catch {
-      // best effort
+    } catch (err) {
+      setRowError(err instanceof ApiError ? err.message : "Impossible de mettre à jour le code promo.")
     }
   }
 
   async function handleDelete(id: string) {
+    setRowError(null)
     try {
       await apiFetch(getToken, `/api/prestations?resource=promotions&id=${id}`, { method: 'DELETE' })
       load()
-    } catch {
-      // best effort
+    } catch (err) {
+      setRowError(err instanceof ApiError ? err.message : "Impossible de supprimer le code promo.")
     }
   }
 
@@ -211,6 +214,8 @@ function PromotionsManager() {
           </div>
         </form>
       )}
+
+      {rowError && <p className="text-sm text-danger mb-3">{rowError}</p>}
 
       <div className="bg-white border border-border rounded-2xl overflow-hidden">
         {state.status === 'loading' && <p className="p-6 text-sm text-text-muted">Chargement…</p>}

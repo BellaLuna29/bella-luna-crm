@@ -12,7 +12,7 @@ import {
   daysSince,
   daysUntil,
 } from '../lib/alerts'
-import { LAST_NEWSLETTER_KEY } from '../lib/alertsConfig'
+import { fetchLastNewsletterSentAt } from '../lib/newsletterStatus'
 import { computeCureProgress } from '../lib/cureProgress'
 import {
   type DismissedAlert,
@@ -108,6 +108,9 @@ function AlertesView({ onSelectClient, onNavigateFacturation, onNavigateNewslett
   const [date, setDate] = useState('')
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
+  const [manualError, setManualError] = useState<string | null>(null)
+  const [dismissError, setDismissError] = useState<string | null>(null)
+  const [lastNewsletterSentAt, setLastNewsletterSentAt] = useState<string | null>(null)
 
   const load = useCallback(() => {
     setState({ status: 'loading' })
@@ -118,8 +121,9 @@ function AlertesView({ onSelectClient, onNavigateFacturation, onNavigateNewslett
       apiFetch<{ prestations: Prestation[] }>(getToken, '/api/prestations'),
       apiFetch<{ promotions: Promotion[] }>(getToken, '/api/prestations?resource=promotions'),
       fetchDismissedAlerts(getToken).catch(() => []),
+      fetchLastNewsletterSentAt(getToken).catch(() => null),
     ])
-      .then(([clientsData, rdvData, facturesData, prestationsData, promosData, dismissedData]) => {
+      .then(([clientsData, rdvData, facturesData, prestationsData, promosData, dismissedData, lastSentAt]) => {
         setState({
           status: 'success',
           clients: clientsData.clients,
@@ -129,6 +133,7 @@ function AlertesView({ onSelectClient, onNavigateFacturation, onNavigateNewslett
           promotions: promosData.promotions,
         })
         setDismissedRaw(dismissedData)
+        setLastNewsletterSentAt(lastSentAt)
       })
       .catch((error: unknown) => {
         setState({ status: 'error', message: error instanceof ApiError ? error.message : 'Erreur inconnue.' })
@@ -151,16 +156,20 @@ function AlertesView({ onSelectClient, onNavigateFacturation, onNavigateNewslett
 
   async function handleDismiss(key: string) {
     setValidDismissedKeys((prev) => new Set(prev).add(key))
+    setDismissError(null)
     try {
       await dismissAlertKey(getToken, key)
       setDismissedRaw(await fetchDismissedAlerts(getToken))
-    } catch {
-      // best effort — stays hidden locally for this session even if the sync failed
+    } catch (err) {
+      setDismissError(
+        err instanceof ApiError
+          ? err.message
+          : "Impossible d'enregistrer sur tous tes appareils, mais l'alerte reste masquée ici.",
+      )
     }
   }
 
   const now = useMemo(() => new Date(), [])
-  const lastNewsletterSentAt = useMemo(() => localStorage.getItem(LAST_NEWSLETTER_KEY), [])
 
   const rawComputed = useMemo(() => {
     if (state.status !== 'success') return null
@@ -232,23 +241,25 @@ function AlertesView({ onSelectClient, onNavigateFacturation, onNavigateNewslett
   }
 
   async function handleDeleteManual(id: string) {
+    setManualError(null)
     try {
       await apiFetch(getToken, `/api/prestations?resource=alertes&id=${id}`, { method: 'DELETE' })
       loadManual()
-    } catch {
-      // best effort
+    } catch (err) {
+      setManualError(err instanceof ApiError ? err.message : "Impossible de supprimer l'alerte.")
     }
   }
 
   async function toggleManualActive(a: ManualAlerte) {
+    setManualError(null)
     try {
       await apiFetch(getToken, `/api/prestations?resource=alertes&id=${a.id}`, {
         method: 'PATCH',
         body: { active: !a.active },
       })
       loadManual()
-    } catch {
-      // best effort
+    } catch (err) {
+      setManualError(err instanceof ApiError ? err.message : "Impossible de mettre à jour l'alerte.")
     }
   }
 
@@ -267,6 +278,8 @@ function AlertesView({ onSelectClient, onNavigateFacturation, onNavigateNewslett
         <h3 className="font-serif text-lg font-semibold text-sage-dark mb-4">
           Alertes automatiques {computed && `(${totalComputed})`}
         </h3>
+
+        {dismissError && <p className="text-sm text-danger mb-3">{dismissError}</p>}
 
         {state.status === 'loading' && <p className="text-sm text-text-muted">Chargement…</p>}
         {state.status === 'error' && <p className="text-sm text-danger">{state.message}</p>}
@@ -411,6 +424,8 @@ function AlertesView({ onSelectClient, onNavigateFacturation, onNavigateNewslett
             </div>
           </form>
         )}
+
+        {manualError && <p className="text-sm text-danger mb-3">{manualError}</p>}
 
         {manualState.status === 'loading' && <p className="text-sm text-text-muted">Chargement…</p>}
         {manualState.status === 'error' && <p className="text-sm text-danger">{manualState.message}</p>}

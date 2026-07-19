@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@clerk/react'
 import { apiFetch, ApiError } from '../lib/api'
 import { NEWSLETTER_TEMPLATES } from '../lib/newsletterTemplates'
-import { LAST_NEWSLETTER_KEY } from '../lib/alertsConfig'
+import { recordNewsletterSent } from '../lib/newsletterStatus'
 
 interface Client {
   id: string
@@ -40,7 +40,7 @@ function NewsletterView() {
   const [templateKey, setTemplateKey] = useState(NEWSLETTER_TEMPLATES[0].key)
   const [subject, setSubject] = useState(NEWSLETTER_TEMPLATES[0].subject)
   const [body, setBody] = useState(NEWSLETTER_TEMPLATES[0].body)
-  const [copyFeedback, setCopyFeedback] = useState<string | null>(null)
+  const [copyFeedback, setCopyFeedback] = useState<{ message: string; isError: boolean } | null>(null)
 
   function handleTemplateChange(key: string) {
     setTemplateKey(key)
@@ -51,8 +51,10 @@ function NewsletterView() {
     }
   }
 
-  function recordNewsletterSent() {
-    localStorage.setItem(LAST_NEWSLETTER_KEY, new Date().toISOString())
+  function handleNewsletterSent() {
+    recordNewsletterSent(getToken).catch(() => {
+      // best effort — la date de dernier envoi ne sera juste pas mise à jour
+    })
   }
 
   const load = useCallback(() => {
@@ -100,9 +102,12 @@ function NewsletterView() {
     const emails = selected.map((c) => c.email).join(', ')
     try {
       await navigator.clipboard.writeText(emails)
-      setCopyFeedback(`${selected.length} e-mail(s) copié(s).`)
+      setCopyFeedback({ message: `${selected.length} e-mail(s) copié(s).`, isError: false })
     } catch {
-      setCopyFeedback("Impossible de copier automatiquement — sélectionne le texte manuellement.")
+      setCopyFeedback({
+        message: 'Impossible de copier automatiquement — sélectionne le texte manuellement.',
+        isError: true,
+      })
     }
     setTimeout(() => setCopyFeedback(null), 4000)
   }
@@ -244,7 +249,7 @@ function NewsletterView() {
           </button>
           <a
             href={mailtoHref}
-            onClick={recordNewsletterSent}
+            onClick={handleNewsletterSent}
             className={`bg-sage-dark text-white px-5 py-2.5 rounded-[10px] text-sm font-semibold hover:bg-sage-dark/90 ${
               selected.length === 0 ? 'pointer-events-none opacity-50' : ''
             }`}
@@ -252,7 +257,11 @@ function NewsletterView() {
             Ouvrir dans Mail
           </a>
         </div>
-        {copyFeedback && <p className="text-sm text-sage-dark mt-3">{copyFeedback}</p>}
+        {copyFeedback && (
+          <p className={`text-sm mt-3 ${copyFeedback.isError ? 'text-danger' : 'text-sage-dark'}`}>
+            {copyFeedback.message}
+          </p>
+        )}
       </div>
     </div>
   )

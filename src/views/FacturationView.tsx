@@ -3,6 +3,7 @@ import { useAuth } from '@clerk/react'
 import { apiFetch, ApiError } from '../lib/api'
 import FactureFormModal from '../components/FactureFormModal'
 import PromotionsManager from '../components/PromotionsManager'
+import { formatMontant } from '../lib/formatMontant'
 
 interface FactureItem {
   id: string
@@ -29,12 +30,7 @@ function formatDate(iso: string | null): string {
   if (!iso) return '—'
   const date = new Date(iso)
   if (Number.isNaN(date.getTime())) return '—'
-  return date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })
-}
-
-function formatMontant(montant: number | null): string {
-  if (montant === null) return '—'
-  return `${montant.toFixed(2)} €`
+  return date.toLocaleDateString('fr-FR')
 }
 
 function isThisMonth(iso: string | null, now: Date): boolean {
@@ -56,6 +52,7 @@ function FacturationView({ onSelectClient }: FacturationViewProps) {
   const [categorieFilter, setCategorieFilter] = useState<CategorieFilter>('Commercial')
   const [showCreate, setShowCreate] = useState(false)
   const [togglingId, setTogglingId] = useState<string | null>(null)
+  const [toggleError, setToggleError] = useState<string | null>(null)
 
   const load = useCallback(() => {
     setState({ status: 'loading' })
@@ -104,13 +101,16 @@ function FacturationView({ onSelectClient }: FacturationViewProps) {
 
   async function togglePayee(facture: FactureItem) {
     setTogglingId(facture.id)
+    setToggleError(null)
     try {
       await apiFetch(getToken, `/api/factures/${facture.id}`, {
         method: 'PATCH',
         body: { payee: !facture.payee },
       })
       load()
-    } catch {
+    } catch (err) {
+      setToggleError(err instanceof ApiError ? err.message : "Impossible de mettre à jour la facture.")
+    } finally {
       setTogglingId(null)
     }
   }
@@ -174,13 +174,13 @@ function FacturationView({ onSelectClient }: FacturationViewProps) {
           <div className="bg-white border border-border rounded-2xl p-5">
             <div className="text-xs font-semibold text-text-muted uppercase tracking-wide">Encaissé ce mois-ci</div>
             <div className="font-serif text-3xl font-semibold text-sage-dark mt-1.5">
-              {stats.encaisseMois.toFixed(2)} €
+              {formatMontant(stats.encaisseMois)}
             </div>
           </div>
           <div className="bg-white border border-border rounded-2xl p-5">
             <div className="text-xs font-semibold text-text-muted uppercase tracking-wide">Total impayé</div>
             <div className="font-serif text-3xl font-semibold text-danger mt-1.5">
-              {stats.totalImpaye.toFixed(2)} €
+              {formatMontant(stats.totalImpaye)}
             </div>
           </div>
           <div className="bg-white border border-border rounded-2xl p-5">
@@ -189,6 +189,8 @@ function FacturationView({ onSelectClient }: FacturationViewProps) {
           </div>
         </div>
       )}
+
+      {toggleError && <p className="text-sm text-danger mb-3">{toggleError}</p>}
 
       <div className="bg-white border border-border rounded-2xl overflow-hidden">
         {state.status === 'loading' && <p className="p-6 text-sm text-text-muted">Chargement…</p>}
