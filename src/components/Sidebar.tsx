@@ -1,17 +1,18 @@
 import { UserButton } from '@clerk/react'
+import logo from '../assets/logo.png'
 import type { View } from '../types'
 
 const NAV_ITEMS: { view: View; label: string; icon: string }[] = [
   { view: 'dashboard', label: 'Tableau de bord', icon: '🏠' },
-  { view: 'alertes', label: 'Alertes', icon: '🔔' },
-  { view: 'stats', label: 'Statistiques', icon: '📈' },
-  { view: 'clients', label: 'Clientes', icon: '👥' },
   { view: 'agenda', label: 'Rendez-vous', icon: '📅' },
+  { view: 'clients', label: 'Clientes', icon: '👥' },
+  { view: 'alertes', label: 'Alertes', icon: '🔔' },
   { view: 'billing', label: 'Facturation', icon: '💶' },
   { view: 'compta', label: 'Comptabilité', icon: '🧾' },
+  { view: 'stats', label: 'Statistiques', icon: '📈' },
   { view: 'sms', label: 'SMS', icon: '💬' },
-  { view: 'formulaires', label: 'Formulaires', icon: '📝' },
   { view: 'newsletter', label: 'Newsletter', icon: '📧' },
+  { view: 'formulaires', label: 'Formulaires', icon: '📝' },
 ]
 
 interface SidebarProps {
@@ -38,8 +39,8 @@ function Sidebar({ activeView, onNavigate, collapsed, onToggleCollapsed, mobileO
         } ${collapsed ? 'md:w-[72px] md:px-3' : ''}`}
       >
         <div className={`flex items-center gap-2.5 mb-9 px-2 ${collapsedDesktop}`}>
-          <div className="w-9 h-9 rounded-full bg-gold flex items-center justify-center font-serif font-semibold text-sage-dark text-base shrink-0">
-            B
+          <div className="w-9 h-9 rounded-full bg-white flex items-center justify-center shrink-0 p-1">
+            <img src={logo} alt="Bella Luna" className="w-full h-full object-contain" />
           </div>
           <div className={hideOnCollapse}>
             <div className="font-serif text-lg font-semibold tracking-wide">Bella Luna</div>

@@ -6,7 +6,12 @@ import SearchableSelect from '../components/SearchableSelect'
 import type { TemplateContext } from '../lib/messageTemplates'
 import { formatDateHeureNaturel } from '../lib/formatDate'
 import { computeAnniversaires, computeFacturesImpayeesEnRetard, computeClientesARecontacter, daysSince } from '../lib/alerts'
-import { getDismissedSet, dismissAlert } from '../lib/dismissedAlerts'
+import {
+  type DismissedAlert,
+  fetchDismissedAlerts,
+  dismissAlertKey,
+  reconcileDismissedAlerts,
+} from '../lib/dismissedAlerts'
 
 interface Client {
   id: string
@@ -89,7 +94,8 @@ function ContactRow({ title, subtitle, colorClass, onContact, onDismiss }: Conta
 function SmsView() {
   const { getToken } = useAuth()
   const [state, setState] = useState<State>({ status: 'loading' })
-  const [dismissed, setDismissed] = useState<Set<string>>(() => getDismissedSet())
+  const [dismissedRaw, setDismissedRaw] = useState<DismissedAlert[]>([])
+  const [validDismissedKeys, setValidDismissedKeys] = useState<Set<string>>(new Set())
   const [composer, setComposer] = useState<{
     context: TemplateContext
     telephone: string
@@ -105,14 +111,16 @@ function SmsView() {
       apiFetch<{ clients: Client[] }>(getToken, '/api/clients'),
       apiFetch<{ rendezvous: RdvItem[] }>(getToken, '/api/rendezvous'),
       apiFetch<{ factures: FactureItem[] }>(getToken, '/api/factures'),
+      fetchDismissedAlerts(getToken).catch(() => []),
     ])
-      .then(([clientsData, rdvData, facturesData]) => {
+      .then(([clientsData, rdvData, facturesData, dismissedData]) => {
         setState({
           status: 'success',
           clients: clientsData.clients,
           rendezvous: rdvData.rendezvous,
           factures: facturesData.factures,
         })
+        setDismissedRaw(dismissedData)
       })
       .catch((error: unknown) => {
         setState({
@@ -126,14 +134,20 @@ function SmsView() {
     load()
   }, [load])
 
-  function handleDismissRecontact(clientId: string) {
-    dismissAlert(`recontact-${clientId}`)
-    setDismissed(getDismissedSet())
+  async function handleDismissRecontact(clientId: string) {
+    const key = `recontact-${clientId}`
+    setValidDismissedKeys((prev) => new Set(prev).add(key))
+    try {
+      await dismissAlertKey(getToken, key)
+      setDismissedRaw(await fetchDismissedAlerts(getToken))
+    } catch {
+      // best effort — stays hidden locally for this session even if the sync failed
+    }
   }
 
   const now = useMemo(() => new Date(), [])
 
-  const sections = useMemo(() => {
+  const rawSections = useMemo(() => {
     if (state.status !== 'success') return null
     const clientById = new Map(state.clients.map((c) => [c.id, c]))
 
@@ -147,15 +161,27 @@ function SmsView() {
       })
       .sort((a, b) => new Date(a.date as string).getTime() - new Date(b.date as string).getTime())
 
-    const aRecontacter = computeClientesARecontacter(state.clients, state.rendezvous, now).filter(
-      ({ client }) => !dismissed.has(`recontact-${client.id}`),
-    )
-
+    const aRecontacter = computeClientesARecontacter(state.clients, state.rendezvous, now)
     const anniversaires = computeAnniversaires(state.clients, now)
     const facturesImpayees = computeFacturesImpayeesEnRetard(state.factures, now)
 
     return { in24h, aRecontacter, anniversaires, facturesImpayees, clientById }
-  }, [state, now, dismissed])
+  }, [state, now])
+
+  useEffect(() => {
+    if (!rawSections) return
+    const keys = new Set<string>()
+    for (const { client } of rawSections.aRecontacter) keys.add(`recontact-${client.id}`)
+    reconcileDismissedAlerts(getToken, dismissedRaw, keys).then(setValidDismissedKeys)
+  }, [rawSections, dismissedRaw, getToken])
+
+  const sections = useMemo(() => {
+    if (!rawSections) return null
+    return {
+      ...rawSections,
+      aRecontacter: rawSections.aRecontacter.filter(({ client }) => !validDismissedKeys.has(`recontact-${client.id}`)),
+    }
+  }, [rawSections, validDismissedKeys])
 
   function contactFromRdv(r: RdvItem) {
     const client = sections?.clientById.get(r.clienteId ?? '')

@@ -554,3 +554,29 @@ export function parseAbsenceInput(
   if (errors.length > 0) return { errors }
   return { fields }
 }
+
+/**
+ * Validates and maps a raw request body into Airtable field names for the
+ * AlertesLues table. `requireCore` enforces cle as mandatory (create only).
+ */
+export function parseDismissedAlertInput(
+  body: unknown,
+  { requireCore }: { requireCore: boolean },
+): { fields: Record<string, unknown> } | ClientInputErrors {
+  if (typeof body !== 'object' || body === null) {
+    return { errors: ['Corps de requête invalide.'] }
+  }
+  const b = body as Record<string, unknown>
+  const errors: string[] = []
+  const fields: Record<string, unknown> = {}
+
+  if ('cle' in b || requireCore) {
+    const v = typeof b.cle === 'string' ? b.cle.trim() : ''
+    if (requireCore && v.length === 0) errors.push('La clé est obligatoire.')
+    else if (v.length > 200) errors.push('La clé est trop longue.')
+    if (v.length > 0) fields['Clé'] = v
+  }
+
+  if (errors.length > 0) return { errors }
+  return { fields }
+}

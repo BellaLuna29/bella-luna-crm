@@ -14,7 +14,12 @@ import {
 } from '../lib/alerts'
 import { LAST_NEWSLETTER_KEY } from '../lib/alertsConfig'
 import { computeCureProgress } from '../lib/cureProgress'
-import { getDismissedSet, dismissAlert } from '../lib/dismissedAlerts'
+import {
+  type DismissedAlert,
+  fetchDismissedAlerts,
+  dismissAlertKey,
+  reconcileDismissedAlerts,
+} from '../lib/dismissedAlerts'
 
 interface Client {
   id: string
@@ -95,7 +100,8 @@ function AlertesView({ onSelectClient, onNavigateFacturation, onNavigateNewslett
   const { getToken } = useAuth()
   const [state, setState] = useState<State>({ status: 'loading' })
   const [manualState, setManualState] = useState<ManualState>({ status: 'loading' })
-  const [dismissed, setDismissed] = useState<Set<string>>(() => getDismissedSet())
+  const [dismissedRaw, setDismissedRaw] = useState<DismissedAlert[]>([])
+  const [validDismissedKeys, setValidDismissedKeys] = useState<Set<string>>(new Set())
   const [showCreate, setShowCreate] = useState(false)
   const [titre, setTitre] = useState('')
   const [description, setDescription] = useState('')
@@ -111,8 +117,9 @@ function AlertesView({ onSelectClient, onNavigateFacturation, onNavigateNewslett
       apiFetch<{ factures: FactureItem[] }>(getToken, '/api/factures'),
       apiFetch<{ prestations: Prestation[] }>(getToken, '/api/prestations'),
       apiFetch<{ promotions: Promotion[] }>(getToken, '/api/prestations?resource=promotions'),
+      fetchDismissedAlerts(getToken).catch(() => []),
     ])
-      .then(([clientsData, rdvData, facturesData, prestationsData, promosData]) => {
+      .then(([clientsData, rdvData, facturesData, prestationsData, promosData, dismissedData]) => {
         setState({
           status: 'success',
           clients: clientsData.clients,
@@ -121,6 +128,7 @@ function AlertesView({ onSelectClient, onNavigateFacturation, onNavigateNewslett
           prestations: prestationsData.prestations,
           promotions: promosData.promotions,
         })
+        setDismissedRaw(dismissedData)
       })
       .catch((error: unknown) => {
         setState({ status: 'error', message: error instanceof ApiError ? error.message : 'Erreur inconnue.' })
@@ -141,35 +149,62 @@ function AlertesView({ onSelectClient, onNavigateFacturation, onNavigateNewslett
     loadManual()
   }, [load, loadManual])
 
-  function handleDismiss(key: string) {
-    dismissAlert(key)
-    setDismissed(getDismissedSet())
+  async function handleDismiss(key: string) {
+    setValidDismissedKeys((prev) => new Set(prev).add(key))
+    try {
+      await dismissAlertKey(getToken, key)
+      setDismissedRaw(await fetchDismissedAlerts(getToken))
+    } catch {
+      // best effort — stays hidden locally for this session even if the sync failed
+    }
   }
 
   const now = useMemo(() => new Date(), [])
   const lastNewsletterSentAt = useMemo(() => localStorage.getItem(LAST_NEWSLETTER_KEY), [])
 
-  const computed = useMemo(() => {
+  const rawComputed = useMemo(() => {
     if (state.status !== 'success') return null
     const cureProgress = computeCureProgress(state.rendezvous, state.prestations)
 
     return {
-      newsletterStale: isNewsletterStale(lastNewsletterSentAt, now) && !dismissed.has('newsletter'),
-      promosBientotExpirees: computePromosBientotExpirees(state.promotions, now).filter(
-        (p) => !dismissed.has(`promo-${p.id}`),
-      ),
-      anniversaires: computeAnniversaires(state.clients, now).filter(
-        ({ client }) => !dismissed.has(`anniv-${client.id}-${now.getFullYear()}`),
-      ),
-      facturesImpayeesEnRetard: computeFacturesImpayeesEnRetard(state.factures, now).filter(
-        (f) => !dismissed.has(`facture-${f.id}`),
-      ),
-      clientesARecontacter: computeClientesARecontacter(state.clients, state.rendezvous, now).filter(
-        ({ client }) => !dismissed.has(`recontact-${client.id}`),
-      ),
-      curesBientotTerminees: computeCuresBientotTerminees(cureProgress).filter((c) => !dismissed.has(`cure-${c.id}`)),
+      newsletterStale: isNewsletterStale(lastNewsletterSentAt, now),
+      promosBientotExpirees: computePromosBientotExpirees(state.promotions, now),
+      anniversaires: computeAnniversaires(state.clients, now),
+      facturesImpayeesEnRetard: computeFacturesImpayeesEnRetard(state.factures, now),
+      clientesARecontacter: computeClientesARecontacter(state.clients, state.rendezvous, now),
+      curesBientotTerminees: computeCuresBientotTerminees(cureProgress),
     }
-  }, [state, now, lastNewsletterSentAt, dismissed])
+  }, [state, now, lastNewsletterSentAt])
+
+  useEffect(() => {
+    if (!rawComputed) return
+    const keys = new Set<string>()
+    if (rawComputed.newsletterStale) keys.add('newsletter')
+    for (const p of rawComputed.promosBientotExpirees) keys.add(`promo-${p.id}`)
+    for (const { client } of rawComputed.anniversaires) keys.add(`anniv-${client.id}-${now.getFullYear()}`)
+    for (const f of rawComputed.facturesImpayeesEnRetard) keys.add(`facture-${f.id}`)
+    for (const { client } of rawComputed.clientesARecontacter) keys.add(`recontact-${client.id}`)
+    for (const c of rawComputed.curesBientotTerminees) keys.add(`cure-${c.id}`)
+    reconcileDismissedAlerts(getToken, dismissedRaw, keys).then(setValidDismissedKeys)
+  }, [rawComputed, dismissedRaw, getToken, now])
+
+  const computed = useMemo(() => {
+    if (!rawComputed) return null
+    return {
+      newsletterStale: rawComputed.newsletterStale && !validDismissedKeys.has('newsletter'),
+      promosBientotExpirees: rawComputed.promosBientotExpirees.filter((p) => !validDismissedKeys.has(`promo-${p.id}`)),
+      anniversaires: rawComputed.anniversaires.filter(
+        ({ client }) => !validDismissedKeys.has(`anniv-${client.id}-${now.getFullYear()}`),
+      ),
+      facturesImpayeesEnRetard: rawComputed.facturesImpayeesEnRetard.filter(
+        (f) => !validDismissedKeys.has(`facture-${f.id}`),
+      ),
+      clientesARecontacter: rawComputed.clientesARecontacter.filter(
+        ({ client }) => !validDismissedKeys.has(`recontact-${client.id}`),
+      ),
+      curesBientotTerminees: rawComputed.curesBientotTerminees.filter((c) => !validDismissedKeys.has(`cure-${c.id}`)),
+    }
+  }, [rawComputed, validDismissedKeys, now])
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()

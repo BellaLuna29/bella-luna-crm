@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Show, SignIn } from '@clerk/react'
+import logo from './assets/logo.png'
 import Sidebar from './components/Sidebar'
 import Topbar from './components/Topbar'
 import ClientsListView from './views/ClientsListView'
@@ -57,10 +58,7 @@ function App() {
       <Show when="signed-out">
         <div className="min-h-screen flex flex-col items-center justify-center gap-8 px-6">
           <div className="text-center">
-            <div className="w-16 h-16 rounded-full bg-gold flex items-center justify-center mx-auto mb-4">
-              <span className="font-serif font-semibold text-2xl text-sage-dark">B</span>
-            </div>
-            <h1 className="font-serif text-3xl font-semibold text-sage-dark">Bella Luna</h1>
+            <img src={logo} alt="Bella Luna" className="w-28 h-28 mx-auto mb-4 object-contain" />
             <p className="mt-1 text-sm tracking-wider text-text-muted uppercase">
               Espace de gestion
             </p>

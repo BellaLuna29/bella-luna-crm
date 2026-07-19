@@ -8,12 +8,18 @@ import {
 } from './_lib/airtable.js'
 import { setCorsHeaders } from './_lib/cors.js'
 import { requireAuth, AuthError } from './_lib/auth.js'
-import { parseQuestionnaireInput, parsePromotionInput, parseAlerteInput } from './_lib/mappers.js'
+import {
+  parseQuestionnaireInput,
+  parsePromotionInput,
+  parseAlerteInput,
+  parseDismissedAlertInput,
+} from './_lib/mappers.js'
 
 const TABLE_PRESTATIONS = 'tblDeJttMEKXpYR8X'
 const TABLE_PROMOTIONS = 'tbldqsJCBeZwve20n'
 const TABLE_QUESTIONNAIRES = 'tblhPRz9gsVHoq6mb'
 const TABLE_ALERTES = 'tblk5PC1ALEQpHovg'
+const TABLE_ALERTES_LUES = 'tblqKRi9GGYhxdXM3'
 const RECORD_ID_RE = /^rec[a-zA-Z0-9]{14}$/
 
 interface Prestation {
@@ -47,6 +53,11 @@ interface AlerteItem {
   description: string
   date: string | null
   active: boolean
+}
+
+interface DismissedAlertItem {
+  id: string
+  cle: string
 }
 
 function linkedIds(field: unknown): string[] {
@@ -213,6 +224,32 @@ async function handleAlertes(req: VercelRequest, res: VercelResponse): Promise<v
   await handleCrud(req, res, { tableId: TABLE_ALERTES, parse: parseAlerteInput, notFoundLabel: "l'alerte" })
 }
 
+async function handleDismissedAlertes(req: VercelRequest, res: VercelResponse): Promise<void> {
+  if (req.method === 'GET') {
+    try {
+      const records = await airtableList(TABLE_ALERTES_LUES)
+      const dismissedAlerts: DismissedAlertItem[] = records.map((r) => ({
+        id: r.id,
+        cle: (r.fields['Clé'] as string) ?? '',
+      }))
+      res.status(200).json({ dismissedAlerts })
+    } catch (error) {
+      if (error instanceof AirtableConfigError) {
+        res.status(500).json({ error: error.message })
+        return
+      }
+      console.error(error)
+      res.status(502).json({ error: 'Impossible de récupérer les alertes lues depuis Airtable.' })
+    }
+    return
+  }
+  await handleCrud(req, res, {
+    tableId: TABLE_ALERTES_LUES,
+    parse: parseDismissedAlertInput,
+    notFoundLabel: "l'alerte lue",
+  })
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
   setCorsHeaders(req, res)
 
@@ -238,6 +275,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
   }
   if (req.query.resource === 'alertes') {
     await handleAlertes(req, res)
+    return
+  }
+  if (req.query.resource === 'dismissed-alerts') {
+    await handleDismissedAlertes(req, res)
     return
   }
 

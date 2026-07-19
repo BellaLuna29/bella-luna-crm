@@ -11,7 +11,12 @@ import {
   daysSince,
 } from '../lib/alerts'
 import { computeCureProgress } from '../lib/cureProgress'
-import { getDismissedSet, dismissAlert } from '../lib/dismissedAlerts'
+import {
+  type DismissedAlert,
+  fetchDismissedAlerts,
+  dismissAlertKey,
+  reconcileDismissedAlerts,
+} from '../lib/dismissedAlerts'
 
 interface Client {
   id: string
@@ -140,7 +145,8 @@ function DashboardView({
 }: DashboardViewProps) {
   const { getToken } = useAuth()
   const [state, setState] = useState<State>({ status: 'loading' })
-  const [dismissed, setDismissed] = useState<Set<string>>(() => getDismissedSet())
+  const [dismissedRaw, setDismissedRaw] = useState<DismissedAlert[]>([])
+  const [validDismissedKeys, setValidDismissedKeys] = useState<Set<string>>(new Set())
 
   const load = useCallback(() => {
     setState({ status: 'loading' })
@@ -149,8 +155,9 @@ function DashboardView({
       apiFetch<{ rendezvous: RdvItem[] }>(getToken, '/api/rendezvous'),
       apiFetch<{ factures: FactureItem[] }>(getToken, '/api/factures'),
       apiFetch<{ prestations: Prestation[] }>(getToken, '/api/prestations'),
+      fetchDismissedAlerts(getToken).catch(() => []),
     ])
-      .then(([clientsData, rdvData, facturesData, prestationsData]) => {
+      .then(([clientsData, rdvData, facturesData, prestationsData, dismissedData]) => {
         setState({
           status: 'success',
           clients: clientsData.clients,
@@ -158,6 +165,7 @@ function DashboardView({
           factures: facturesData.factures,
           prestations: prestationsData.prestations,
         })
+        setDismissedRaw(dismissedData)
       })
       .catch((error: unknown) => {
         setState({
@@ -170,11 +178,6 @@ function DashboardView({
   useEffect(() => {
     load()
   }, [load])
-
-  function handleDismiss(key: string) {
-    dismissAlert(key)
-    setDismissed(getDismissedSet())
-  }
 
   const now = useMemo(() => new Date(), [])
 
@@ -225,22 +228,51 @@ function DashboardView({
     }
   }, [state, now])
 
-  const alerts = useMemo(() => {
+  const rawAlerts = useMemo(() => {
     if (state.status !== 'success') return null
-
     const cureProgress = computeCureProgress(state.rendezvous, state.prestations)
+    return {
+      anniversaires: computeAnniversaires(state.clients, now),
+      facturesImpayeesEnRetard: computeFacturesImpayeesEnRetard(state.factures, now),
+      clientesARecontacter: computeClientesARecontacter(state.clients, state.rendezvous, now),
+      curesBientotTerminees: computeCuresBientotTerminees(cureProgress),
+    }
+  }, [state, now])
 
-    const anniversaires = computeAnniversaires(state.clients, now).filter(
-      ({ client }) => !dismissed.has(`anniv-${client.id}-${now.getFullYear()}`),
+  useEffect(() => {
+    if (!rawAlerts) return
+    const keys = new Set<string>()
+    for (const { client } of rawAlerts.anniversaires) keys.add(`anniv-${client.id}-${now.getFullYear()}`)
+    for (const f of rawAlerts.facturesImpayeesEnRetard) keys.add(`facture-${f.id}`)
+    for (const { client } of rawAlerts.clientesARecontacter) keys.add(`recontact-${client.id}`)
+    for (const c of rawAlerts.curesBientotTerminees) keys.add(`cure-${c.id}`)
+    reconcileDismissedAlerts(getToken, dismissedRaw, keys).then(setValidDismissedKeys)
+  }, [rawAlerts, dismissedRaw, getToken, now])
+
+  async function handleDismiss(key: string) {
+    setValidDismissedKeys((prev) => new Set(prev).add(key))
+    try {
+      await dismissAlertKey(getToken, key)
+      setDismissedRaw(await fetchDismissedAlerts(getToken))
+    } catch {
+      // best effort — stays hidden locally for this session even if the sync failed
+    }
+  }
+
+  const alerts = useMemo(() => {
+    if (!rawAlerts) return null
+
+    const anniversaires = rawAlerts.anniversaires.filter(
+      ({ client }) => !validDismissedKeys.has(`anniv-${client.id}-${now.getFullYear()}`),
     )
-    const facturesImpayeesEnRetard = computeFacturesImpayeesEnRetard(state.factures, now).filter(
-      (f) => !dismissed.has(`facture-${f.id}`),
+    const facturesImpayeesEnRetard = rawAlerts.facturesImpayeesEnRetard.filter(
+      (f) => !validDismissedKeys.has(`facture-${f.id}`),
     )
-    const clientesARecontacter = computeClientesARecontacter(state.clients, state.rendezvous, now).filter(
-      ({ client }) => !dismissed.has(`recontact-${client.id}`),
+    const clientesARecontacter = rawAlerts.clientesARecontacter.filter(
+      ({ client }) => !validDismissedKeys.has(`recontact-${client.id}`),
     )
-    const curesBientotTerminees = computeCuresBientotTerminees(cureProgress).filter(
-      (c) => !dismissed.has(`cure-${c.id}`),
+    const curesBientotTerminees = rawAlerts.curesBientotTerminees.filter(
+      (c) => !validDismissedKeys.has(`cure-${c.id}`),
     )
 
     return {
@@ -254,7 +286,7 @@ function DashboardView({
         clientesARecontacter.length +
         curesBientotTerminees.length,
     }
-  }, [state, now, dismissed])
+  }, [rawAlerts, validDismissedKeys, now])
 
   return (
     <div>
@@ -313,7 +345,7 @@ function DashboardView({
                     onClick={() => onSelectClient(client.id)}
                     onDismiss={() => handleDismiss(`recontact-${client.id}`)}
                     title={`📞 À recontacter — ${client.nomComplet}`}
-                    subtitle={jours === null ? 'Aucun RDV enregistré' : `Vue il y a ${jours} jours`}
+                    subtitle={jours === null ? 'Aucun rendez-vous enregistré' : `Vue il y a ${jours} jours`}
                   />
                 ))}
 
