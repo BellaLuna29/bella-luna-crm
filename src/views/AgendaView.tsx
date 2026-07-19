@@ -121,8 +121,8 @@ function RdvCard({
             <span className="text-xs font-semibold text-sage-dark">{formatHeure(item.date)}</span>
             <RdvStatusPill statut={item.statut} />
           </div>
-          <div className="text-sm font-semibold truncate">{item.clienteNom || 'Cliente inconnue'}</div>
-          <div className="text-xs text-text-muted truncate">
+          <div className="text-sm font-semibold line-clamp-2 break-words">{item.clienteNom || 'Cliente inconnue'}</div>
+          <div className="text-xs text-text-muted line-clamp-2 break-words">
             {item.prestationNom || 'Prestation inconnue'}
             {item.prix !== null ? ` — ${item.prix} €` : ''}
           </div>
@@ -320,7 +320,7 @@ function AgendaView() {
             type="date"
             value={isoDate(focusDate)}
             onChange={(e) => jumpToDate(e.target.value)}
-            className="input h-9 w-auto"
+            className="input h-9 max-w-40"
             aria-label="Aller à une date"
           />
           <span className="ml-1 font-serif text-base font-semibold text-sage-dark">
@@ -442,7 +442,7 @@ function AgendaView() {
 
       {state.status === 'success' && viewMode === 'semaine' && (
         <div className="overflow-x-auto pb-2 print:overflow-visible">
-          <div className="grid grid-cols-7 gap-3 min-w-[980px] print:min-w-0 print:gap-1.5">
+          <div className="grid grid-cols-7 gap-3 min-w-[920px] print:min-w-0 print:gap-1.5">
             {days.map((day, i) => {
               const isToday = dayKey(day) === dayKey(today)
               const items = byDay.get(dayKey(day)) ?? []

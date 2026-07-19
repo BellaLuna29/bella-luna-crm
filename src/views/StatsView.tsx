@@ -270,7 +270,7 @@ function StatsView() {
             </p>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
             <ComparisonCard label="Chiffre d'affaires facturé" current={data.caA} previous={data.caB} formatValue={formatEuros} />
             <ComparisonCard
               label="Dépenses"
@@ -291,7 +291,7 @@ function StatsView() {
                 type="month"
                 value={prestationsMonth}
                 onChange={(e) => setPrestationsMonth(e.target.value)}
-                className="input w-auto"
+                className="input max-w-48"
               />
             </div>
             {data.topPrestations.length === 0 ? (

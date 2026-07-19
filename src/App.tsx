@@ -84,6 +84,7 @@ function App() {
               <Topbar title={title} subtitle={subtitle} onOpenMobileMenu={() => setMobileMenuOpen(true)} />
             </div>
             <main className="flex-1 p-4 md:p-8 overflow-y-auto overflow-x-hidden print:p-0 print:overflow-visible">
+              <div className="max-w-[1440px] mx-auto">
               {view === 'clients' && (
                 <ClientsListView
                   onSelectClient={(id) => {
@@ -132,6 +133,7 @@ function App() {
               {view === 'sms' && <SmsView />}
               {view === 'formulaires' && <FormulairesView />}
               {view === 'newsletter' && <NewsletterView />}
+              </div>
             </main>
           </div>
         </div>

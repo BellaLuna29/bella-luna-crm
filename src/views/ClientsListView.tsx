@@ -153,7 +153,7 @@ function ClientsListView({ onSelectClient }: ClientsListViewProps) {
                   onClick={() => onSelectClient(client.id)}
                   className="cursor-pointer hover:bg-sage-pale transition-colors"
                 >
-                  <td className="px-4 py-3.5 border-b border-sage-light">
+                  <td className="px-4 py-3.5 border-b border-sage-light whitespace-nowrap">
                     <div className="flex items-center gap-2.5">
                       <div className="w-8 h-8 rounded-full bg-sage-light text-sage-dark flex items-center justify-center font-semibold text-xs shrink-0">
                         {initials(client.nomComplet)}
@@ -161,13 +161,13 @@ function ClientsListView({ onSelectClient }: ClientsListViewProps) {
                       {client.nomComplet}
                     </div>
                   </td>
-                  <td className="px-4 py-3.5 border-b border-sage-light text-sm">
+                  <td className="px-4 py-3.5 border-b border-sage-light text-sm whitespace-nowrap">
                     {client.telephone}
                   </td>
                   <td className="px-4 py-3.5 border-b border-sage-light text-sm">
                     {client.metier}
                   </td>
-                  <td className="px-4 py-3.5 border-b border-sage-light text-sm text-text-muted">
+                  <td className="px-4 py-3.5 border-b border-sage-light text-sm text-text-muted whitespace-nowrap">
                     {client.categorieMetier || '—'}
                   </td>
                   <td className="px-4 py-3.5 border-b border-sage-light text-sm">
@@ -182,7 +182,7 @@ function ClientsListView({ onSelectClient }: ClientsListViewProps) {
                   <td className="px-4 py-3.5 border-b border-sage-light">
                     <StatusPill statut={client.statut} />
                   </td>
-                  <td className="px-4 py-3.5 border-b border-sage-light text-sm text-text-muted">
+                  <td className="px-4 py-3.5 border-b border-sage-light text-sm text-text-muted min-w-40 max-w-md">
                     {client.notes}
                   </td>
                 </tr>

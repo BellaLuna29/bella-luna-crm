@@ -225,7 +225,7 @@ function ComptaView() {
               <select
                 value={depenseCategorie}
                 onChange={(e) => setDepenseCategorie(e.target.value)}
-                className="input w-auto"
+                className="input max-w-56 basis-56 shrink-0"
               >
                 <option value="toutes">Toutes catégories</option>
                 {depenseCategories.map((c) => (
@@ -238,7 +238,7 @@ function ComptaView() {
                 type="date"
                 value={depenseDebut}
                 onChange={(e) => setDepenseDebut(e.target.value)}
-                className="input w-auto"
+                className="input max-w-40 basis-40 shrink-0"
                 aria-label="Depuis le"
               />
               <span className="text-text-muted text-sm">→</span>
@@ -246,7 +246,7 @@ function ComptaView() {
                 type="date"
                 value={depenseFin}
                 onChange={(e) => setDepenseFin(e.target.value)}
-                className="input w-auto"
+                className="input max-w-40 basis-40 shrink-0"
                 aria-label="Jusqu'au"
               />
               {(depenseCategorie !== 'toutes' || depenseDebut || depenseFin) && (
@@ -347,7 +347,7 @@ function ComptaView() {
               type="date"
               value={exportDebut}
               onChange={(e) => setExportDebut(e.target.value)}
-              className="input w-auto"
+              className="input max-w-40 basis-40 shrink-0"
               aria-label="Depuis le"
             />
             <span className="text-text-muted text-sm">→</span>
@@ -355,7 +355,7 @@ function ComptaView() {
               type="date"
               value={exportFin}
               onChange={(e) => setExportFin(e.target.value)}
-              className="input w-auto"
+              className="input max-w-40 basis-40 shrink-0"
               aria-label="Jusqu'au"
             />
             {(exportDebut || exportFin) && (

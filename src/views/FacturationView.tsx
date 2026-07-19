@@ -161,7 +161,7 @@ function FacturationView({ onSelectClient }: FacturationViewProps) {
         <select
           value={categorieFilter}
           onChange={(e) => setCategorieFilter(e.target.value as CategorieFilter)}
-          className="input w-auto"
+          className="input max-w-xs"
         >
           <option value="Commercial">Commercial uniquement</option>
           <option value="Associatif ou formation">Associatif ou formation uniquement</option>
