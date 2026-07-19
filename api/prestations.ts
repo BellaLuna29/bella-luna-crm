@@ -255,11 +255,11 @@ async function handleNewsletterStatut(req: VercelRequest, res: VercelResponse): 
   if (req.method === 'GET') {
     try {
       const records = await airtableList(TABLE_NEWSLETTER_STATUT)
-      const lastSentAt = records
+      const sorted = records
         .map((r) => (r.fields['Dernier envoi'] as string) ?? null)
         .filter((v): v is string => Boolean(v))
         .sort()
-        .at(-1) ?? null
+      const lastSentAt = sorted.length > 0 ? sorted[sorted.length - 1] : null
       res.status(200).json({ lastSentAt })
     } catch (error) {
       if (error instanceof AirtableConfigError) {
