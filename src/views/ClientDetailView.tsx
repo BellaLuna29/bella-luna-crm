@@ -17,6 +17,7 @@ interface Client {
   telephone: string
   email: string
   dateNaissance: string | null
+  genre: string
   metier: string
   categorieMetier: string
   hobbies: string
@@ -180,6 +181,10 @@ function ClientDetailView({ clientId, onBack }: ClientDetailViewProps) {
                 <div>{formatDateFr(state.data.client.dateNaissance)}</div>
               </div>
               <div>
+                <div className="text-[11px] text-text-muted font-medium">Genre</div>
+                <div>{state.data.client.genre || '—'}</div>
+              </div>
+              <div>
                 <div className="text-[11px] text-text-muted font-medium">Métier</div>
                 <div>
                   {state.data.client.metier || '—'}
@@ -302,6 +307,7 @@ function ClientDetailView({ clientId, onBack }: ClientDetailViewProps) {
             telephone: state.data.client.telephone,
             email: state.data.client.email,
             dateNaissance: state.data.client.dateNaissance ?? '',
+            genre: state.data.client.genre,
             metier: state.data.client.metier,
             categorieMetier: state.data.client.categorieMetier,
             hobbies: state.data.client.hobbies,

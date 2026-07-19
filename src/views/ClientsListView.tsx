@@ -9,6 +9,7 @@ interface Client {
   nomComplet: string
   telephone: string
   email: string
+  genre: string
   metier: string
   categorieMetier: string
   notes: string

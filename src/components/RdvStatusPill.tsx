@@ -4,11 +4,21 @@ const STYLES: Record<string, string> = {
   Annulé: 'bg-danger-pale text-danger',
 }
 
-function RdvStatusPill({ statut }: { statut: string }) {
+const SHORT: Record<string, string> = {
+  Confirmé: 'C',
+  Honoré: 'H',
+  Annulé: 'A',
+}
+
+function RdvStatusPill({ statut, compact }: { statut: string; compact?: boolean }) {
   const style = STYLES[statut] ?? 'bg-sage-light text-sage-dark'
+  const label = compact ? (SHORT[statut] ?? statut[0] ?? '?') : statut
   return (
-    <span className={`text-xs font-semibold px-2.5 py-1 rounded-full inline-block ${style}`}>
-      {statut}
+    <span
+      className={`text-xs font-semibold rounded-full inline-block ${compact ? 'w-5 h-5 leading-5 text-center' : 'px-2.5 py-1'} ${style}`}
+      title={statut}
+    >
+      {label}
     </span>
   )
 }

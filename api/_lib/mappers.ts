@@ -6,6 +6,7 @@ export interface Client {
   telephone: string
   email: string
   dateNaissance: string | null
+  genre: string
   metier: string
   categorieMetier: string
   hobbies: string
@@ -23,6 +24,7 @@ export function mapClient(record: AirtableRecord): Client {
     telephone: (f['Téléphone'] as string) ?? '',
     email: (f['Email'] as string) ?? '',
     dateNaissance: (f['Date de naissance'] as string) ?? null,
+    genre: (f['Genre'] as string) ?? '',
     metier: (f['Métier'] as string) ?? '',
     categorieMetier: (f['Catégorie de métier'] as string) ?? '',
     hobbies: (f['Hobbies / Sport'] as string) ?? '',
@@ -33,6 +35,7 @@ export function mapClient(record: AirtableRecord): Client {
   }
 }
 
+export const GENRE_VALUES = ['Femme', 'Homme', ''] as const
 export const STATUT_VALUES = ['Nouvelle', 'Régulière', 'Inactive'] as const
 export const CATEGORIE_METIER_VALUES = [
   'Médecine',
@@ -97,6 +100,17 @@ export function parseClientInput(
       fields['Date de naissance'] = v
     } else {
       errors.push('La date de naissance doit être au format AAAA-MM-JJ.')
+    }
+  }
+
+  if ('genre' in b) {
+    const v = b.genre
+    if (v === '' || v === null) {
+      fields['Genre'] = null
+    } else if (typeof v === 'string' && (GENRE_VALUES as readonly string[]).includes(v)) {
+      fields['Genre'] = v
+    } else {
+      errors.push('Genre invalide.')
     }
   }
 

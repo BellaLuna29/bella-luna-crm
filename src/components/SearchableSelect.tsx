@@ -68,7 +68,7 @@ function SearchableSelect({ options, value, onChange, placeholder, emptyLabel }:
         autoComplete="off"
       />
       {open && (
-        <div className="absolute z-10 mt-1 w-full max-h-56 overflow-y-auto bg-white border border-border rounded-[10px] shadow-lg">
+        <div className="absolute z-10 mt-1 w-full max-h-72 overflow-y-auto bg-white border border-border rounded-[10px] shadow-lg">
           {filtered.length === 0 ? (
             <div className="px-3 py-2.5 text-sm text-text-muted">
               {emptyLabel ?? 'Aucun résultat.'}
@@ -83,7 +83,7 @@ function SearchableSelect({ options, value, onChange, placeholder, emptyLabel }:
                   setOpen(false)
                   setQuery('')
                 }}
-                className={`block w-full text-left px-3 py-2.5 text-sm hover:bg-sage-pale ${
+                className={`block w-full text-left px-3 py-3.5 text-sm min-h-[44px] hover:bg-sage-pale ${
                   o.id === value ? 'bg-sage-light font-semibold text-sage-dark' : ''
                 }`}
               >

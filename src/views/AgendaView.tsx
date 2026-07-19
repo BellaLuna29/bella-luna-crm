@@ -119,7 +119,7 @@ function RdvCard({
         <button onClick={onClick} className="flex-1 min-w-0 text-left">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-sage-dark">{formatHeure(item.date)}</span>
-            <RdvStatusPill statut={item.statut} />
+            <RdvStatusPill statut={item.statut} compact />
           </div>
           <div className="text-sm font-semibold line-clamp-2 break-words">{item.clienteNom || 'Cliente inconnue'}</div>
           <div className="text-xs text-text-muted line-clamp-2 break-words">

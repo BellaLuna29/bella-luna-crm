@@ -8,6 +8,7 @@ interface Client {
   id: string
   nomComplet: string
   email: string
+  genre: string
   categorieMetier: string
   statut: string
   newsletter: boolean
@@ -34,6 +35,7 @@ function NewsletterView() {
   const { getToken } = useAuth()
   const [state, setState] = useState<State>({ status: 'loading' })
   const [optInOnly, setOptInOnly] = useState(true)
+  const [genreFilter, setGenreFilter] = useState('')
   const [categories, setCategories] = useState<string[]>([])
   const [excluded, setExcluded] = useState<Set<string>>(new Set())
   const [showAllRecipients, setShowAllRecipients] = useState(false)
@@ -81,11 +83,12 @@ function NewsletterView() {
     if (state.status !== 'success') return []
     return state.clients.filter((c) => {
       if (optInOnly && !c.newsletter) return false
+      if (genreFilter && c.genre !== genreFilter) return false
       if (categories.length > 0 && !categories.includes(c.categorieMetier)) return false
       if (!c.email) return false
       return true
     })
-  }, [state, optInOnly, categories])
+  }, [state, optInOnly, genreFilter, categories])
 
   const selected = useMemo(() => matching.filter((c) => !excluded.has(c.id)), [matching, excluded])
 
@@ -132,6 +135,23 @@ function NewsletterView() {
           Uniquement les clientes ayant accepté la newsletter
         </label>
 
+        <div className="mb-2 text-xs font-semibold text-text-muted uppercase tracking-wide">Genre</div>
+        <div className="flex flex-wrap gap-2 mb-4">
+          {['', 'Femme', 'Homme'].map((g) => (
+            <button
+              key={g || '_all'}
+              onClick={() => setGenreFilter(g)}
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+                genreFilter === g
+                  ? 'bg-sage-dark text-white'
+                  : 'bg-sage-pale text-sage-dark hover:bg-sage-light'
+              }`}
+            >
+              {g || 'Tous'}
+            </button>
+          ))}
+        </div>
+
         <div className="mb-2 text-xs font-semibold text-text-muted uppercase tracking-wide">
           Catégorie de métier (laisser vide = toutes)
         </div>
@@ -177,6 +197,11 @@ function NewsletterView() {
                     />
                     <span className="font-medium truncate">{c.nomComplet}</span>
                     <span className="text-text-muted text-xs truncate min-w-0">{c.email}</span>
+                    {c.genre && (
+                      <span className="shrink-0 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-gold-pale text-gold-text">
+                        {c.genre === 'Homme' ? 'H' : 'F'}
+                      </span>
+                    )}
                     {c.categorieMetier && (
                       <span className="ml-auto shrink-0 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-sage-light text-sage-dark">
                         {c.categorieMetier}

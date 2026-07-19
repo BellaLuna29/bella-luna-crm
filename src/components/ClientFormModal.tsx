@@ -7,6 +7,7 @@ export interface ClientFormValues {
   telephone: string
   email: string
   dateNaissance: string
+  genre: string
   metier: string
   categorieMetier: string
   hobbies: string
@@ -20,6 +21,7 @@ const EMPTY_VALUES: ClientFormValues = {
   telephone: '',
   email: '',
   dateNaissance: '',
+  genre: '',
   metier: '',
   categorieMetier: '',
   hobbies: '',
@@ -62,6 +64,7 @@ function ClientFormModal({ mode, clientId, initialValues, onClose, onSaved }: Cl
         telephone: values.telephone.trim(),
         email: values.email.trim(),
         dateNaissance: values.dateNaissance || null,
+        genre: values.genre || null,
         metier: values.metier.trim(),
         categorieMetier: values.categorieMetier,
         hobbies: values.hobbies.trim(),
@@ -123,7 +126,7 @@ function ClientFormModal({ mode, clientId, initialValues, onClose, onSaved }: Cl
             </Field>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <Field label="Date de naissance">
               <input
                 type="date"
@@ -131,6 +134,17 @@ function ClientFormModal({ mode, clientId, initialValues, onClose, onSaved }: Cl
                 onChange={(e) => set('dateNaissance', e.target.value)}
                 className="input"
               />
+            </Field>
+            <Field label="Genre">
+              <select
+                value={values.genre}
+                onChange={(e) => set('genre', e.target.value)}
+                className="input"
+              >
+                <option value="">Non renseigné</option>
+                <option value="Femme">Femme</option>
+                <option value="Homme">Homme</option>
+              </select>
             </Field>
             <Field label="Métier">
               <input

@@ -45,7 +45,7 @@ type State =
   | { status: 'error'; message: string }
   | { status: 'success'; clients: Client[]; rendezvous: RdvItem[]; factures: FactureItem[] }
 
-const DAY_MS = 24 * 60 * 60 * 1000
+const HOUR_MS = 60 * 60 * 1000
 
 function formatDateCourte(iso: string | null): string {
   if (!iso) return '—'
@@ -157,7 +157,10 @@ function SmsView() {
         const t = new Date(r.date).getTime()
         if (Number.isNaN(t)) return false
         const diff = t - now.getTime()
-        return diff > 0 && diff <= DAY_MS
+        if (diff <= 0) return false
+        const client = r.clienteId ? clientById.get(r.clienteId) : undefined
+        const window = client?.statut === 'Nouvelle' ? 72 * HOUR_MS : 48 * HOUR_MS
+        return diff <= window
       })
       .sort((a, b) => new Date(a.date as string).getTime() - new Date(b.date as string).getTime())
 
@@ -267,10 +270,11 @@ function SmsView() {
         <div className="flex flex-col gap-6">
           <div className="bg-white border border-border rounded-2xl p-5">
             <h3 className="font-serif text-lg font-semibold text-sage-dark mb-4">
-              Rappels de rendez-vous (24h)
+              Rappels de rendez-vous
             </h3>
+            <p className="text-xs text-text-muted mb-4">72 h pour les nouvelles clientes, 48 h pour les anciennes.</p>
             {sections.in24h.length === 0 ? (
-              <p className="text-sm text-text-muted">Aucun rendez-vous dans les 24 prochaines heures.</p>
+              <p className="text-sm text-text-muted">Aucun rendez-vous à rappeler pour le moment.</p>
             ) : (
               <div className="flex flex-col gap-1.5">
                 {sections.in24h.map((r) => (
