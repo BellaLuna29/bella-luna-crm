@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@clerk/react'
 import { apiFetch, ApiError } from '../lib/api'
 import AlertRow from '../components/AlertRow'
+import Icon from '../components/Icon'
 import {
   computeAnniversaires,
   computeFacturesImpayeesEnRetard,
@@ -275,9 +276,14 @@ function AlertesView({ onSelectClient, onNavigateFacturation, onNavigateNewslett
   return (
     <div className="flex flex-col gap-6">
       <div className="bg-white border border-border rounded-2xl p-5">
-        <h3 className="font-serif text-lg font-semibold text-sage-dark mb-4">
-          Alertes automatiques {computed && `(${totalComputed})`}
-        </h3>
+        <div className="flex items-center gap-2.5 mb-4">
+          <span className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 bg-danger/20 text-danger">
+            <Icon name="bell" size={16} />
+          </span>
+          <h3 className="font-serif text-lg font-semibold text-sage-dark">
+            Alertes automatiques {computed && `(${totalComputed})`}
+          </h3>
+        </div>
 
         {dismissError && <p className="text-sm text-danger mb-3">{dismissError}</p>}
 
@@ -294,9 +300,11 @@ function AlertesView({ onSelectClient, onNavigateFacturation, onNavigateNewslett
               <AlertRow
                 colorClass="bg-gold-pale hover:bg-gold/20 transition-colors"
                 subtitleClassName="text-gold-text"
+                icon="mail"
+                iconClass="bg-gold/25 text-gold-text"
                 onClick={onNavigateNewsletter}
                 onDismiss={() => handleDismiss('newsletter')}
-                title="📧 Newsletter pas envoyée depuis longtemps"
+                title="Newsletter pas envoyée depuis longtemps"
                 subtitle={lastNewsletterSentAt ? `Depuis ${daysSince(lastNewsletterSentAt, now)} jours` : 'Jamais envoyée'}
               />
             )}
@@ -306,9 +314,11 @@ function AlertesView({ onSelectClient, onNavigateFacturation, onNavigateNewslett
                 key={`promo-${p.id}`}
                 colorClass="bg-gold-pale hover:bg-gold/20 transition-colors"
                 subtitleClassName="text-gold-text"
+                icon="tag"
+                iconClass="bg-gold/25 text-gold-text"
                 onClick={onNavigateFacturation}
                 onDismiss={() => handleDismiss(`promo-${p.id}`)}
-                title={`🏷️ Code promo bientôt expiré — ${p.nom}`}
+                title={`Code promo bientôt expiré — ${p.nom}`}
                 subtitle={
                   daysUntil(p.dateExpiration as string, now) === 0
                     ? "Expire aujourd'hui"
@@ -322,11 +332,13 @@ function AlertesView({ onSelectClient, onNavigateFacturation, onNavigateNewslett
                 key={`anniv-${client.id}`}
                 colorClass="bg-gold-pale hover:bg-gold/20 transition-colors"
                 subtitleClassName="text-gold-text"
+                icon="cake"
+                iconClass="bg-gold/25 text-gold-text"
                 onClick={() => onSelectClient(client.id)}
                 onDismiss={() => handleDismiss(`anniv-${client.id}-${now.getFullYear()}`)}
                 title={
                   <>
-                    🎂 {client.nomComplet}
+                    {client.nomComplet}
                     <span className="text-text-muted font-normal"> — {formatDateLongue(client.dateNaissance)}</span>
                   </>
                 }
@@ -339,9 +351,11 @@ function AlertesView({ onSelectClient, onNavigateFacturation, onNavigateNewslett
                 key={`facture-${f.id}`}
                 colorClass="bg-danger-pale hover:bg-danger/10 transition-colors"
                 subtitleClassName="text-danger"
+                icon="receipt"
+                iconClass="bg-danger/20 text-danger"
                 onClick={onNavigateFacturation}
                 onDismiss={() => handleDismiss(`facture-${f.id}`)}
-                title={`💶 Facture impayée — ${f.clienteNom || 'Cliente inconnue'}`}
+                title={`Facture impayée — ${f.clienteNom || 'Cliente inconnue'}`}
                 subtitle={`${f.montant !== null ? `${f.montant} € — ` : ''}en retard depuis ${daysSince(f.date as string, now)} jours`}
               />
             ))}
@@ -351,9 +365,11 @@ function AlertesView({ onSelectClient, onNavigateFacturation, onNavigateNewslett
                 key={`recontact-${client.id}`}
                 colorClass="bg-sage-pale hover:bg-sage-light transition-colors"
                 subtitleClassName="text-sage-dark"
+                icon="phone"
+                iconClass="bg-sage/20 text-sage-dark"
                 onClick={() => onSelectClient(client.id)}
                 onDismiss={() => handleDismiss(`recontact-${client.id}`)}
-                title={`📞 À recontacter — ${client.nomComplet}`}
+                title={`À recontacter — ${client.nomComplet}`}
                 subtitle={jours === null ? 'Aucun RDV enregistré' : `Vue il y a ${jours} jours`}
               />
             ))}
@@ -363,9 +379,11 @@ function AlertesView({ onSelectClient, onNavigateFacturation, onNavigateNewslett
                 key={`cure-${c.id}`}
                 colorClass="bg-sage-pale hover:bg-sage-light transition-colors"
                 subtitleClassName="text-sage-dark"
+                icon="sparkles"
+                iconClass="bg-avatar-teal/20 text-avatar-teal"
                 onClick={() => onSelectClient(c.clienteId)}
                 onDismiss={() => handleDismiss(`cure-${c.id}`)}
-                title={`✨ Dernière séance de cure — ${c.clienteNom || 'Cliente inconnue'}`}
+                title={`Dernière séance de cure — ${c.clienteNom || 'Cliente inconnue'}`}
                 subtitle={c.prestationNom}
               />
             ))}
@@ -375,7 +393,12 @@ function AlertesView({ onSelectClient, onNavigateFacturation, onNavigateNewslett
 
       <div className="bg-white border border-border rounded-2xl p-5">
         <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
-          <h3 className="font-serif text-lg font-semibold text-sage-dark">Alertes personnalisées</h3>
+          <div className="flex items-center gap-2.5">
+            <span className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 bg-avatar-mauve/20 text-avatar-mauve">
+              <Icon name="bell" size={16} />
+            </span>
+            <h3 className="font-serif text-lg font-semibold text-sage-dark">Alertes personnalisées</h3>
+          </div>
           <button
             onClick={() => setShowCreate((v) => !v)}
             className="bg-sage-dark text-white px-4.5 py-2.5 rounded-[10px] text-sm font-semibold hover:bg-sage-dark/90"

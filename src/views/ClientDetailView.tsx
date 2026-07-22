@@ -6,6 +6,7 @@ import ClientFormModal from '../components/ClientFormModal'
 import RdvHistoryRow from '../components/RdvHistoryRow'
 import MessageComposerModal from '../components/MessageComposerModal'
 import RdvFormModal from '../components/RdvFormModal'
+import Icon from '../components/Icon'
 
 function buildTelLink(telephone: string): string {
   return `tel:${telephone.replace(/[^\d+]/g, '')}`
@@ -131,9 +132,10 @@ function ClientDetailView({ clientId, onBack, embedded }: ClientDetailViewProps)
             {state.data.client.telephone && (
               <a
                 href={buildTelLink(state.data.client.telephone)}
-                className="bg-white border border-border text-sage-dark px-4 py-2 rounded-[10px] text-sm font-semibold hover:bg-sage-pale"
+                className="bg-white border border-border text-sage-dark px-4 py-2 rounded-[10px] text-sm font-semibold hover:bg-sage-pale inline-flex items-center gap-1.5"
               >
-                📞 Appeler
+                <Icon name="phone" size={14} />
+                Appeler
               </a>
             )}
             <button

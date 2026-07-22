@@ -1,18 +1,18 @@
 import { UserButton } from '@clerk/react'
 import logo from '../assets/logo.png'
 import type { View } from '../types'
+import Icon, { type IconName } from './Icon'
 
-const NAV_ITEMS: { view: View; label: string; icon: string }[] = [
-  { view: 'dashboard', label: 'Tableau de bord', icon: '🏠' },
-  { view: 'agenda', label: 'Rendez-vous', icon: '📅' },
-  { view: 'clients', label: 'Clientes', icon: '👥' },
-  { view: 'alertes', label: 'Alertes', icon: '🔔' },
-  { view: 'billing', label: 'Facturation', icon: '💶' },
-  { view: 'compta', label: 'Comptabilité', icon: '🧾' },
-  { view: 'stats', label: 'Statistiques', icon: '📈' },
-  { view: 'communication', label: 'Communication', icon: '💬' },
-  { view: 'formulaires', label: 'Formulaires', icon: '📝' },
-  { view: 'parametres', label: 'Paramètres', icon: '⚙️' },
+const NAV_ITEMS: { view: View; label: string; icon: IconName; chipClass: string }[] = [
+  { view: 'dashboard', label: 'Tableau de bord', icon: 'home', chipClass: 'bg-avatar-indigo/25 text-avatar-indigo' },
+  { view: 'agenda', label: 'Rendez-vous', icon: 'calendar', chipClass: 'bg-avatar-teal/25 text-avatar-teal' },
+  { view: 'clients', label: 'Clientes', icon: 'users', chipClass: 'bg-avatar-mauve/25 text-avatar-mauve' },
+  { view: 'billing', label: 'Facturation', icon: 'receipt', chipClass: 'bg-gold/25 text-gold' },
+  { view: 'prestations', label: 'Prestations', icon: 'clipboard-list', chipClass: 'bg-avatar-forest/25 text-avatar-forest' },
+  { view: 'compta', label: 'Comptabilité', icon: 'calculator', chipClass: 'bg-white/20 text-white' },
+  { view: 'stats', label: 'Statistiques', icon: 'trending-up', chipClass: 'bg-avatar-indigo/25 text-avatar-indigo' },
+  { view: 'communication', label: 'Communication', icon: 'message-circle', chipClass: 'bg-avatar-teal/25 text-avatar-teal' },
+  { view: 'parametres', label: 'Paramètres', icon: 'settings', chipClass: 'bg-white/20 text-white' },
 ]
 
 interface SidebarProps {
@@ -57,11 +57,13 @@ function Sidebar({ activeView, onNavigate, collapsed, onToggleCollapsed, mobileO
                 onCloseMobile()
               }}
               title={item.label}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-[10px] text-sm font-medium text-left transition-colors ${collapsedDesktop} ${
+              className={`flex items-center gap-3 px-2.5 py-2.5 rounded-[10px] text-sm font-medium text-left transition-colors ${collapsedDesktop} ${
                 activeView === item.view ? 'bg-white/15 text-white' : 'text-white/85 hover:bg-white/10'
               }`}
             >
-              <span className="text-base shrink-0">{item.icon}</span>
+              <span className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${item.chipClass}`}>
+                <Icon name={item.icon} size={16} strokeWidth={2.25} />
+              </span>
               <span className={hideOnCollapse}>{item.label}</span>
             </button>
           ))}
@@ -71,7 +73,8 @@ function Sidebar({ activeView, onNavigate, collapsed, onToggleCollapsed, mobileO
           onClick={onToggleCollapsed}
           className="hidden md:flex items-center justify-center gap-2 mt-4 px-3 py-2 rounded-[10px] text-xs font-semibold text-white/70 hover:bg-white/10"
         >
-          {collapsed ? '»' : '« Réduire le menu'}
+          <Icon name={collapsed ? 'chevron-right' : 'chevron-left'} size={14} />
+          <span className={hideOnCollapse}>Réduire le menu</span>
         </button>
 
         <div className={`mt-auto flex items-center gap-3 px-3 py-3 bg-white/5 rounded-[10px] ${collapsedDesktop}`}>

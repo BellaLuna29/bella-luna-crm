@@ -1,5 +1,6 @@
 import { avatarColorClass } from '../lib/avatarColor'
 import RdvStatusPill from './RdvStatusPill'
+import Icon from './Icon'
 
 interface GridItem {
   id: string
@@ -52,16 +53,35 @@ function AgendaDayGrid({ items, onClickItem, onSendReminder }: AgendaDayGridProp
   return (
     <div className="border border-border rounded-2xl bg-white overflow-hidden">
       <div className="flex">
-        <div className="w-14 shrink-0 border-r border-border">
-          {hours.map((h) => (
-            <div key={h} style={{ height: HOUR_HEIGHT }} className="text-xs text-text-muted px-2 pt-1">
-              {h}h
-            </div>
-          ))}
+        <div className="w-16 shrink-0 border-r border-border">
+          {hours.map((h) => {
+            const isMorning = h < 12
+            const isZoneStart = h === startHour || h === 12
+            return (
+              <div
+                key={h}
+                style={{ height: HOUR_HEIGHT }}
+                className={`text-xs text-text-muted px-2 pt-1 border-l-4 ${
+                  isMorning ? 'border-l-gold bg-gold-pale/25' : 'border-l-avatar-teal bg-avatar-teal-pale/40'
+                }`}
+              >
+                {isZoneStart && (
+                  <div className={`text-[9px] font-bold uppercase tracking-wide mb-0.5 ${isMorning ? 'text-gold-text' : 'text-avatar-teal'}`}>
+                    {isMorning ? 'Matin' : 'Après-midi'}
+                  </div>
+                )}
+                {h}h
+              </div>
+            )
+          })}
         </div>
         <div className="flex-1 relative" style={{ height: totalHeight }}>
           {hours.map((h, i) => (
-            <div key={h} className="absolute left-0 right-0 border-b border-border/60" style={{ top: i * HOUR_HEIGHT }} />
+            <div
+              key={h}
+              className={`absolute left-0 right-0 ${h === 12 ? 'border-b-2 border-dashed border-avatar-teal/40' : 'border-b border-border/60'}`}
+              style={{ top: i * HOUR_HEIGHT }}
+            />
           ))}
           {parsed.map((item) => {
             const minutesFromStart = (item.start.getHours() - startHour) * 60 + item.start.getMinutes()
@@ -87,11 +107,11 @@ function AgendaDayGrid({ items, onClickItem, onSendReminder }: AgendaDayGridProp
                       e.stopPropagation()
                       onSendReminder(item.id)
                     }}
-                    className="w-5 h-5 flex items-center justify-center rounded-full bg-white/25 hover:bg-white/40 text-[10px] print:hidden"
+                    className="w-5 h-5 flex items-center justify-center rounded-full bg-white/25 hover:bg-white/40 print:hidden"
                     aria-label={`Envoyer le rappel à ${item.clienteNom || 'la cliente'}`}
                     title="Envoyer le rappel"
                   >
-                    💬
+                    <Icon name="send" size={10} />
                   </button>
                 </div>
               </div>

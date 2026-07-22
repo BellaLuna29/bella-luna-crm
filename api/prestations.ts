@@ -19,6 +19,7 @@ import {
   parseCommunicationLogInput,
   mapParametres,
   parseParametresInput,
+  parsePrestationInput,
 } from './_lib/mappers.js'
 
 const TABLE_PRESTATIONS = 'tblDeJttMEKXpYR8X'
@@ -456,30 +457,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     return
   }
 
-  if (req.method !== 'GET') {
-    res.status(405).json({ error: 'Méthode non autorisée.' })
+  if (req.method === 'GET') {
+    try {
+      const records = await airtableList(TABLE_PRESTATIONS)
+      const prestations: Prestation[] = records
+        .map((r) => ({
+          id: r.id,
+          nom: (r.fields['Nom de la prestation'] as string) ?? '',
+          categorie: (r.fields['Catégorie'] as string) ?? '',
+          duree: (r.fields['Durée'] as string) ?? '',
+          prix: (r.fields['Prix'] as number) ?? 0,
+          type: (r.fields['Type'] as string) ?? '',
+        }))
+        .sort((a, b) => a.categorie.localeCompare(b.categorie) || a.nom.localeCompare(b.nom))
+      res.status(200).json({ prestations })
+    } catch (error) {
+      if (error instanceof AirtableConfigError) {
+        res.status(500).json({ error: error.message })
+        return
+      }
+      console.error(error)
+      res.status(502).json({ error: 'Impossible de récupérer les prestations depuis Airtable.' })
+    }
     return
   }
 
-  try {
-    const records = await airtableList(TABLE_PRESTATIONS)
-    const prestations: Prestation[] = records
-      .map((r) => ({
-        id: r.id,
-        nom: (r.fields['Nom de la prestation'] as string) ?? '',
-        categorie: (r.fields['Catégorie'] as string) ?? '',
-        duree: (r.fields['Durée'] as string) ?? '',
-        prix: (r.fields['Prix'] as number) ?? 0,
-        type: (r.fields['Type'] as string) ?? '',
-      }))
-      .sort((a, b) => a.categorie.localeCompare(b.categorie) || a.nom.localeCompare(b.nom))
-    res.status(200).json({ prestations })
-  } catch (error) {
-    if (error instanceof AirtableConfigError) {
-      res.status(500).json({ error: error.message })
-      return
-    }
-    console.error(error)
-    res.status(502).json({ error: 'Impossible de récupérer les prestations depuis Airtable.' })
-  }
+  await handleCrud(req, res, { tableId: TABLE_PRESTATIONS, parse: parsePrestationInput, notFoundLabel: 'la prestation' })
 }

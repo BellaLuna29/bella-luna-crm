@@ -7,27 +7,25 @@ import ClientsListView from './views/ClientsListView'
 import ClientDetailView from './views/ClientDetailView'
 import AgendaView from './views/AgendaView'
 import DashboardView from './views/DashboardView'
-import AlertesView from './views/AlertesView'
 import StatsView from './views/StatsView'
 import FacturationView from './views/FacturationView'
+import PrestationsView from './views/PrestationsView'
 import ComptaView from './views/ComptaView'
 import CommunicationView from './views/CommunicationView'
-import FormulairesView from './views/FormulairesView'
 import ParametresView from './views/ParametresView'
 import type { View } from './types'
 
 const TITLES: Record<View, [string, string]> = {
   dashboard: ['Tableau de bord', "Vue d'ensemble de votre activité"],
-  alertes: ['Alertes', 'Ce qui mérite ton attention en ce moment'],
   stats: ['Statistiques', 'Comparaison des performances mois par mois'],
   clients: ['Clientes', 'Liste des fiches clientes'],
   'client-detail': ['Fiche cliente', 'Informations, historique et notes'],
   agenda: ['Rendez-vous', 'Votre agenda et le suivi des cures'],
   billing: ['Facturation', 'Factures, promotions et suivi des paiements'],
+  prestations: ['Prestations', 'Le catalogue de tes soins et massages'],
   compta: ['Comptabilité', 'Dépenses et exports pour ta comptabilité'],
   communication: ['Communication', 'SMS, newsletter et historique des envois'],
-  formulaires: ['Formulaires', 'Questionnaires envoyés aux clientes'],
-  parametres: ['Paramètres', "Horaires d'ouverture et objectifs"],
+  parametres: ['Paramètres', "Horaires, alertes, formulaires et objectifs"],
 }
 
 const SIDEBAR_COLLAPSED_KEY = 'bella-luna-sidebar-collapsed'
@@ -101,16 +99,7 @@ function App() {
                   onNavigateAgenda={() => setView('agenda')}
                   onNavigateFacturation={() => setView('billing')}
                   onNavigateCompta={() => setView('compta')}
-                />
-              )}
-              {view === 'alertes' && (
-                <AlertesView
-                  onSelectClient={(id) => {
-                    setSelectedClientId(id)
-                    setView('client-detail')
-                  }}
-                  onNavigateFacturation={() => setView('billing')}
-                  onNavigateNewsletter={() => setView('communication')}
+                  onNavigateParametres={() => setView('parametres')}
                 />
               )}
               {view === 'stats' && <StatsView />}
@@ -123,10 +112,19 @@ function App() {
                   }}
                 />
               )}
+              {view === 'prestations' && <PrestationsView />}
               {view === 'compta' && <ComptaView />}
               {view === 'communication' && <CommunicationView />}
-              {view === 'formulaires' && <FormulairesView />}
-              {view === 'parametres' && <ParametresView />}
+              {view === 'parametres' && (
+                <ParametresView
+                  onSelectClient={(id) => {
+                    setSelectedClientId(id)
+                    setView('client-detail')
+                  }}
+                  onNavigateFacturation={() => setView('billing')}
+                  onNavigateNewsletter={() => setView('communication')}
+                />
+              )}
               </div>
             </main>
           </div>

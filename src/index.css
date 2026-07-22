@@ -22,6 +22,11 @@
   --color-avatar-indigo: #5D74A6;
   --color-avatar-forest: #4C6B4F;
   --color-avatar-teal: #4F8383;
+
+  --color-avatar-mauve-pale: #F1E9F1;
+  --color-avatar-indigo-pale: #E7ECF5;
+  --color-avatar-forest-pale: #E8EEE8;
+  --color-avatar-teal-pale: #E6EFEF;
 }
 
 body {

@@ -3,6 +3,7 @@ import { useAuth } from '@clerk/react'
 import { apiFetch, ApiError } from '../lib/api'
 import MessageComposerModal from '../components/MessageComposerModal'
 import SearchableSelect from '../components/SearchableSelect'
+import Icon, { type IconName } from '../components/Icon'
 import type { TemplateContext } from '../lib/messageTemplates'
 import { formatDateHeureNaturel } from '../lib/formatDate'
 import { computeAnniversaires, computeFacturesImpayeesEnRetard, computeClientesARecontacter, daysSince } from '../lib/alerts'
@@ -58,14 +59,21 @@ interface ContactRowProps {
   title: string
   subtitle: string
   colorClass: string
+  icon?: IconName
+  iconClass?: string
   onContact: () => void
   onDismiss?: () => void
 }
 
-function ContactRow({ title, subtitle, colorClass, onContact, onDismiss }: ContactRowProps) {
+function ContactRow({ title, subtitle, colorClass, icon, iconClass, onContact, onDismiss }: ContactRowProps) {
   return (
-    <div className={`flex items-center justify-between gap-3 rounded-lg p-3 ${colorClass}`}>
-      <div className="min-w-0">
+    <div className={`flex items-center gap-3 rounded-lg p-3 ${colorClass}`}>
+      {icon && (
+        <span className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${iconClass ?? 'bg-white text-sage-dark'}`}>
+          <Icon name={icon} size={15} />
+        </span>
+      )}
+      <div className="min-w-0 flex-1">
         <div className="text-sm font-semibold truncate">{title}</div>
         <div className="text-xs text-text-muted truncate">{subtitle}</div>
       </div>
@@ -283,6 +291,8 @@ function SmsView() {
                     title={r.clienteNom || 'Cliente inconnue'}
                     subtitle={`${r.prestationNom || 'Prestation'} — ${formatDateCourte(r.date)}`}
                     colorClass="bg-sage-pale"
+                    icon="calendar"
+                    iconClass="bg-sage/20 text-sage-dark"
                     onContact={() => contactFromRdv(r)}
                   />
                 ))}
@@ -303,6 +313,8 @@ function SmsView() {
                     title={client.nomComplet}
                     subtitle={jours === null ? 'Aucun rendez-vous enregistré' : `Vue il y a ${jours} jours`}
                     colorClass="bg-sage-pale"
+                    icon="phone"
+                    iconClass="bg-sage/20 text-sage-dark"
                     onContact={() => contactRecontact(client)}
                     onDismiss={() => handleDismissRecontact(client.id)}
                   />
@@ -320,9 +332,11 @@ function SmsView() {
                 {sections.anniversaires.map(({ client, jours }) => (
                   <ContactRow
                     key={client.id}
-                    title={`🎂 ${client.nomComplet}`}
+                    title={client.nomComplet}
                     subtitle={jours === 0 ? "Aujourd'hui" : jours === 1 ? 'Demain' : `Dans ${jours} jours`}
                     colorClass="bg-gold-pale"
+                    icon="cake"
+                    iconClass="bg-gold/25 text-gold-text"
                     onContact={() => contactAnniversaire(client)}
                   />
                 ))}
@@ -342,6 +356,8 @@ function SmsView() {
                     title={f.clienteNom || 'Cliente inconnue'}
                     subtitle={`${f.montant !== null ? `${f.montant} € — ` : ''}en retard depuis ${daysSince(f.date as string, now)} jours`}
                     colorClass="bg-danger-pale"
+                    icon="receipt"
+                    iconClass="bg-danger/20 text-danger"
                     onContact={() => contactFacture(f)}
                   />
                 ))}

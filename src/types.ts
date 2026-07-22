@@ -1,12 +1,11 @@
 export type View =
   | 'dashboard'
-  | 'alertes'
   | 'stats'
   | 'clients'
   | 'client-detail'
   | 'agenda'
   | 'billing'
+  | 'prestations'
   | 'compta'
   | 'communication'
-  | 'formulaires'
   | 'parametres'

@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useAuth } from '@clerk/react'
 import { apiFetch, ApiError } from '../lib/api'
 import RdvStatusPill from '../components/RdvStatusPill'
 import AlertRow from '../components/AlertRow'
+import Icon, { type IconName } from '../components/Icon'
 import {
   computeAnniversaires,
   computeFacturesImpayeesEnRetard,
@@ -18,6 +19,18 @@ import {
   reconcileDismissedAlerts,
 } from '../lib/dismissedAlerts'
 import { fetchParametres } from '../lib/parametres'
+import { avatarColorClass } from '../lib/avatarColor'
+
+const VISIBLE_ALERTS_COUNT = 4
+
+function initials(name: string): string {
+  return name
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join('')
+}
 
 interface Client {
   id: string
@@ -132,18 +145,25 @@ function formatEuros(n: number): string {
 interface StatCardProps {
   label: string
   value: string | number
+  icon: IconName
+  iconClass: string
   onClick?: () => void
 }
 
-function StatCard({ label, value, onClick }: StatCardProps) {
+function StatCard({ label, value, icon, iconClass, onClick }: StatCardProps) {
   const Comp = onClick ? 'button' : 'div'
   return (
     <Comp
       onClick={onClick}
-      className={`bg-white border border-border rounded-2xl p-5 text-left ${onClick ? 'hover:border-sage-dark transition-colors cursor-pointer' : ''}`}
+      className={`bg-white border border-border rounded-2xl p-5 text-left flex items-start justify-between gap-3 ${onClick ? 'hover:border-sage-dark hover:shadow-sm transition-all cursor-pointer' : ''}`}
     >
-      <div className="text-xs font-semibold text-text-muted uppercase tracking-wide">{label}</div>
-      <div className="font-serif text-3xl font-semibold text-sage-dark mt-1.5">{value}</div>
+      <div>
+        <div className="text-xs font-semibold text-text-muted uppercase tracking-wide">{label}</div>
+        <div className="font-serif text-3xl font-semibold text-sage-dark mt-1.5">{value}</div>
+      </div>
+      <span className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${iconClass}`}>
+        <Icon name={icon} size={19} />
+      </span>
     </Comp>
   )
 }
@@ -153,6 +173,7 @@ interface DashboardViewProps {
   onNavigateAgenda: () => void
   onNavigateFacturation: () => void
   onNavigateCompta: () => void
+  onNavigateParametres: () => void
 }
 
 function DashboardView({
@@ -160,6 +181,7 @@ function DashboardView({
   onNavigateAgenda,
   onNavigateFacturation,
   onNavigateCompta,
+  onNavigateParametres,
 }: DashboardViewProps) {
   const { getToken } = useAuth()
   const [state, setState] = useState<State>({ status: 'loading' })
@@ -347,6 +369,111 @@ function DashboardView({
     }
   }, [rawAlerts, validDismissedKeys, now])
 
+  const alertItems = useMemo(() => {
+    if (!alerts || !stats) return []
+    const items: Array<{
+      key: string
+      colorClass: string
+      subtitleClassName: string
+      icon: IconName
+      iconClass: string
+      title: ReactNode
+      subtitle: ReactNode
+      onClick?: () => void
+      dismissKey: string
+    }> = []
+
+    for (const { client, jours } of alerts.anniversaires) {
+      items.push({
+        key: `anniv-${client.id}`,
+        colorClass: 'bg-gold-pale hover:bg-gold/20 transition-colors',
+        subtitleClassName: 'text-gold-text',
+        icon: 'cake',
+        iconClass: 'bg-gold/25 text-gold-text',
+        title: (
+          <>
+            {client.nomComplet}
+            <span className="text-text-muted font-normal"> — {formatDateLongue(client.dateNaissance)}</span>
+          </>
+        ),
+        subtitle: jours === 0 ? "Aujourd'hui" : jours === 1 ? 'Demain' : `Dans ${jours} jours`,
+        onClick: () => onSelectClient(client.id),
+        dismissKey: `anniv-${client.id}-${now.getFullYear()}`,
+      })
+    }
+
+    for (const f of alerts.facturesImpayeesEnRetard) {
+      items.push({
+        key: `facture-${f.id}`,
+        colorClass: 'bg-danger-pale hover:bg-danger/10 transition-colors',
+        subtitleClassName: 'text-danger',
+        icon: 'receipt',
+        iconClass: 'bg-danger/20 text-danger',
+        title: `Facture impayée — ${f.clienteNom || 'Cliente inconnue'}`,
+        subtitle: `${f.montant !== null ? `${f.montant} € — ` : ''}en retard depuis ${daysSince(f.date as string, now)} jours`,
+        onClick: onNavigateFacturation,
+        dismissKey: `facture-${f.id}`,
+      })
+    }
+
+    for (const { client, jours } of alerts.clientesARecontacter) {
+      items.push({
+        key: `recontact-${client.id}`,
+        colorClass: 'bg-sage-pale hover:bg-sage-light transition-colors',
+        subtitleClassName: 'text-sage-dark',
+        icon: 'phone',
+        iconClass: 'bg-sage/20 text-sage-dark',
+        title: `À recontacter — ${client.nomComplet}`,
+        subtitle: jours === null ? 'Aucun rendez-vous enregistré' : `Vue il y a ${jours} jours`,
+        onClick: () => onSelectClient(client.id),
+        dismissKey: `recontact-${client.id}`,
+      })
+    }
+
+    for (const c of alerts.curesBientotTerminees) {
+      items.push({
+        key: `cure-${c.id}`,
+        colorClass: 'bg-sage-pale hover:bg-sage-light transition-colors',
+        subtitleClassName: 'text-sage-dark',
+        icon: 'sparkles',
+        iconClass: 'bg-avatar-teal/20 text-avatar-teal',
+        title: `Dernière séance de cure — ${c.clienteNom || 'Cliente inconnue'}`,
+        subtitle: c.prestationNom,
+        onClick: () => onSelectClient(c.clienteId),
+        dismissKey: `cure-${c.id}`,
+      })
+    }
+
+    for (const s of alerts.stockBas) {
+      items.push({
+        key: `stock-${s.id}`,
+        colorClass: 'bg-danger-pale hover:bg-danger/10 transition-colors',
+        subtitleClassName: 'text-danger',
+        icon: 'package',
+        iconClass: 'bg-danger/20 text-danger',
+        title: `Stock bas — ${s.nom}`,
+        subtitle: `${s.quantite} restant${s.quantite > 1 ? 's' : ''}`,
+        onClick: onNavigateCompta,
+        dismissKey: `stock-${s.id}`,
+      })
+    }
+
+    if (alerts.objectifAtteint) {
+      items.push({
+        key: 'objectif',
+        colorClass: 'bg-gold-pale hover:bg-gold/20 transition-colors',
+        subtitleClassName: 'text-gold-text',
+        icon: 'target',
+        iconClass: 'bg-gold/25 text-gold-text',
+        title: 'Objectif de CA mensuel atteint',
+        subtitle: formatEuros(stats.caCeMois),
+        dismissKey: `objectif-${now.getFullYear()}-${now.getMonth()}`,
+      })
+    }
+
+    return items
+  }, [alerts, stats, now, onSelectClient, onNavigateFacturation, onNavigateCompta])
+
   return (
     <div>
       {state.status === 'loading' && <p className="text-sm text-text-muted">Chargement…</p>}
@@ -355,94 +482,70 @@ function DashboardView({
       {state.status === 'success' && stats && (
         <div className="flex flex-col gap-6">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <StatCard label="RDV aujourd'hui" value={stats.todayCount} onClick={onNavigateAgenda} />
-            <StatCard label="RDV cette semaine" value={stats.weekRdvCount} onClick={onNavigateAgenda} />
-            <StatCard label="Chiffre d'affaires ce mois-ci" value={formatEuros(stats.caCeMois)} onClick={onNavigateFacturation} />
-            <StatCard label="Factures impayées" value={stats.facturesImpayeesCount} onClick={onNavigateFacturation} />
+            <StatCard
+              label="RDV aujourd'hui"
+              value={stats.todayCount}
+              icon="calendar"
+              iconClass="bg-avatar-teal/20 text-avatar-teal"
+              onClick={onNavigateAgenda}
+            />
+            <StatCard
+              label="RDV cette semaine"
+              value={stats.weekRdvCount}
+              icon="calendar"
+              iconClass="bg-avatar-indigo/20 text-avatar-indigo"
+              onClick={onNavigateAgenda}
+            />
+            <StatCard
+              label="Chiffre d'affaires ce mois-ci"
+              value={formatEuros(stats.caCeMois)}
+              icon="trending-up"
+              iconClass="bg-sage/20 text-sage-dark"
+              onClick={onNavigateFacturation}
+            />
+            <StatCard
+              label="Factures impayées"
+              value={stats.facturesImpayeesCount}
+              icon="receipt"
+              iconClass="bg-danger/20 text-danger"
+              onClick={onNavigateFacturation}
+            />
           </div>
 
           {alerts && alerts.total > 0 && (
             <div className="bg-white border border-border rounded-2xl p-5">
-              <h3 className="font-serif text-lg font-semibold text-sage-dark mb-4">
-                Alertes &amp; rappels
-              </h3>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-serif text-lg font-semibold text-sage-dark">
+                  Alertes &amp; rappels <span className="text-text-muted font-sans text-sm font-normal">({alerts.total})</span>
+                </h3>
+                <button onClick={onNavigateParametres} className="text-xs font-semibold text-sage-dark hover:underline shrink-0">
+                  Voir tout
+                </button>
+              </div>
               {dismissError && <p className="text-sm text-danger mb-3">{dismissError}</p>}
               <div className="flex flex-col gap-1.5">
-                {alerts.anniversaires.map(({ client, jours }) => (
+                {alertItems.slice(0, VISIBLE_ALERTS_COUNT).map((item) => (
                   <AlertRow
-                    key={`anniv-${client.id}`}
-                    colorClass="bg-gold-pale hover:bg-gold/20 transition-colors"
-                    subtitleClassName="text-gold-text"
-                    onClick={() => onSelectClient(client.id)}
-                    onDismiss={() => handleDismiss(`anniv-${client.id}-${now.getFullYear()}`)}
-                    title={
-                      <>
-                        🎂 {client.nomComplet}
-                        <span className="text-text-muted font-normal"> — {formatDateLongue(client.dateNaissance)}</span>
-                      </>
-                    }
-                    subtitle={jours === 0 ? "Aujourd'hui" : jours === 1 ? 'Demain' : `Dans ${jours} jours`}
+                    key={item.key}
+                    colorClass={item.colorClass}
+                    subtitleClassName={item.subtitleClassName}
+                    icon={item.icon}
+                    iconClass={item.iconClass}
+                    onClick={item.onClick}
+                    onDismiss={() => handleDismiss(item.dismissKey)}
+                    title={item.title}
+                    subtitle={item.subtitle}
                   />
                 ))}
-
-                {alerts.facturesImpayeesEnRetard.map((f) => (
-                  <AlertRow
-                    key={`facture-${f.id}`}
-                    colorClass="bg-danger-pale hover:bg-danger/10 transition-colors"
-                    subtitleClassName="text-danger"
-                    onClick={onNavigateFacturation}
-                    onDismiss={() => handleDismiss(`facture-${f.id}`)}
-                    title={`💶 Facture impayée — ${f.clienteNom || 'Cliente inconnue'}`}
-                    subtitle={`${f.montant !== null ? `${f.montant} € — ` : ''}en retard depuis ${daysSince(f.date as string, now)} jours`}
-                  />
-                ))}
-
-                {alerts.clientesARecontacter.map(({ client, jours }) => (
-                  <AlertRow
-                    key={`recontact-${client.id}`}
-                    colorClass="bg-sage-pale hover:bg-sage-light transition-colors"
-                    subtitleClassName="text-sage-dark"
-                    onClick={() => onSelectClient(client.id)}
-                    onDismiss={() => handleDismiss(`recontact-${client.id}`)}
-                    title={`📞 À recontacter — ${client.nomComplet}`}
-                    subtitle={jours === null ? 'Aucun rendez-vous enregistré' : `Vue il y a ${jours} jours`}
-                  />
-                ))}
-
-                {alerts.curesBientotTerminees.map((c) => (
-                  <AlertRow
-                    key={`cure-${c.id}`}
-                    colorClass="bg-sage-pale hover:bg-sage-light transition-colors"
-                    subtitleClassName="text-sage-dark"
-                    onClick={() => onSelectClient(c.clienteId)}
-                    onDismiss={() => handleDismiss(`cure-${c.id}`)}
-                    title={`✨ Dernière séance de cure — ${c.clienteNom || 'Cliente inconnue'}`}
-                    subtitle={c.prestationNom}
-                  />
-                ))}
-
-                {alerts.stockBas.map((s) => (
-                  <AlertRow
-                    key={`stock-${s.id}`}
-                    colorClass="bg-danger-pale hover:bg-danger/10 transition-colors"
-                    subtitleClassName="text-danger"
-                    onClick={onNavigateCompta}
-                    onDismiss={() => handleDismiss(`stock-${s.id}`)}
-                    title={`📦 Stock bas — ${s.nom}`}
-                    subtitle={`${s.quantite} restant${s.quantite > 1 ? 's' : ''}`}
-                  />
-                ))}
-
-                {alerts.objectifAtteint && (
-                  <AlertRow
-                    colorClass="bg-gold-pale hover:bg-gold/20 transition-colors"
-                    subtitleClassName="text-gold-text"
-                    onDismiss={() => handleDismiss(`objectif-${now.getFullYear()}-${now.getMonth()}`)}
-                    title="🎯 Objectif de CA mensuel atteint"
-                    subtitle={formatEuros(stats.caCeMois)}
-                  />
-                )}
               </div>
+              {alertItems.length > VISIBLE_ALERTS_COUNT && (
+                <button
+                  onClick={onNavigateParametres}
+                  className="mt-3 text-xs font-semibold text-sage-dark hover:underline"
+                >
+                  + {alertItems.length - VISIBLE_ALERTS_COUNT} autre{alertItems.length - VISIBLE_ALERTS_COUNT > 1 ? 's' : ''} dans Paramètres
+                </button>
+              )}
             </div>
           )}
 
@@ -465,19 +568,24 @@ function DashboardView({
                     <button
                       key={item.id}
                       onClick={() => item.clienteId && onSelectClient(item.clienteId)}
-                      className="w-full text-left bg-sage-pale hover:bg-sage-light transition-colors rounded-lg p-3 flex items-center justify-between gap-3"
+                      className="w-full text-left bg-sage-pale hover:bg-sage-light transition-colors rounded-lg p-3 flex items-center gap-3"
                     >
-                      <div className="min-w-0">
+                      <div className="font-serif text-sm font-semibold text-sage-dark w-12 shrink-0 text-center">
+                        {formatHeure(item.date)}
+                      </div>
+                      <div
+                        className={`w-9 h-9 rounded-full text-white flex items-center justify-center font-semibold text-xs shrink-0 ${avatarColorClass(item.clienteNom || item.id)}`}
+                      >
+                        {initials(item.clienteNom || '?')}
+                      </div>
+                      <div className="min-w-0 flex-1">
                         <div className="text-sm font-semibold truncate">{item.clienteNom || 'Cliente inconnue'}</div>
                         <div className="text-xs text-text-muted truncate">
                           {item.prestationNom || 'Prestation inconnue'}
                           {item.prix !== null ? ` — ${item.prix} €` : ''}
                         </div>
                       </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span className="text-xs font-semibold text-sage-dark">{formatHeure(item.date)}</span>
-                        <RdvStatusPill statut={item.statut} />
-                      </div>
+                      <RdvStatusPill statut={item.statut} />
                     </button>
                   ))}
                 </div>
@@ -502,9 +610,14 @@ function DashboardView({
                     <button
                       key={item.id}
                       onClick={() => item.clienteId && onSelectClient(item.clienteId)}
-                      className="w-full text-left bg-sage-pale hover:bg-sage-light transition-colors rounded-lg p-3 flex items-center justify-between gap-3"
+                      className="w-full text-left bg-sage-pale hover:bg-sage-light transition-colors rounded-lg p-3 flex items-center gap-3"
                     >
-                      <div className="min-w-0">
+                      <div
+                        className={`w-9 h-9 rounded-full text-white flex items-center justify-center font-semibold text-xs shrink-0 ${avatarColorClass(item.clienteNom || item.id)}`}
+                      >
+                        {initials(item.clienteNom || '?')}
+                      </div>
+                      <div className="min-w-0 flex-1">
                         <div className="text-sm font-semibold truncate">{item.clienteNom || 'Cliente inconnue'}</div>
                         <div className="text-xs text-text-muted truncate">
                           {item.prestationNom || 'Prestation inconnue'}
@@ -524,9 +637,14 @@ function DashboardView({
           </div>
 
           <div className="bg-white border border-border rounded-2xl p-5">
-            <h3 className="font-serif text-lg font-semibold text-sage-dark mb-4">
-              Chiffre d'affaires — 7 derniers jours
-            </h3>
+            <div className="flex items-center gap-2.5 mb-4">
+              <span className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 bg-avatar-teal/20 text-avatar-teal">
+                <Icon name="trending-up" size={16} />
+              </span>
+              <h3 className="font-serif text-lg font-semibold text-sage-dark">
+                Chiffre d'affaires — 7 derniers jours
+              </h3>
+            </div>
             <div className="flex items-end gap-3 h-40">
               {stats.weeklyChart.map((d, i) => (
                 <div key={i} className="flex-1 flex flex-col items-center gap-1.5 h-full justify-end">
@@ -534,7 +652,7 @@ function DashboardView({
                     {d.total > 0 ? formatEuros(d.total) : ''}
                   </span>
                   <div
-                    className={`w-full rounded-t-md ${i === 6 ? 'bg-sage-dark' : 'bg-sage-light'}`}
+                    className={`w-full rounded-t-md ${i === 6 ? 'bg-avatar-teal' : 'bg-avatar-teal/25'}`}
                     style={{ height: `${Math.max(4, (d.total / stats.weeklyChartMax) * 100)}%` }}
                   />
                   <span className="text-xs text-text-muted capitalize">{d.label}</span>

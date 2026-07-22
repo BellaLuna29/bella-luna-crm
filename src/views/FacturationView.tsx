@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@clerk/react'
 import { apiFetch, ApiError } from '../lib/api'
-import FactureFormModal from '../components/FactureFormModal'
+import FactureFormModal, { type FactureFormInitial } from '../components/FactureFormModal'
 import PromotionsManager from '../components/PromotionsManager'
 import { formatMontant } from '../lib/formatMontant'
 
@@ -15,6 +15,8 @@ interface FactureItem {
   categorieFacture: string
   promoId: string | null
   promoNom: string
+  description: string
+  notes: string
 }
 
 type State =
@@ -50,7 +52,11 @@ function FacturationView({ onSelectClient }: FacturationViewProps) {
   const [state, setState] = useState<State>({ status: 'loading' })
   const [filter, setFilter] = useState<Filter>('toutes')
   const [categorieFilter, setCategorieFilter] = useState<CategorieFilter>('Commercial')
-  const [showCreate, setShowCreate] = useState(false)
+  const [modal, setModal] = useState<
+    | { mode: 'create' }
+    | { mode: 'edit'; factureId: string; initialValues: Partial<FactureFormInitial> }
+    | null
+  >(null)
   const [togglingId, setTogglingId] = useState<string | null>(null)
   const [toggleError, setToggleError] = useState<string | null>(null)
 
@@ -150,7 +156,7 @@ function FacturationView({ onSelectClient }: FacturationViewProps) {
           ))}
         </div>
         <button
-          onClick={() => setShowCreate(true)}
+          onClick={() => setModal({ mode: 'create' })}
           className="bg-sage-dark text-white px-4.5 py-2.5 rounded-[10px] text-sm font-semibold hover:bg-sage-dark/90"
         >
           Nouvelle facture
@@ -201,7 +207,7 @@ function FacturationView({ onSelectClient }: FacturationViewProps) {
           <table className="w-full border-collapse">
             <thead>
               <tr>
-                {['Cliente', 'Date', 'Montant', 'Catégorie', 'Promo', 'Statut', ''].map((h) => (
+                {['Cliente', 'Description', 'Date', 'Montant', 'Catégorie', 'Promo', 'Statut', ''].map((h) => (
                   <th
                     key={h}
                     className="text-left text-[11px] text-text-muted font-semibold uppercase tracking-wide px-4 pb-2.5 pt-4 border-b border-border"
@@ -219,6 +225,9 @@ function FacturationView({ onSelectClient }: FacturationViewProps) {
                     className="px-4 py-3.5 border-b border-sage-light text-sm cursor-pointer"
                   >
                     {f.clienteNom || 'Cliente inconnue'}
+                  </td>
+                  <td className="px-4 py-3.5 border-b border-sage-light text-sm text-text-muted max-w-48 truncate">
+                    {f.description || '—'}
                   </td>
                   <td className="px-4 py-3.5 border-b border-sage-light text-sm">{formatDate(f.date)}</td>
                   <td className="px-4 py-3.5 border-b border-sage-light text-sm font-semibold">
@@ -247,7 +256,29 @@ function FacturationView({ onSelectClient }: FacturationViewProps) {
                       {f.payee ? 'Payée' : 'Impayée'}
                     </span>
                   </td>
-                  <td className="px-4 py-3.5 border-b border-sage-light text-right">
+                  <td className="px-4 py-3.5 border-b border-sage-light text-right whitespace-nowrap">
+                    <button
+                      onClick={() =>
+                        setModal({
+                          mode: 'edit',
+                          factureId: f.id,
+                          initialValues: {
+                            clienteId: f.clienteId ?? '',
+                            montant: f.montant !== null ? String(f.montant) : '',
+                            dateFacture: f.date ?? '',
+                            payee: f.payee,
+                            categorieFacture:
+                              f.categorieFacture === 'Associatif ou formation' ? 'Associatif ou formation' : 'Commercial',
+                            promoId: f.promoId ?? '',
+                            description: f.description,
+                            notes: f.notes,
+                          },
+                        })
+                      }
+                      className="text-xs font-semibold text-sage-dark hover:underline mr-3"
+                    >
+                      Modifier
+                    </button>
                     <button
                       onClick={() => togglePayee(f)}
                       disabled={togglingId === f.id}
@@ -260,7 +291,7 @@ function FacturationView({ onSelectClient }: FacturationViewProps) {
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-sm text-text-muted">
+                  <td colSpan={8} className="px-4 py-8 text-center text-sm text-text-muted">
                     Aucune facture à afficher.
                   </td>
                 </tr>
@@ -271,11 +302,14 @@ function FacturationView({ onSelectClient }: FacturationViewProps) {
         )}
       </div>
 
-      {showCreate && (
+      {modal && (
         <FactureFormModal
-          onClose={() => setShowCreate(false)}
+          mode={modal.mode}
+          factureId={modal.mode === 'edit' ? modal.factureId : undefined}
+          initialValues={modal.mode === 'edit' ? modal.initialValues : undefined}
+          onClose={() => setModal(null)}
           onSaved={() => {
-            setShowCreate(false)
+            setModal(null)
             load()
           }}
         />

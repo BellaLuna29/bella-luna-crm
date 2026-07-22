@@ -29,6 +29,8 @@ interface FactureItem {
   promoId: string | null
   promoNom: string
   promoReduction: number | null
+  description: string
+  notes: string
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
@@ -84,6 +86,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
             promoId,
             promoNom: (promo?.fields['Nom'] as string) ?? '',
             promoReduction: (promo?.fields['Réduction'] as number) ?? null,
+            description: (r.fields['Description'] as string) ?? '',
+            notes: (r.fields['Notes'] as string) ?? '',
           }
         })
         .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''))

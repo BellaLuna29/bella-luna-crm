@@ -1,3 +1,5 @@
+import Icon from './Icon'
+
 interface TopbarProps {
   title: string
   subtitle: string
@@ -12,7 +14,7 @@ function Topbar({ title, subtitle, onOpenMobileMenu }: TopbarProps) {
         className="md:hidden shrink-0 w-9 h-9 flex items-center justify-center rounded-[10px] border border-border text-sage-dark"
         aria-label="Ouvrir le menu"
       >
-        ☰
+        <Icon name="menu" size={18} />
       </button>
       <div className="min-w-0">
         <h2 className="text-lg md:text-xl font-semibold truncate">{title}</h2>

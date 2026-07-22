@@ -3,6 +3,7 @@ import { useAuth } from '@clerk/react'
 import { apiFetch, ApiError } from '../lib/api'
 import RdvStatusPill from '../components/RdvStatusPill'
 import AgendaDayGrid from '../components/AgendaDayGrid'
+import Icon from '../components/Icon'
 import RdvFormModal, { type RdvFormInitial } from '../components/RdvFormModal'
 import AbsenceFormModal from '../components/AbsenceFormModal'
 import MessageComposerModal from '../components/MessageComposerModal'
@@ -134,11 +135,11 @@ function RdvCard({
             e.stopPropagation()
             onSendReminder()
           }}
-          className="shrink-0 w-6 h-6 flex items-center justify-center rounded-full bg-white hover:bg-sage-light text-sage-dark text-xs print:hidden"
+          className="shrink-0 w-6 h-6 flex items-center justify-center rounded-full bg-white hover:bg-sage-light text-sage-dark print:hidden"
           aria-label={`Envoyer le rappel à ${item.clienteNom || 'la cliente'}`}
           title="Envoyer le rappel"
         >
-          💬
+          <Icon name="send" size={11} />
         </button>
       </div>
     </div>
@@ -398,9 +399,9 @@ function AgendaView() {
               {absencesForDay(focusDate).map((a) => (
                 <span
                   key={a.id}
-                  className={`text-sm font-semibold px-3 py-2 rounded-lg ${ABSENCE_STYLES[a.type] ?? 'bg-sage-light text-sage-dark'}`}
+                  className={`text-sm font-semibold px-3 py-2 rounded-lg inline-flex items-center gap-1.5 ${ABSENCE_STYLES[a.type] ?? 'bg-sage-light text-sage-dark'}`}
                 >
-                  {a.type === 'Vacances' ? '🌴 ' : ''}
+                  {a.type === 'Vacances' && <Icon name="sun" size={14} />}
                   {a.libelle}
                 </span>
               ))}
@@ -470,9 +471,9 @@ function AgendaView() {
                       {dayAbsences.map((a) => (
                         <span
                           key={a.id}
-                          className={`text-[11px] font-semibold px-2 py-1 rounded-md ${ABSENCE_STYLES[a.type] ?? 'bg-sage-light text-sage-dark'}`}
+                          className={`text-[11px] font-semibold px-2 py-1 rounded-md inline-flex items-center gap-1 ${ABSENCE_STYLES[a.type] ?? 'bg-sage-light text-sage-dark'}`}
                         >
-                          {a.type === 'Vacances' ? '🌴 ' : ''}
+                          {a.type === 'Vacances' && <Icon name="sun" size={11} />}
                           {a.libelle}
                         </span>
                       ))}

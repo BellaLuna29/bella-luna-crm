@@ -15,7 +15,27 @@ interface PromoOption {
   active: boolean
 }
 
+interface PrestationOption {
+  id: string
+  nom: string
+  prix: number
+}
+
+export interface FactureFormInitial {
+  clienteId: string
+  montant: string
+  dateFacture: string
+  payee: boolean
+  categorieFacture: (typeof CATEGORIE_FACTURE_OPTIONS)[number]
+  promoId: string
+  description: string
+  notes: string
+}
+
 interface FactureFormModalProps {
+  mode: 'create' | 'edit'
+  factureId?: string
+  initialValues?: Partial<FactureFormInitial>
   onClose: () => void
   onSaved: () => void
 }
@@ -28,17 +48,25 @@ function todayIso(): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
-function FactureFormModal({ onClose, onSaved }: FactureFormModalProps) {
+const EMPTY: FactureFormInitial = {
+  clienteId: '',
+  montant: '',
+  dateFacture: todayIso(),
+  payee: false,
+  categorieFacture: 'Commercial',
+  promoId: '',
+  description: '',
+  notes: '',
+}
+
+function FactureFormModal({ mode, factureId, initialValues, onClose, onSaved }: FactureFormModalProps) {
   const { getToken } = useAuth()
+  const [values, setValues] = useState<FactureFormInitial>({ ...EMPTY, ...initialValues })
   const [clients, setClients] = useState<ClientOption[] | null>(null)
   const [promos, setPromos] = useState<PromoOption[] | null>(null)
+  const [prestations, setPrestations] = useState<PrestationOption[] | null>(null)
+  const [prestationId, setPrestationId] = useState('')
   const [loadError, setLoadError] = useState<string | null>(null)
-  const [clienteId, setClienteId] = useState('')
-  const [montant, setMontant] = useState('')
-  const [dateFacture, setDateFacture] = useState(todayIso())
-  const [payee, setPayee] = useState(false)
-  const [categorieFacture, setCategorieFacture] = useState<(typeof CATEGORIE_FACTURE_OPTIONS)[number]>('Commercial')
-  const [promoId, setPromoId] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -51,31 +79,57 @@ function FactureFormModal({ onClose, onSaved }: FactureFormModalProps) {
     apiFetch<{ promotions: PromoOption[] }>(getToken, '/api/prestations?resource=promotions')
       .then((data) => setPromos(data.promotions))
       .catch(() => setPromos([]))
+    apiFetch<{ prestations: PrestationOption[] }>(getToken, '/api/prestations')
+      .then((data) => setPrestations(data.prestations))
+      .catch(() => setPrestations([]))
   }, [getToken])
+
+  function set<K extends keyof FactureFormInitial>(key: K, value: FactureFormInitial[K]) {
+    setValues((v) => ({ ...v, [key]: value }))
+  }
+
+  function applyPrestation(id: string) {
+    setPrestationId(id)
+    const p = prestations?.find((item) => item.id === id)
+    if (p) {
+      set('description', p.nom)
+      set('montant', String(p.prix))
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
 
-    const montantNum = Number(montant)
-    if (!clienteId || !dateFacture || montant.trim().length === 0 || Number.isNaN(montantNum) || montantNum < 0) {
+    const montantNum = Number(values.montant)
+    if (
+      !values.clienteId ||
+      !values.dateFacture ||
+      values.montant.trim().length === 0 ||
+      Number.isNaN(montantNum) ||
+      montantNum < 0
+    ) {
       setError('Cliente, montant (positif) et date sont obligatoires.')
       return
     }
 
     setSaving(true)
     try {
-      await apiFetch(getToken, '/api/factures', {
-        method: 'POST',
-        body: {
-          clienteId,
-          montant: montantNum,
-          dateFacture,
-          payee,
-          categorieFacture,
-          promoId: promoId || null,
-        },
-      })
+      const body = {
+        clienteId: values.clienteId,
+        montant: montantNum,
+        dateFacture: values.dateFacture,
+        payee: values.payee,
+        categorieFacture: values.categorieFacture,
+        promoId: values.promoId || null,
+        description: values.description.trim(),
+        notes: values.notes.trim(),
+      }
+      if (mode === 'create') {
+        await apiFetch(getToken, '/api/factures', { method: 'POST', body })
+      } else {
+        await apiFetch(getToken, `/api/factures/${factureId}`, { method: 'PATCH', body })
+      }
       onSaved()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Erreur inconnue.')
@@ -89,7 +143,9 @@ function FactureFormModal({ onClose, onSaved }: FactureFormModalProps) {
   return (
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto p-6">
-        <h3 className="font-serif text-xl font-semibold text-sage-dark mb-4">Nouvelle facture</h3>
+        <h3 className="font-serif text-xl font-semibold text-sage-dark mb-4">
+          {mode === 'create' ? 'Nouvelle facture' : 'Modifier la facture'}
+        </h3>
 
         {loadError && <p className="text-sm text-danger mb-4">{loadError}</p>}
         {loading && !loadError && <p className="text-sm text-text-muted">Chargement…</p>}
@@ -99,10 +155,34 @@ function FactureFormModal({ onClose, onSaved }: FactureFormModalProps) {
             <Field label="Cliente *">
               <SearchableSelect
                 options={clients!.map((c) => ({ id: c.id, label: c.nomComplet }))}
-                value={clienteId}
-                onChange={setClienteId}
+                value={values.clienteId}
+                onChange={(id) => set('clienteId', id)}
                 placeholder="Rechercher une cliente..."
                 emptyLabel="Aucune cliente trouvée."
+              />
+            </Field>
+
+            <Field label="Prestation du catalogue (optionnel)">
+              <SearchableSelect
+                options={(prestations ?? []).map((p) => ({ id: p.id, label: p.nom, sublabel: `${p.prix} €` }))}
+                value={prestationId}
+                onChange={applyPrestation}
+                placeholder="Pré-remplir depuis le catalogue..."
+                emptyLabel="Aucune prestation trouvée."
+              />
+              <p className="text-[11px] text-text-muted mt-1">
+                Pré-remplit la description et le prix — les deux restent modifiables juste en dessous.
+              </p>
+            </Field>
+
+            <Field label="Description sur la facture">
+              <input
+                type="text"
+                value={values.description}
+                onChange={(e) => set('description', e.target.value)}
+                maxLength={200}
+                placeholder="Ex : Massage Signature, ou tout intitulé libre"
+                className="input"
               />
             </Field>
 
@@ -112,8 +192,8 @@ function FactureFormModal({ onClose, onSaved }: FactureFormModalProps) {
                   type="number"
                   min={0}
                   step="0.01"
-                  value={montant}
-                  onChange={(e) => setMontant(e.target.value)}
+                  value={values.montant}
+                  onChange={(e) => set('montant', e.target.value)}
                   required
                   className="input"
                 />
@@ -121,8 +201,8 @@ function FactureFormModal({ onClose, onSaved }: FactureFormModalProps) {
               <Field label="Date de facture *">
                 <input
                   type="date"
-                  value={dateFacture}
-                  onChange={(e) => setDateFacture(e.target.value)}
+                  value={values.dateFacture}
+                  onChange={(e) => set('dateFacture', e.target.value)}
                   required
                   className="input"
                 />
@@ -132,8 +212,8 @@ function FactureFormModal({ onClose, onSaved }: FactureFormModalProps) {
             <div className="grid grid-cols-2 gap-3">
               <Field label="Catégorie de facture">
                 <select
-                  value={categorieFacture}
-                  onChange={(e) => setCategorieFacture(e.target.value as (typeof CATEGORIE_FACTURE_OPTIONS)[number])}
+                  value={values.categorieFacture}
+                  onChange={(e) => set('categorieFacture', e.target.value as (typeof CATEGORIE_FACTURE_OPTIONS)[number])}
                   className="input"
                 >
                   {CATEGORIE_FACTURE_OPTIONS.map((opt) => (
@@ -144,7 +224,7 @@ function FactureFormModal({ onClose, onSaved }: FactureFormModalProps) {
                 </select>
               </Field>
               <Field label="Promotion">
-                <select value={promoId} onChange={(e) => setPromoId(e.target.value)} className="input">
+                <select value={values.promoId} onChange={(e) => set('promoId', e.target.value)} className="input">
                   <option value="">Aucune</option>
                   {(promos ?? []).map((p) => (
                     <option key={p.id} value={p.id}>
@@ -157,11 +237,22 @@ function FactureFormModal({ onClose, onSaved }: FactureFormModalProps) {
               </Field>
             </div>
 
+            <Field label="Notes (visibles uniquement par toi)">
+              <textarea
+                value={values.notes}
+                onChange={(e) => set('notes', e.target.value)}
+                maxLength={2000}
+                rows={3}
+                placeholder="Ex : remise exceptionnelle accordée, paiement en 2 fois..."
+                className="input resize-y"
+              />
+            </Field>
+
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
-                checked={payee}
-                onChange={(e) => setPayee(e.target.checked)}
+                checked={values.payee}
+                onChange={(e) => set('payee', e.target.checked)}
                 className="w-4 h-4"
               />
               Déjà payée

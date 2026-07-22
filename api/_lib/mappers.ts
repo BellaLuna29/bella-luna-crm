@@ -233,6 +233,18 @@ export function parseFactureInput(
     }
   }
 
+  if ('description' in b) {
+    const v = typeof b.description === 'string' ? b.description.trim() : ''
+    if (v.length > 200) errors.push('La description est trop longue (200 caractères max).')
+    else fields['Description'] = v
+  }
+
+  if ('notes' in b) {
+    const v = typeof b.notes === 'string' ? b.notes.trim() : ''
+    if (v.length > 2000) errors.push('Les notes sont trop longues (2000 caractères max).')
+    else fields['Notes'] = v
+  }
+
   if (errors.length > 0) return { errors }
   return { fields }
 }
@@ -774,6 +786,59 @@ export function parseParametresInput(body: unknown): { fields: Record<string, un
     } else {
       errors.push('Objectif de CA invalide.')
     }
+  }
+
+  if (errors.length > 0) return { errors }
+  return { fields }
+}
+
+/**
+ * Validates and maps a raw request body into Airtable field names for the
+ * Prestations table. `requireCore` enforces nom/prix as mandatory (create
+ * only). Catégorie/Type are free text (her existing choices aren't a fixed
+ * enum) — Type is used by src/lib/cureProgress.ts to auto-detect cures via
+ * a "Cure X séances" pattern, so the UI documents that convention.
+ */
+export function parsePrestationInput(
+  body: unknown,
+  { requireCore }: { requireCore: boolean },
+): { fields: Record<string, unknown> } | ClientInputErrors {
+  if (typeof body !== 'object' || body === null) {
+    return { errors: ['Corps de requête invalide.'] }
+  }
+  const b = body as Record<string, unknown>
+  const errors: string[] = []
+  const fields: Record<string, unknown> = {}
+
+  if ('nom' in b || requireCore) {
+    const v = typeof b.nom === 'string' ? b.nom.trim() : ''
+    if (requireCore && v.length === 0) errors.push('Le nom de la prestation est obligatoire.')
+    else if (v.length > 200) errors.push('Le nom est trop long.')
+    if (v.length > 0) fields['Nom de la prestation'] = v
+  }
+
+  if ('categorie' in b) {
+    const v = typeof b.categorie === 'string' ? b.categorie.trim() : ''
+    if (v.length > 100) errors.push('La catégorie est trop longue.')
+    else fields['Catégorie'] = v
+  }
+
+  if ('duree' in b) {
+    const v = typeof b.duree === 'string' ? b.duree.trim() : ''
+    if (v.length > 50) errors.push('La durée est trop longue.')
+    else fields['Durée'] = v
+  }
+
+  if ('prix' in b || requireCore) {
+    const v = b.prix
+    if (typeof v === 'number' && Number.isFinite(v) && v >= 0) fields['Prix'] = v
+    else if (requireCore) errors.push('Le prix est obligatoire et doit être un nombre positif.')
+  }
+
+  if ('type' in b) {
+    const v = typeof b.type === 'string' ? b.type.trim() : ''
+    if (v.length > 100) errors.push('Le type est trop long.')
+    else fields['Type'] = v
   }
 
   if (errors.length > 0) return { errors }
