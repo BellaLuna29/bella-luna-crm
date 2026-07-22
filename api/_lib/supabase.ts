@@ -29,7 +29,8 @@ export async function dbList<T extends DbRow = DbRow>(
   opts?: { select?: string; order?: { column: string; ascending?: boolean }; eq?: [string, unknown] },
 ): Promise<T[]> {
   const sb = getClient()
-  let query = sb.from(table).select(opts?.select ?? '*')
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let query: any = sb.from(table).select(opts?.select ?? '*')
   if (opts?.eq) query = query.eq(opts.eq[0], opts.eq[1])
   if (opts?.order) query = query.order(opts.order.column, { ascending: opts.order.ascending ?? true })
   const { data, error } = await query
