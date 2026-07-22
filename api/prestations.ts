@@ -1,11 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import {
-  airtableList,
-  airtableCreate,
-  airtableUpdate,
-  airtableDelete,
-  AirtableConfigError,
-} from './_lib/airtable.js'
+import { dbList, dbCreate, dbUpdate, dbDelete, SupabaseConfigError, UUID_RE, type DbRow } from './_lib/supabase.js'
 import { setCorsHeaders } from './_lib/cors.js'
 import { requireAuth, AuthError } from './_lib/auth.js'
 import {
@@ -22,16 +16,15 @@ import {
   parsePrestationInput,
 } from './_lib/mappers.js'
 
-const TABLE_PRESTATIONS = 'tblDeJttMEKXpYR8X'
-const TABLE_PROMOTIONS = 'tbldqsJCBeZwve20n'
-const TABLE_QUESTIONNAIRES = 'tblhPRz9gsVHoq6mb'
-const TABLE_ALERTES = 'tblk5PC1ALEQpHovg'
-const TABLE_ALERTES_LUES = 'tblqKRi9GGYhxdXM3'
-const TABLE_NEWSLETTER_STATUT = 'tblHtw5e4no105cyq'
-const TABLE_STOCK = 'tblYkKjwEJ9oc80zT'
-const TABLE_COMMUNICATIONS_LOG = 'tblH4lFlMJ1MN8zOm'
-const TABLE_PARAMETRES = 'tblLC8VINlc1YUdUJ'
-const RECORD_ID_RE = /^rec[a-zA-Z0-9]{14}$/
+const TABLE_PRESTATIONS = 'prestations'
+const TABLE_PROMOTIONS = 'promotions'
+const TABLE_QUESTIONNAIRES = 'questionnaires'
+const TABLE_ALERTES = 'alertes'
+const TABLE_ALERTES_LUES = 'alertes_lues'
+const TABLE_NEWSLETTER_STATUT = 'newsletter_statut'
+const TABLE_STOCK = 'stock'
+const TABLE_COMMUNICATIONS_LOG = 'communications_log'
+const TABLE_PARAMETRES = 'parametres'
 
 interface Prestation {
   id: string
@@ -71,10 +64,6 @@ interface DismissedAlertItem {
   cle: string
 }
 
-function linkedIds(field: unknown): string[] {
-  return Array.isArray(field) ? (field as string[]) : []
-}
-
 type ParseFn = (
   body: unknown,
   opts: { requireCore: boolean },
@@ -83,11 +72,7 @@ type ParseFn = (
 async function handleCrud(
   req: VercelRequest,
   res: VercelResponse,
-  {
-    tableId,
-    parse,
-    notFoundLabel,
-  }: { tableId: string; parse: ParseFn; notFoundLabel: string },
+  { table, parse, notFoundLabel }: { table: string; parse: ParseFn; notFoundLabel: string },
 ): Promise<void> {
   if (req.method === 'POST') {
     const parsed = parse(req.body, { requireCore: true })
@@ -96,21 +81,21 @@ async function handleCrud(
       return
     }
     try {
-      const record = await airtableCreate(tableId, parsed.fields, { typecast: true })
-      res.status(201).json({ id: record.id })
+      const row = await dbCreate(table, parsed.fields)
+      res.status(201).json({ id: row.id })
     } catch (error) {
-      if (error instanceof AirtableConfigError) {
+      if (error instanceof SupabaseConfigError) {
         res.status(500).json({ error: error.message })
         return
       }
       console.error(error)
-      res.status(502).json({ error: `Impossible de créer ${notFoundLabel} dans Airtable.` })
+      res.status(502).json({ error: `Impossible de créer ${notFoundLabel} dans la base de données.` })
     }
     return
   }
 
   const id = req.query.id
-  if (typeof id !== 'string' || !RECORD_ID_RE.test(id)) {
+  if (typeof id !== 'string' || !UUID_RE.test(id)) {
     res.status(400).json({ error: 'Identifiant invalide.' })
     return
   }
@@ -122,30 +107,30 @@ async function handleCrud(
       return
     }
     try {
-      await airtableUpdate(tableId, id, parsed.fields, { typecast: true })
+      await dbUpdate(table, id, parsed.fields)
       res.status(200).json({ ok: true })
     } catch (error) {
-      if (error instanceof AirtableConfigError) {
+      if (error instanceof SupabaseConfigError) {
         res.status(500).json({ error: error.message })
         return
       }
       console.error(error)
-      res.status(502).json({ error: `Impossible de mettre à jour ${notFoundLabel} dans Airtable.` })
+      res.status(502).json({ error: `Impossible de mettre à jour ${notFoundLabel} dans la base de données.` })
     }
     return
   }
 
   if (req.method === 'DELETE') {
     try {
-      await airtableDelete(tableId, id)
+      await dbDelete(table, id)
       res.status(200).json({ ok: true })
     } catch (error) {
-      if (error instanceof AirtableConfigError) {
+      if (error instanceof SupabaseConfigError) {
         res.status(500).json({ error: error.message })
         return
       }
       console.error(error)
-      res.status(502).json({ error: `Impossible de supprimer ${notFoundLabel} dans Airtable.` })
+      res.status(502).json({ error: `Impossible de supprimer ${notFoundLabel} dans la base de données.` })
     }
     return
   }
@@ -156,106 +141,106 @@ async function handleCrud(
 async function handleQuestionnaires(req: VercelRequest, res: VercelResponse): Promise<void> {
   if (req.method === 'GET') {
     try {
-      const records = await airtableList(TABLE_QUESTIONNAIRES)
-      const questionnaires: QuestionnaireItem[] = records
+      const rows = await dbList(TABLE_QUESTIONNAIRES)
+      const questionnaires: QuestionnaireItem[] = rows
         .map((r) => ({
           id: r.id,
-          nom: (r.fields['Nom'] as string) ?? '',
-          categorie: (r.fields['Catégorie'] as string) ?? '',
-          lien: (r.fields['Lien Google Form'] as string) ?? '',
-          clienteIds: linkedIds(r.fields['Clientes ciblées']),
+          nom: (r.nom as string) ?? '',
+          categorie: (r.categorie as string) ?? '',
+          lien: (r.lien as string) ?? '',
+          clienteIds: (r.clientes_ciblees as string[]) ?? [],
         }))
         .sort((a, b) => a.nom.localeCompare(b.nom))
       res.status(200).json({ questionnaires })
     } catch (error) {
-      if (error instanceof AirtableConfigError) {
+      if (error instanceof SupabaseConfigError) {
         res.status(500).json({ error: error.message })
         return
       }
       console.error(error)
-      res.status(502).json({ error: 'Impossible de récupérer les formulaires depuis Airtable.' })
+      res.status(502).json({ error: 'Impossible de récupérer les formulaires depuis la base de données.' })
     }
     return
   }
-  await handleCrud(req, res, { tableId: TABLE_QUESTIONNAIRES, parse: parseQuestionnaireInput, notFoundLabel: 'le formulaire' })
+  await handleCrud(req, res, { table: TABLE_QUESTIONNAIRES, parse: parseQuestionnaireInput, notFoundLabel: 'le formulaire' })
 }
 
 async function handlePromotions(req: VercelRequest, res: VercelResponse): Promise<void> {
   if (req.method === 'GET') {
     try {
-      const records = await airtableList(TABLE_PROMOTIONS)
-      const promotions: PromotionItem[] = records
+      const rows = await dbList(TABLE_PROMOTIONS)
+      const promotions: PromotionItem[] = rows
         .map((r) => ({
           id: r.id,
-          nom: (r.fields['Nom'] as string) ?? '',
-          reduction: (r.fields['Réduction'] as number) ?? null,
-          active: Boolean(r.fields['Active']),
-          dateExpiration: (r.fields["Date d'expiration"] as string) ?? null,
+          nom: (r.nom as string) ?? '',
+          reduction: (r.reduction as number) ?? null,
+          active: Boolean(r.active),
+          dateExpiration: (r.date_expiration as string) ?? null,
         }))
         .sort((a, b) => Number(b.active) - Number(a.active) || a.nom.localeCompare(b.nom))
 
       res.status(200).json({ promotions })
     } catch (error) {
-      if (error instanceof AirtableConfigError) {
+      if (error instanceof SupabaseConfigError) {
         res.status(500).json({ error: error.message })
         return
       }
       console.error(error)
-      res.status(502).json({ error: 'Impossible de récupérer les promotions depuis Airtable.' })
+      res.status(502).json({ error: 'Impossible de récupérer les promotions depuis la base de données.' })
     }
     return
   }
-  await handleCrud(req, res, { tableId: TABLE_PROMOTIONS, parse: parsePromotionInput, notFoundLabel: 'le code promo' })
+  await handleCrud(req, res, { table: TABLE_PROMOTIONS, parse: parsePromotionInput, notFoundLabel: 'le code promo' })
 }
 
 async function handleAlertes(req: VercelRequest, res: VercelResponse): Promise<void> {
   if (req.method === 'GET') {
     try {
-      const records = await airtableList(TABLE_ALERTES)
-      const alertes: AlerteItem[] = records
+      const rows = await dbList(TABLE_ALERTES)
+      const alertes: AlerteItem[] = rows
         .map((r) => ({
           id: r.id,
-          titre: (r.fields['Titre'] as string) ?? '',
-          description: (r.fields['Description'] as string) ?? '',
-          date: (r.fields['Date'] as string) ?? null,
-          active: r.fields['Active'] !== false,
+          titre: (r.titre as string) ?? '',
+          description: (r.description as string) ?? '',
+          date: (r.date as string) ?? null,
+          active: r.active !== false,
         }))
         .sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''))
       res.status(200).json({ alertes })
     } catch (error) {
-      if (error instanceof AirtableConfigError) {
+      if (error instanceof SupabaseConfigError) {
         res.status(500).json({ error: error.message })
         return
       }
       console.error(error)
-      res.status(502).json({ error: 'Impossible de récupérer les alertes depuis Airtable.' })
+      res.status(502).json({ error: 'Impossible de récupérer les alertes depuis la base de données.' })
     }
     return
   }
-  await handleCrud(req, res, { tableId: TABLE_ALERTES, parse: parseAlerteInput, notFoundLabel: "l'alerte" })
+  await handleCrud(req, res, { table: TABLE_ALERTES, parse: parseAlerteInput, notFoundLabel: "l'alerte" })
 }
 
 async function handleDismissedAlertes(req: VercelRequest, res: VercelResponse): Promise<void> {
   if (req.method === 'GET') {
     try {
-      const records = await airtableList(TABLE_ALERTES_LUES)
-      const dismissedAlerts: DismissedAlertItem[] = records.map((r) => ({
+      const rows = await dbList(TABLE_ALERTES_LUES)
+      const dismissedAlerts: DismissedAlertItem[] = rows.map((r) => ({
         id: r.id,
-        cle: (r.fields['Clé'] as string) ?? '',
+        cle: (r.cle as string) ?? '',
       }))
       res.status(200).json({ dismissedAlerts })
     } catch (error) {
-      if (error instanceof AirtableConfigError) {
+      if (error instanceof SupabaseConfigError) {
         res.status(500).json({ error: error.message })
         return
       }
       console.error(error)
-      res.status(502).json({ error: 'Impossible de récupérer les alertes lues depuis Airtable.' })
+      res.status(502).json({ error: 'Impossible de récupérer les alertes lues depuis la base de données.' })
     }
     return
   }
   await handleCrud(req, res, {
-    tableId: TABLE_ALERTES_LUES,
+    table: TABLE_ALERTES_LUES,
     parse: parseDismissedAlertInput,
     notFoundLabel: "l'alerte lue",
   })
@@ -264,38 +249,35 @@ async function handleDismissedAlertes(req: VercelRequest, res: VercelResponse): 
 async function handleStock(req: VercelRequest, res: VercelResponse): Promise<void> {
   if (req.method === 'GET') {
     try {
-      const records = await airtableList(TABLE_STOCK)
-      const stock = records.map(mapStock).sort((a, b) => a.nom.localeCompare(b.nom))
+      const rows = await dbList(TABLE_STOCK)
+      const stock = rows.map(mapStock).sort((a, b) => a.nom.localeCompare(b.nom))
       res.status(200).json({ stock })
     } catch (error) {
-      if (error instanceof AirtableConfigError) {
+      if (error instanceof SupabaseConfigError) {
         res.status(500).json({ error: error.message })
         return
       }
       console.error(error)
-      res.status(502).json({ error: 'Impossible de récupérer le stock depuis Airtable.' })
+      res.status(502).json({ error: 'Impossible de récupérer le stock depuis la base de données.' })
     }
     return
   }
-  await handleCrud(req, res, { tableId: TABLE_STOCK, parse: parseStockInput, notFoundLabel: 'le produit' })
+  await handleCrud(req, res, { table: TABLE_STOCK, parse: parseStockInput, notFoundLabel: 'le produit' })
 }
 
 async function handleCommunicationsLog(req: VercelRequest, res: VercelResponse): Promise<void> {
   if (req.method === 'GET') {
     try {
-      const records = await airtableList(TABLE_COMMUNICATIONS_LOG)
-      const communications = records
-        .map(mapCommunicationLog)
-        .sort((a, b) => (b.dateEnvoi ?? '').localeCompare(a.dateEnvoi ?? ''))
-        .slice(0, 50)
+      const rows = await dbList(TABLE_COMMUNICATIONS_LOG, { order: { column: 'date_envoi', ascending: false } })
+      const communications = rows.slice(0, 50).map(mapCommunicationLog)
       res.status(200).json({ communications })
     } catch (error) {
-      if (error instanceof AirtableConfigError) {
+      if (error instanceof SupabaseConfigError) {
         res.status(500).json({ error: error.message })
         return
       }
       console.error(error)
-      res.status(502).json({ error: "Impossible de récupérer l'historique des communications depuis Airtable." })
+      res.status(502).json({ error: "Impossible de récupérer l'historique des communications depuis la base de données." })
     }
     return
   }
@@ -307,15 +289,15 @@ async function handleCommunicationsLog(req: VercelRequest, res: VercelResponse):
       return
     }
     try {
-      const record = await airtableCreate(TABLE_COMMUNICATIONS_LOG, parsed.fields, { typecast: true })
-      res.status(201).json({ id: record.id })
+      const row = await dbCreate(TABLE_COMMUNICATIONS_LOG, parsed.fields)
+      res.status(201).json({ id: row.id })
     } catch (error) {
-      if (error instanceof AirtableConfigError) {
+      if (error instanceof SupabaseConfigError) {
         res.status(500).json({ error: error.message })
         return
       }
       console.error(error)
-      res.status(502).json({ error: "Impossible d'enregistrer la communication dans Airtable." })
+      res.status(502).json({ error: "Impossible d'enregistrer la communication dans la base de données." })
     }
     return
   }
@@ -326,15 +308,15 @@ async function handleCommunicationsLog(req: VercelRequest, res: VercelResponse):
 async function handleParametres(req: VercelRequest, res: VercelResponse): Promise<void> {
   if (req.method === 'GET') {
     try {
-      const records = await airtableList(TABLE_PARAMETRES)
-      res.status(200).json({ parametres: mapParametres(records[0] ?? null) })
+      const rows = await dbList(TABLE_PARAMETRES)
+      res.status(200).json({ parametres: mapParametres(rows[0] ?? null) })
     } catch (error) {
-      if (error instanceof AirtableConfigError) {
+      if (error instanceof SupabaseConfigError) {
         res.status(500).json({ error: error.message })
         return
       }
       console.error(error)
-      res.status(502).json({ error: 'Impossible de récupérer les paramètres depuis Airtable.' })
+      res.status(502).json({ error: 'Impossible de récupérer les paramètres depuis la base de données.' })
     }
     return
   }
@@ -346,19 +328,19 @@ async function handleParametres(req: VercelRequest, res: VercelResponse): Promis
       return
     }
     try {
-      const records = await airtableList(TABLE_PARAMETRES)
-      const existing = records[0]
-      const record = existing
-        ? await airtableUpdate(TABLE_PARAMETRES, existing.id, parsed.fields, { typecast: true })
-        : await airtableCreate(TABLE_PARAMETRES, { Libellé: 'Studio', ...parsed.fields }, { typecast: true })
-      res.status(200).json({ parametres: mapParametres(record) })
+      const rows = await dbList(TABLE_PARAMETRES)
+      const existing = rows[0]
+      const row: DbRow = existing
+        ? await dbUpdate(TABLE_PARAMETRES, existing.id, parsed.fields)
+        : await dbCreate(TABLE_PARAMETRES, { libelle: 'Studio', ...parsed.fields })
+      res.status(200).json({ parametres: mapParametres(row) })
     } catch (error) {
-      if (error instanceof AirtableConfigError) {
+      if (error instanceof SupabaseConfigError) {
         res.status(500).json({ error: error.message })
         return
       }
       console.error(error)
-      res.status(502).json({ error: "Impossible d'enregistrer les paramètres dans Airtable." })
+      res.status(502).json({ error: "Impossible d'enregistrer les paramètres dans la base de données." })
     }
     return
   }
@@ -369,39 +351,38 @@ async function handleParametres(req: VercelRequest, res: VercelResponse): Promis
 async function handleNewsletterStatut(req: VercelRequest, res: VercelResponse): Promise<void> {
   if (req.method === 'GET') {
     try {
-      const records = await airtableList(TABLE_NEWSLETTER_STATUT)
-      const sorted = records
-        .map((r) => (r.fields['Dernier envoi'] as string) ?? null)
+      const rows = await dbList(TABLE_NEWSLETTER_STATUT)
+      const sorted = rows
+        .map((r) => (r.dernier_envoi as string) ?? null)
         .filter((v): v is string => Boolean(v))
         .sort()
       const lastSentAt = sorted.length > 0 ? sorted[sorted.length - 1] : null
       res.status(200).json({ lastSentAt })
     } catch (error) {
-      if (error instanceof AirtableConfigError) {
+      if (error instanceof SupabaseConfigError) {
         res.status(500).json({ error: error.message })
         return
       }
       console.error(error)
-      res.status(502).json({ error: "Impossible de récupérer le statut de la newsletter depuis Airtable." })
+      res.status(502).json({ error: 'Impossible de récupérer le statut de la newsletter depuis la base de données.' })
     }
     return
   }
 
   if (req.method === 'POST') {
     try {
-      const record = await airtableCreate(
-        TABLE_NEWSLETTER_STATUT,
-        { Libellé: 'Envoi newsletter', 'Dernier envoi': new Date().toISOString() },
-        { typecast: true },
-      )
-      res.status(201).json({ id: record.id })
+      const row = await dbCreate(TABLE_NEWSLETTER_STATUT, {
+        libelle: 'Envoi newsletter',
+        dernier_envoi: new Date().toISOString(),
+      })
+      res.status(201).json({ id: row.id })
     } catch (error) {
-      if (error instanceof AirtableConfigError) {
+      if (error instanceof SupabaseConfigError) {
         res.status(500).json({ error: error.message })
         return
       }
       console.error(error)
-      res.status(502).json({ error: "Impossible d'enregistrer l'envoi de la newsletter dans Airtable." })
+      res.status(502).json({ error: "Impossible d'enregistrer l'envoi de la newsletter dans la base de données." })
     }
     return
   }
@@ -459,28 +440,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
 
   if (req.method === 'GET') {
     try {
-      const records = await airtableList(TABLE_PRESTATIONS)
-      const prestations: Prestation[] = records
+      const rows = await dbList(TABLE_PRESTATIONS)
+      const prestations: Prestation[] = rows
         .map((r) => ({
           id: r.id,
-          nom: (r.fields['Nom de la prestation'] as string) ?? '',
-          categorie: (r.fields['Catégorie'] as string) ?? '',
-          duree: (r.fields['Durée'] as string) ?? '',
-          prix: (r.fields['Prix'] as number) ?? 0,
-          type: (r.fields['Type'] as string) ?? '',
+          nom: (r.nom as string) ?? '',
+          categorie: (r.categorie as string) ?? '',
+          duree: (r.duree as string) ?? '',
+          prix: (r.prix as number) ?? 0,
+          type: (r.type as string) ?? '',
         }))
         .sort((a, b) => a.categorie.localeCompare(b.categorie) || a.nom.localeCompare(b.nom))
       res.status(200).json({ prestations })
     } catch (error) {
-      if (error instanceof AirtableConfigError) {
+      if (error instanceof SupabaseConfigError) {
         res.status(500).json({ error: error.message })
         return
       }
       console.error(error)
-      res.status(502).json({ error: 'Impossible de récupérer les prestations depuis Airtable.' })
+      res.status(502).json({ error: 'Impossible de récupérer les prestations depuis la base de données.' })
     }
     return
   }
 
-  await handleCrud(req, res, { tableId: TABLE_PRESTATIONS, parse: parsePrestationInput, notFoundLabel: 'la prestation' })
+  await handleCrud(req, res, { table: TABLE_PRESTATIONS, parse: parsePrestationInput, notFoundLabel: 'la prestation' })
 }

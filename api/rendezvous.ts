@@ -1,22 +1,11 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import {
-  airtableList,
-  airtableGetByIds,
-  airtableCreate,
-  AirtableConfigError,
-  type AirtableRecord,
-} from './_lib/airtable.js'
+import { dbList, dbCreate, SupabaseConfigError, type DbRow } from './_lib/supabase.js'
 import { setCorsHeaders } from './_lib/cors.js'
 import { requireAuth, AuthError } from './_lib/auth.js'
 import { parseRendezVousInput } from './_lib/mappers.js'
 
-const TABLE_RENDEZVOUS = 'tblFF89VWARwjPxus'
-const TABLE_CLIENTES = 'tblMKV5WKQ7jtwXq4'
-const TABLE_PRESTATIONS = 'tblDeJttMEKXpYR8X'
-
-function linkedIds(field: unknown): string[] {
-  return Array.isArray(field) ? (field as string[]) : []
-}
+const TABLE_RENDEZVOUS = 'rendezvous'
+const SELECT = '*, cliente:clients(nom_complet), prestation:prestations(nom, prix, duree)'
 
 interface RdvItem {
   id: string
@@ -29,6 +18,23 @@ interface RdvItem {
   prestationNom: string
   prix: number | null
   duree: string
+}
+
+function mapRow(r: DbRow): RdvItem {
+  const cliente = r.cliente as { nom_complet?: string } | null
+  const prestation = r.prestation as { nom?: string; prix?: number; duree?: string } | null
+  return {
+    id: r.id,
+    date: (r.date as string) ?? null,
+    statut: (r.statut as string) ?? '',
+    notes: (r.notes as string) ?? '',
+    clienteId: (r.cliente_id as string) ?? null,
+    clienteNom: cliente?.nom_complet ?? '',
+    prestationId: (r.prestation_id as string) ?? null,
+    prestationNom: prestation?.nom ?? '',
+    prix: prestation?.prix ?? null,
+    duree: prestation?.duree ?? '',
+  }
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
@@ -52,51 +58,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
 
   if (req.method === 'GET') {
     try {
-      const records = await airtableList(TABLE_RENDEZVOUS)
-
-      const clienteIds = Array.from(
-        new Set(records.flatMap((r) => linkedIds(r.fields['Cliente']))),
-      )
-      const prestationIds = Array.from(
-        new Set(records.flatMap((r) => linkedIds(r.fields['Prestation']))),
-      )
-
-      const [clienteRecords, prestationRecords] = await Promise.all([
-        airtableGetByIds(TABLE_CLIENTES, clienteIds),
-        airtableGetByIds(TABLE_PRESTATIONS, prestationIds),
-      ])
-      const clienteMap = new Map<string, AirtableRecord>(clienteRecords.map((c) => [c.id, c]))
-      const prestationMap = new Map<string, AirtableRecord>(
-        prestationRecords.map((p) => [p.id, p]),
-      )
-
-      const rendezvous: RdvItem[] = records.map((r) => {
-        const clienteId = linkedIds(r.fields['Cliente'])[0] ?? null
-        const prestationId = linkedIds(r.fields['Prestation'])[0] ?? null
-        const cliente = clienteId ? clienteMap.get(clienteId) : undefined
-        const prestation = prestationId ? prestationMap.get(prestationId) : undefined
-        return {
-          id: r.id,
-          date: (r.fields['Date'] as string) ?? null,
-          statut: (r.fields['Statut'] as string) ?? '',
-          notes: (r.fields['Notes du RDV'] as string) ?? '',
-          clienteId,
-          clienteNom: (cliente?.fields['Nom complet'] as string) ?? '',
-          prestationId,
-          prestationNom: (prestation?.fields['Nom de la prestation'] as string) ?? '',
-          prix: (prestation?.fields['Prix'] as number) ?? null,
-          duree: (prestation?.fields['Durée'] as string) ?? '',
-        }
-      })
-
+      const rows = await dbList(TABLE_RENDEZVOUS, { select: SELECT })
+      const rendezvous = rows.map(mapRow)
       res.status(200).json({ rendezvous })
     } catch (error) {
-      if (error instanceof AirtableConfigError) {
+      if (error instanceof SupabaseConfigError) {
         res.status(500).json({ error: error.message })
         return
       }
       console.error(error)
-      res.status(502).json({ error: 'Impossible de récupérer les rendez-vous depuis Airtable.' })
+      res.status(502).json({ error: 'Impossible de récupérer les rendez-vous depuis la base de données.' })
     }
     return
   }
@@ -109,14 +80,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
   }
 
   try {
-    const record = await airtableCreate(TABLE_RENDEZVOUS, parsed.fields)
-    res.status(201).json({ id: record.id })
+    const row = await dbCreate(TABLE_RENDEZVOUS, parsed.fields)
+    res.status(201).json({ id: row.id })
   } catch (error) {
-    if (error instanceof AirtableConfigError) {
+    if (error instanceof SupabaseConfigError) {
       res.status(500).json({ error: error.message })
       return
     }
     console.error(error)
-    res.status(502).json({ error: 'Impossible de créer le rendez-vous dans Airtable.' })
+    res.status(502).json({ error: 'Impossible de créer le rendez-vous dans la base de données.' })
   }
 }

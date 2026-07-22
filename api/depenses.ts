@@ -1,15 +1,10 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { airtableList, airtableCreate, AirtableConfigError } from './_lib/airtable.js'
+import { dbList, dbCreate, SupabaseConfigError, type DbRow } from './_lib/supabase.js'
 import { setCorsHeaders } from './_lib/cors.js'
 import { requireAuth, AuthError } from './_lib/auth.js'
 import { parseDepenseInput } from './_lib/mappers.js'
 
-const TABLE_DEPENSES = 'tblHXhydmHUKycaHd'
-
-interface AirtableAttachment {
-  url: string
-  filename: string
-}
+const TABLE_DEPENSES = 'depenses'
 
 interface DepenseItem {
   id: string
@@ -20,6 +15,19 @@ interface DepenseItem {
   recurrente: boolean
   justificatifUrl: string | null
   justificatifNom: string | null
+}
+
+function mapRow(r: DbRow): DepenseItem {
+  return {
+    id: r.id,
+    date: (r.date as string) ?? null,
+    categorie: (r.categorie as string) ?? '',
+    description: (r.description as string) ?? '',
+    montant: (r.montant as number) ?? null,
+    recurrente: Boolean(r.recurrente),
+    justificatifUrl: (r.justificatif_url as string) ?? null,
+    justificatifNom: (r.justificatif_nom as string) ?? null,
+  }
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
@@ -43,32 +51,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
 
   if (req.method === 'GET') {
     try {
-      const records = await airtableList(TABLE_DEPENSES)
-      const depenses: DepenseItem[] = records
-        .map((r) => {
-          const attachments = r.fields['Justificatif'] as AirtableAttachment[] | undefined
-          const justificatif = attachments?.[0]
-          return {
-            id: r.id,
-            date: (r.fields['Date'] as string) ?? null,
-            categorie: (r.fields['Catégorie'] as string) ?? '',
-            description: (r.fields['Description'] as string) ?? '',
-            montant: (r.fields['Montant'] as number) ?? null,
-            recurrente: Boolean(r.fields['Récurrente']),
-            justificatifUrl: justificatif?.url ?? null,
-            justificatifNom: justificatif?.filename ?? null,
-          }
-        })
-        .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''))
-
+      const rows = await dbList(TABLE_DEPENSES, { order: { column: 'date', ascending: false } })
+      const depenses = rows.map(mapRow)
       res.status(200).json({ depenses })
     } catch (error) {
-      if (error instanceof AirtableConfigError) {
+      if (error instanceof SupabaseConfigError) {
         res.status(500).json({ error: error.message })
         return
       }
       console.error(error)
-      res.status(502).json({ error: 'Impossible de récupérer les dépenses depuis Airtable.' })
+      res.status(502).json({ error: 'Impossible de récupérer les dépenses depuis la base de données.' })
     }
     return
   }
@@ -81,14 +73,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
   }
 
   try {
-    const record = await airtableCreate(TABLE_DEPENSES, parsed.fields, { typecast: true })
-    res.status(201).json({ id: record.id })
+    const row = await dbCreate(TABLE_DEPENSES, parsed.fields)
+    res.status(201).json({ id: row.id })
   } catch (error) {
-    if (error instanceof AirtableConfigError) {
+    if (error instanceof SupabaseConfigError) {
       res.status(500).json({ error: error.message })
       return
     }
     console.error(error)
-    res.status(502).json({ error: 'Impossible de créer la dépense dans Airtable.' })
+    res.status(502).json({ error: 'Impossible de créer la dépense dans la base de données.' })
   }
 }

@@ -1,10 +1,10 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { airtableList, airtableCreate, AirtableConfigError } from './_lib/airtable.js'
+import { dbList, dbCreate, SupabaseConfigError } from './_lib/supabase.js'
 import { setCorsHeaders } from './_lib/cors.js'
 import { requireAuth, AuthError } from './_lib/auth.js'
 import { mapClient, parseClientInput } from './_lib/mappers.js'
 
-const TABLE_CLIENTES = 'tblMKV5WKQ7jtwXq4'
+const TABLE_CLIENTS = 'clients'
 
 export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
   setCorsHeaders(req, res)
@@ -27,16 +27,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
 
   if (req.method === 'GET') {
     try {
-      const records = await airtableList(TABLE_CLIENTES)
-      const clients = records.map(mapClient)
+      const rows = await dbList(TABLE_CLIENTS, { order: { column: 'nom_complet' } })
+      const clients = rows.map(mapClient)
       res.status(200).json({ clients })
     } catch (error) {
-      if (error instanceof AirtableConfigError) {
+      if (error instanceof SupabaseConfigError) {
         res.status(500).json({ error: error.message })
         return
       }
       console.error(error)
-      res.status(502).json({ error: 'Impossible de récupérer les clientes depuis Airtable.' })
+      res.status(502).json({ error: 'Impossible de récupérer les clientes depuis la base de données.' })
     }
     return
   }
@@ -49,14 +49,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
   }
 
   try {
-    const record = await airtableCreate(TABLE_CLIENTES, parsed.fields)
-    res.status(201).json({ client: mapClient(record) })
+    const row = await dbCreate(TABLE_CLIENTS, parsed.fields)
+    res.status(201).json({ client: mapClient(row) })
   } catch (error) {
-    if (error instanceof AirtableConfigError) {
+    if (error instanceof SupabaseConfigError) {
       res.status(500).json({ error: error.message })
       return
     }
     console.error(error)
-    res.status(502).json({ error: 'Impossible de créer la cliente dans Airtable.' })
+    res.status(502).json({ error: 'Impossible de créer la cliente dans la base de données.' })
   }
 }

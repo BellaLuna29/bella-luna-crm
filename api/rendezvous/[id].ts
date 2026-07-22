@@ -1,11 +1,10 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { airtableUpdate, AirtableConfigError } from '../_lib/airtable.js'
+import { dbUpdate, SupabaseConfigError, UUID_RE } from '../_lib/supabase.js'
 import { setCorsHeaders } from '../_lib/cors.js'
 import { requireAuth, AuthError } from '../_lib/auth.js'
 import { parseRendezVousInput } from '../_lib/mappers.js'
 
-const TABLE_RENDEZVOUS = 'tblFF89VWARwjPxus'
-const RECORD_ID_RE = /^rec[a-zA-Z0-9]{14}$/
+const TABLE_RENDEZVOUS = 'rendezvous'
 
 export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
   setCorsHeaders(req, res)
@@ -27,7 +26,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
   }
 
   const id = req.query.id
-  if (typeof id !== 'string' || !RECORD_ID_RE.test(id)) {
+  if (typeof id !== 'string' || !UUID_RE.test(id)) {
     res.status(400).json({ error: 'Identifiant de rendez-vous invalide.' })
     return
   }
@@ -39,14 +38,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
   }
 
   try {
-    const updated = await airtableUpdate(TABLE_RENDEZVOUS, id, parsed.fields)
-    res.status(200).json({ id: updated.id, notes: (updated.fields['Notes du RDV'] as string) ?? '' })
+    const updated = await dbUpdate(TABLE_RENDEZVOUS, id, parsed.fields)
+    res.status(200).json({ id: updated.id, notes: (updated.notes as string) ?? '' })
   } catch (error) {
-    if (error instanceof AirtableConfigError) {
+    if (error instanceof SupabaseConfigError) {
       res.status(500).json({ error: error.message })
       return
     }
     console.error(error)
-    res.status(502).json({ error: 'Impossible de mettre à jour le rendez-vous dans Airtable.' })
+    res.status(502).json({ error: 'Impossible de mettre à jour le rendez-vous dans la base de données.' })
   }
 }

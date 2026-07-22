@@ -1,11 +1,10 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { airtableList, airtableCreate, airtableDelete, AirtableConfigError } from './_lib/airtable.js'
+import { dbList, dbCreate, dbDelete, SupabaseConfigError, UUID_RE, type DbRow } from './_lib/supabase.js'
 import { setCorsHeaders } from './_lib/cors.js'
 import { requireAuth, AuthError } from './_lib/auth.js'
 import { parseAbsenceInput } from './_lib/mappers.js'
 
-const TABLE_ABSENCES = 'tblW0nybKAtbpDBcV'
-const RECORD_ID_RE = /^rec[a-zA-Z0-9]{14}$/
+const TABLE_ABSENCES = 'absences'
 
 interface AbsenceItem {
   id: string
@@ -13,6 +12,16 @@ interface AbsenceItem {
   dateDebut: string | null
   dateFin: string | null
   type: string
+}
+
+function mapRow(r: DbRow): AbsenceItem {
+  return {
+    id: r.id,
+    libelle: (r.libelle as string) ?? '',
+    dateDebut: (r.date_debut as string) ?? null,
+    dateFin: (r.date_fin as string) ?? null,
+    type: (r.type as string) ?? 'Vacances',
+  }
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
@@ -36,45 +45,36 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
 
   if (req.method === 'GET') {
     try {
-      const records = await airtableList(TABLE_ABSENCES)
-      const absences: AbsenceItem[] = records
-        .map((r) => ({
-          id: r.id,
-          libelle: (r.fields['Libellé'] as string) ?? '',
-          dateDebut: (r.fields['Date début'] as string) ?? null,
-          dateFin: (r.fields['Date fin'] as string) ?? null,
-          type: (r.fields['Type'] as string) ?? 'Vacances',
-        }))
-        .sort((a, b) => (a.dateDebut ?? '').localeCompare(b.dateDebut ?? ''))
-
+      const rows = await dbList(TABLE_ABSENCES, { order: { column: 'date_debut' } })
+      const absences = rows.map(mapRow)
       res.status(200).json({ absences })
     } catch (error) {
-      if (error instanceof AirtableConfigError) {
+      if (error instanceof SupabaseConfigError) {
         res.status(500).json({ error: error.message })
         return
       }
       console.error(error)
-      res.status(502).json({ error: 'Impossible de récupérer les absences depuis Airtable.' })
+      res.status(502).json({ error: 'Impossible de récupérer les absences depuis la base de données.' })
     }
     return
   }
 
   if (req.method === 'DELETE') {
     const id = req.query.id
-    if (typeof id !== 'string' || !RECORD_ID_RE.test(id)) {
+    if (typeof id !== 'string' || !UUID_RE.test(id)) {
       res.status(400).json({ error: 'Identifiant invalide.' })
       return
     }
     try {
-      await airtableDelete(TABLE_ABSENCES, id)
+      await dbDelete(TABLE_ABSENCES, id)
       res.status(200).json({ ok: true })
     } catch (error) {
-      if (error instanceof AirtableConfigError) {
+      if (error instanceof SupabaseConfigError) {
         res.status(500).json({ error: error.message })
         return
       }
       console.error(error)
-      res.status(502).json({ error: "Impossible de supprimer l'absence dans Airtable." })
+      res.status(502).json({ error: "Impossible de supprimer l'absence dans la base de données." })
     }
     return
   }
@@ -87,14 +87,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
   }
 
   try {
-    const record = await airtableCreate(TABLE_ABSENCES, parsed.fields, { typecast: true })
-    res.status(201).json({ id: record.id })
+    const row = await dbCreate(TABLE_ABSENCES, parsed.fields)
+    res.status(201).json({ id: row.id })
   } catch (error) {
-    if (error instanceof AirtableConfigError) {
+    if (error instanceof SupabaseConfigError) {
       res.status(500).json({ error: error.message })
       return
     }
     console.error(error)
-    res.status(502).json({ error: "Impossible de créer l'absence dans Airtable." })
+    res.status(502).json({ error: "Impossible de créer l'absence dans la base de données." })
   }
 }

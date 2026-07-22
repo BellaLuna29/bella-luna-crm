@@ -1,4 +1,5 @@
-import type { AirtableRecord } from './airtable.js'
+import type { DbRow } from './supabase.js'
+import { UUID_RE } from './supabase.js'
 
 export interface Client {
   id: string
@@ -16,22 +17,21 @@ export interface Client {
   dateCreation: string | null
 }
 
-export function mapClient(record: AirtableRecord): Client {
-  const f = record.fields
+export function mapClient(row: DbRow): Client {
   return {
-    id: record.id,
-    nomComplet: (f['Nom complet'] as string) ?? '',
-    telephone: (f['Téléphone'] as string) ?? '',
-    email: (f['Email'] as string) ?? '',
-    dateNaissance: (f['Date de naissance'] as string) ?? null,
-    genre: (f['Genre'] as string) ?? '',
-    metier: (f['Métier'] as string) ?? '',
-    categorieMetier: (f['Catégorie de métier'] as string) ?? '',
-    hobbies: (f['Hobbies / Sport'] as string) ?? '',
-    notes: (f['Notes'] as string) ?? '',
-    statut: (f['Statut'] as string) ?? 'Nouvelle',
-    newsletter: Boolean(f['Newsletter OK']),
-    dateCreation: (f['Date de création'] as string) ?? null,
+    id: row.id,
+    nomComplet: (row.nom_complet as string) ?? '',
+    telephone: (row.telephone as string) ?? '',
+    email: (row.email as string) ?? '',
+    dateNaissance: (row.date_naissance as string) ?? null,
+    genre: (row.genre as string) ?? '',
+    metier: (row.metier as string) ?? '',
+    categorieMetier: (row.categorie_metier as string) ?? '',
+    hobbies: (row.hobbies as string) ?? '',
+    notes: (row.notes as string) ?? '',
+    statut: (row.statut as string) ?? 'Nouvelle',
+    newsletter: Boolean(row.newsletter_ok),
+    dateCreation: (row.created_at as string) ?? null,
   }
 }
 
@@ -55,8 +55,8 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
 /**
- * Validates and maps a raw request body into Airtable field names.
- * `requireName` enforces "Nom complet" as mandatory (create only).
+ * Validates and maps a raw request body into Postgres column names.
+ * `requireName` enforces "nom_complet" as mandatory (create only).
  */
 export function parseClientInput(
   body: unknown,
@@ -76,28 +76,28 @@ export function parseClientInput(
     } else if (v.length > 200) {
       errors.push('Le nom complet est trop long (200 caractères max).')
     }
-    if (v.length > 0) fields['Nom complet'] = v
+    if (v.length > 0) fields.nom_complet = v
   }
 
   if ('telephone' in b) {
     const v = typeof b.telephone === 'string' ? b.telephone.trim() : ''
     if (v.length > 30) errors.push('Le téléphone est trop long.')
-    else fields['Téléphone'] = v
+    else fields.telephone = v
   }
 
   if ('email' in b) {
     const v = typeof b.email === 'string' ? b.email.trim() : ''
     if (v.length > 0 && !EMAIL_RE.test(v)) errors.push("L'adresse e-mail n'est pas valide.")
     else if (v.length > 200) errors.push("L'adresse e-mail est trop longue.")
-    else fields['Email'] = v
+    else fields.email = v
   }
 
   if ('dateNaissance' in b) {
     const v = b.dateNaissance
     if (v === null || v === '') {
-      fields['Date de naissance'] = null
+      fields.date_naissance = null
     } else if (typeof v === 'string' && DATE_RE.test(v)) {
-      fields['Date de naissance'] = v
+      fields.date_naissance = v
     } else {
       errors.push('La date de naissance doit être au format AAAA-MM-JJ.')
     }
@@ -106,9 +106,9 @@ export function parseClientInput(
   if ('genre' in b) {
     const v = b.genre
     if (v === '' || v === null) {
-      fields['Genre'] = null
+      fields.genre = null
     } else if (typeof v === 'string' && (GENRE_VALUES as readonly string[]).includes(v)) {
-      fields['Genre'] = v
+      fields.genre = v
     } else {
       errors.push('Genre invalide.')
     }
@@ -117,15 +117,15 @@ export function parseClientInput(
   if ('metier' in b) {
     const v = typeof b.metier === 'string' ? b.metier.trim() : ''
     if (v.length > 200) errors.push('Le métier est trop long.')
-    else fields['Métier'] = v
+    else fields.metier = v
   }
 
   if ('categorieMetier' in b) {
     const v = b.categorieMetier
     if (v === '' || v === null) {
-      fields['Catégorie de métier'] = null
+      fields.categorie_metier = null
     } else if (typeof v === 'string' && (CATEGORIE_METIER_VALUES as readonly string[]).includes(v)) {
-      fields['Catégorie de métier'] = v
+      fields.categorie_metier = v
     } else {
       errors.push('Catégorie de métier invalide.')
     }
@@ -134,28 +134,28 @@ export function parseClientInput(
   if ('hobbies' in b) {
     const v = typeof b.hobbies === 'string' ? b.hobbies.trim() : ''
     if (v.length > 200) errors.push('Le champ hobbies/sport est trop long (200 caractères max).')
-    else fields['Hobbies / Sport'] = v
+    else fields.hobbies = v
   }
 
   if ('notes' in b) {
     const v = typeof b.notes === 'string' ? b.notes.trim() : ''
     if (v.length > 5000) errors.push('La note est trop longue (5000 caractères max).')
-    else fields['Notes'] = v
+    else fields.notes = v
   }
 
   if ('statut' in b) {
     const v = b.statut
     if (typeof v === 'string' && (STATUT_VALUES as readonly string[]).includes(v)) {
-      fields['Statut'] = v
+      fields.statut = v
     } else {
       errors.push('Statut invalide.')
     }
   } else if (requireName) {
-    fields['Statut'] = 'Nouvelle'
+    fields.statut = 'Nouvelle'
   }
 
   if ('newsletter' in b) {
-    fields['Newsletter OK'] = Boolean(b.newsletter)
+    fields.newsletter_ok = Boolean(b.newsletter)
   }
 
   if (errors.length > 0) return { errors }
@@ -163,8 +163,8 @@ export function parseClientInput(
 }
 
 /**
- * Validates and maps a raw request body into Airtable field names for the
- * Factures table. `requireCore` enforces cliente/montant/date as mandatory
+ * Validates and maps a raw request body into Postgres column names for the
+ * factures table. `requireCore` enforces cliente/montant/date as mandatory
  * (create only).
  */
 export function parseFactureInput(
@@ -180,8 +180,8 @@ export function parseFactureInput(
 
   if ('clienteId' in b || requireCore) {
     const v = b.clienteId
-    if (typeof v === 'string' && RECORD_ID_RE.test(v)) {
-      fields['Cliente'] = [v]
+    if (typeof v === 'string' && UUID_RE.test(v)) {
+      fields.cliente_id = v
     } else if (requireCore) {
       errors.push('La cliente est obligatoire.')
     }
@@ -190,7 +190,7 @@ export function parseFactureInput(
   if ('montant' in b || requireCore) {
     const v = b.montant
     if (typeof v === 'number' && Number.isFinite(v) && v >= 0) {
-      fields['Montant'] = v
+      fields.montant = v
     } else if (requireCore) {
       errors.push('Le montant est obligatoire et doit être un nombre positif.')
     }
@@ -199,35 +199,35 @@ export function parseFactureInput(
   if ('dateFacture' in b || requireCore) {
     const v = b.dateFacture
     if (typeof v === 'string' && DATE_RE.test(v)) {
-      fields['Date de facture'] = v
+      fields.date_facture = v
     } else if (requireCore) {
       errors.push('La date de facture est obligatoire (format AAAA-MM-JJ).')
     }
   }
 
   if ('payee' in b) {
-    fields['Payée'] = Boolean(b.payee)
+    fields.payee = Boolean(b.payee)
   } else if (requireCore) {
-    fields['Payée'] = false
+    fields.payee = false
   }
 
   if ('categorieFacture' in b) {
     const v = b.categorieFacture
     if (typeof v === 'string' && (CATEGORIE_FACTURE_VALUES as readonly string[]).includes(v)) {
-      fields['Catégorie de facture'] = v
+      fields.categorie_facture = v
     } else {
       errors.push('Catégorie de facture invalide.')
     }
   } else if (requireCore) {
-    fields['Catégorie de facture'] = 'Commercial'
+    fields.categorie_facture = 'Commercial'
   }
 
   if ('promoId' in b) {
     const v = b.promoId
     if (v === '' || v === null) {
-      fields['Promo appliquée'] = []
-    } else if (typeof v === 'string' && RECORD_ID_RE.test(v)) {
-      fields['Promo appliquée'] = [v]
+      fields.promo_id = null
+    } else if (typeof v === 'string' && UUID_RE.test(v)) {
+      fields.promo_id = v
     } else {
       errors.push('Promotion invalide.')
     }
@@ -236,13 +236,13 @@ export function parseFactureInput(
   if ('description' in b) {
     const v = typeof b.description === 'string' ? b.description.trim() : ''
     if (v.length > 200) errors.push('La description est trop longue (200 caractères max).')
-    else fields['Description'] = v
+    else fields.description = v
   }
 
   if ('notes' in b) {
     const v = typeof b.notes === 'string' ? b.notes.trim() : ''
     if (v.length > 2000) errors.push('Les notes sont trop longues (2000 caractères max).')
-    else fields['Notes'] = v
+    else fields.notes = v
   }
 
   if (errors.length > 0) return { errors }
@@ -252,8 +252,8 @@ export function parseFactureInput(
 export const CATEGORIE_FACTURE_VALUES = ['Commercial', 'Associatif ou formation'] as const
 
 /**
- * Validates and maps a raw request body into Airtable field names for the
- * Dépenses table. `requireCore` enforces date/description/montant as
+ * Validates and maps a raw request body into Postgres column names for the
+ * depenses table. `requireCore` enforces date/description/montant as
  * mandatory (create only).
  */
 export function parseDepenseInput(
@@ -270,7 +270,7 @@ export function parseDepenseInput(
   if ('date' in b || requireCore) {
     const v = b.date
     if (typeof v === 'string' && DATE_RE.test(v)) {
-      fields['Date'] = v
+      fields.date = v
     } else if (requireCore) {
       errors.push('La date est obligatoire (format AAAA-MM-JJ).')
     }
@@ -279,7 +279,7 @@ export function parseDepenseInput(
   if ('categorie' in b) {
     const v = typeof b.categorie === 'string' ? b.categorie.trim() : ''
     if (v.length > 100) errors.push('La catégorie est trop longue.')
-    else if (v.length > 0) fields['Catégorie'] = v
+    else if (v.length > 0) fields.categorie = v
   }
 
   if ('description' in b || requireCore) {
@@ -289,20 +289,20 @@ export function parseDepenseInput(
     } else if (v.length > 500) {
       errors.push('La description est trop longue (500 caractères max).')
     }
-    if (v.length > 0) fields['Description'] = v
+    if (v.length > 0) fields.description = v
   }
 
   if ('montant' in b || requireCore) {
     const v = b.montant
     if (typeof v === 'number' && Number.isFinite(v) && v >= 0) {
-      fields['Montant'] = v
+      fields.montant = v
     } else if (requireCore) {
       errors.push('Le montant est obligatoire et doit être un nombre positif.')
     }
   }
 
   if ('recurrente' in b) {
-    fields['Récurrente'] = Boolean(b.recurrente)
+    fields.recurrente = Boolean(b.recurrente)
   }
 
   if (errors.length > 0) return { errors }
@@ -310,12 +310,11 @@ export function parseDepenseInput(
 }
 
 export const RDV_STATUT_VALUES = ['Confirmé', 'Honoré', 'Annulé'] as const
-const RECORD_ID_RE = /^rec[a-zA-Z0-9]{14}$/
 const MAX_NOTES = 5000
 
 /**
- * Validates and maps a raw request body into Airtable field names for the
- * Rendez-vous table. `requireCore` enforces cliente/prestation/date as
+ * Validates and maps a raw request body into Postgres column names for the
+ * rendezvous table. `requireCore` enforces cliente/prestation/date as
  * mandatory (create only).
  */
 export function parseRendezVousInput(
@@ -331,8 +330,8 @@ export function parseRendezVousInput(
 
   if ('clienteId' in b || requireCore) {
     const v = b.clienteId
-    if (typeof v === 'string' && RECORD_ID_RE.test(v)) {
-      fields['Cliente'] = [v]
+    if (typeof v === 'string' && UUID_RE.test(v)) {
+      fields.cliente_id = v
     } else if (requireCore) {
       errors.push('La cliente est obligatoire.')
     }
@@ -340,8 +339,8 @@ export function parseRendezVousInput(
 
   if ('prestationId' in b || requireCore) {
     const v = b.prestationId
-    if (typeof v === 'string' && RECORD_ID_RE.test(v)) {
-      fields['Prestation'] = [v]
+    if (typeof v === 'string' && UUID_RE.test(v)) {
+      fields.prestation_id = v
     } else if (requireCore) {
       errors.push('La prestation est obligatoire.')
     }
@@ -351,7 +350,7 @@ export function parseRendezVousInput(
     const v = b.date
     const parsed = typeof v === 'string' ? new Date(v) : null
     if (parsed && !Number.isNaN(parsed.getTime())) {
-      fields['Date'] = parsed.toISOString()
+      fields.date = parsed.toISOString()
     } else if (requireCore) {
       errors.push('La date et heure sont obligatoires.')
     }
@@ -360,18 +359,18 @@ export function parseRendezVousInput(
   if ('statut' in b) {
     const v = b.statut
     if (typeof v === 'string' && (RDV_STATUT_VALUES as readonly string[]).includes(v)) {
-      fields['Statut'] = v
+      fields.statut = v
     } else {
       errors.push('Statut de rendez-vous invalide.')
     }
   } else if (requireCore) {
-    fields['Statut'] = 'Confirmé'
+    fields.statut = 'Confirmé'
   }
 
   if ('notes' in b) {
     const v = typeof b.notes === 'string' ? b.notes.trim() : ''
     if (v.length > MAX_NOTES) errors.push(`La note est trop longue (${MAX_NOTES} caractères max).`)
-    else fields['Notes du RDV'] = v
+    else fields.notes = v
   }
 
   if (errors.length > 0) return { errors }
@@ -379,8 +378,8 @@ export function parseRendezVousInput(
 }
 
 /**
- * Validates and maps a raw request body into Airtable field names for the
- * Promotions table. `requireCore` enforces nom/réduction as mandatory (create only).
+ * Validates and maps a raw request body into Postgres column names for the
+ * promotions table. `requireCore` enforces nom/réduction as mandatory (create only).
  */
 export function parsePromotionInput(
   body: unknown,
@@ -397,14 +396,14 @@ export function parsePromotionInput(
     const v = typeof b.nom === 'string' ? b.nom.trim() : ''
     if (requireCore && v.length === 0) errors.push('Le nom du code promo est obligatoire.')
     else if (v.length > 200) errors.push('Le nom est trop long.')
-    if (v.length > 0) fields['Nom'] = v
+    if (v.length > 0) fields.nom = v
   }
 
   if ('reduction' in b || requireCore) {
     const v = b.reduction
     const num = typeof v === 'number' ? v : Number(v)
     if (typeof v === 'number' || (requireCore && v !== undefined)) {
-      if (Number.isFinite(num) && num > 0 && num <= 1) fields['Réduction'] = num
+      if (Number.isFinite(num) && num > 0 && num <= 1) fields.reduction = num
       else errors.push('La réduction doit être comprise entre 0 et 1 (ex. 0.1 pour 10%).')
     } else if (requireCore) {
       errors.push('La réduction est obligatoire.')
@@ -413,15 +412,15 @@ export function parsePromotionInput(
 
   if ('dateExpiration' in b) {
     const v = b.dateExpiration
-    if (v === '' || v === null) fields["Date d'expiration"] = null
-    else if (typeof v === 'string' && DATE_RE.test(v)) fields["Date d'expiration"] = v
+    if (v === '' || v === null) fields.date_expiration = null
+    else if (typeof v === 'string' && DATE_RE.test(v)) fields.date_expiration = v
     else errors.push("Date d'expiration invalide (format AAAA-MM-JJ).")
   }
 
   if ('active' in b) {
-    fields['Active'] = Boolean(b.active)
+    fields.active = Boolean(b.active)
   } else if (requireCore) {
-    fields['Active'] = true
+    fields.active = true
   }
 
   if (errors.length > 0) return { errors }
@@ -429,8 +428,8 @@ export function parsePromotionInput(
 }
 
 /**
- * Validates and maps a raw request body into Airtable field names for the
- * Alertes table. `requireCore` enforces titre as mandatory (create only).
+ * Validates and maps a raw request body into Postgres column names for the
+ * alertes table. `requireCore` enforces titre as mandatory (create only).
  */
 export function parseAlerteInput(
   body: unknown,
@@ -447,26 +446,26 @@ export function parseAlerteInput(
     const v = typeof b.titre === 'string' ? b.titre.trim() : ''
     if (requireCore && v.length === 0) errors.push('Le titre est obligatoire.')
     else if (v.length > 200) errors.push('Le titre est trop long.')
-    if (v.length > 0) fields['Titre'] = v
+    if (v.length > 0) fields.titre = v
   }
 
   if ('description' in b) {
     const v = typeof b.description === 'string' ? b.description.trim() : ''
     if (v.length > 2000) errors.push('La description est trop longue.')
-    else fields['Description'] = v
+    else fields.description = v
   }
 
   if ('date' in b) {
     const v = b.date
-    if (v === '' || v === null) fields['Date'] = null
-    else if (typeof v === 'string' && DATE_RE.test(v)) fields['Date'] = v
+    if (v === '' || v === null) fields.date = null
+    else if (typeof v === 'string' && DATE_RE.test(v)) fields.date = v
     else errors.push('Date invalide (format AAAA-MM-JJ).')
   }
 
   if ('active' in b) {
-    fields['Active'] = Boolean(b.active)
+    fields.active = Boolean(b.active)
   } else if (requireCore) {
-    fields['Active'] = true
+    fields.active = true
   }
 
   if (errors.length > 0) return { errors }
@@ -474,8 +473,8 @@ export function parseAlerteInput(
 }
 
 /**
- * Validates and maps a raw request body into Airtable field names for the
- * Questionnaires table. `requireCore` enforces nom/lien as mandatory (create only).
+ * Validates and maps a raw request body into Postgres column names for the
+ * questionnaires table. `requireCore` enforces nom/lien as mandatory (create only).
  */
 export function parseQuestionnaireInput(
   body: unknown,
@@ -492,25 +491,25 @@ export function parseQuestionnaireInput(
     const v = typeof b.nom === 'string' ? b.nom.trim() : ''
     if (requireCore && v.length === 0) errors.push('Le nom est obligatoire.')
     else if (v.length > 200) errors.push('Le nom est trop long.')
-    if (v.length > 0) fields['Nom'] = v
+    if (v.length > 0) fields.nom = v
   }
 
   if ('categorie' in b) {
     const v = typeof b.categorie === 'string' ? b.categorie.trim() : ''
-    fields['Catégorie'] = v
+    fields.categorie = v
   }
 
   if ('lien' in b || requireCore) {
     const v = typeof b.lien === 'string' ? b.lien.trim() : ''
     if (requireCore && v.length === 0) errors.push('Le lien du formulaire est obligatoire.')
     else if (v.length > 0 && !/^https?:\/\//i.test(v)) errors.push('Le lien doit être une URL valide.')
-    if (v.length > 0) fields['Lien Google Form'] = v
+    if (v.length > 0) fields.lien = v
   }
 
   if ('clienteIds' in b) {
     const v = b.clienteIds
-    if (Array.isArray(v) && v.every((id) => typeof id === 'string' && RECORD_ID_RE.test(id))) {
-      fields['Clientes ciblées'] = v
+    if (Array.isArray(v) && v.every((id) => typeof id === 'string' && UUID_RE.test(id))) {
+      fields.clientes_ciblees = v
     } else {
       errors.push('Liste de clientes invalide.')
     }
@@ -523,8 +522,8 @@ export function parseQuestionnaireInput(
 export const ABSENCE_TYPE_VALUES = ['Vacances', 'Jour off', 'Autre'] as const
 
 /**
- * Validates and maps a raw request body into Airtable field names for the
- * Absences table. `requireCore` enforces libellé/dateDebut/dateFin as
+ * Validates and maps a raw request body into Postgres column names for the
+ * absences table. `requireCore` enforces libellé/dateDebut/dateFin as
  * mandatory (create only).
  */
 export function parseAbsenceInput(
@@ -545,13 +544,13 @@ export function parseAbsenceInput(
     } else if (v.length > 200) {
       errors.push('Le libellé est trop long.')
     }
-    if (v.length > 0) fields['Libellé'] = v
+    if (v.length > 0) fields.libelle = v
   }
 
   if ('dateDebut' in b || requireCore) {
     const v = b.dateDebut
     if (typeof v === 'string' && DATE_RE.test(v)) {
-      fields['Date début'] = v
+      fields.date_debut = v
     } else if (requireCore) {
       errors.push('La date de début est obligatoire (format AAAA-MM-JJ).')
     }
@@ -560,7 +559,7 @@ export function parseAbsenceInput(
   if ('dateFin' in b || requireCore) {
     const v = b.dateFin
     if (typeof v === 'string' && DATE_RE.test(v)) {
-      fields['Date fin'] = v
+      fields.date_fin = v
     } else if (requireCore) {
       errors.push('La date de fin est obligatoire (format AAAA-MM-JJ).')
     }
@@ -569,12 +568,12 @@ export function parseAbsenceInput(
   if ('type' in b) {
     const v = b.type
     if (typeof v === 'string' && (ABSENCE_TYPE_VALUES as readonly string[]).includes(v)) {
-      fields['Type'] = v
+      fields.type = v
     } else {
       errors.push('Type invalide.')
     }
   } else if (requireCore) {
-    fields['Type'] = 'Vacances'
+    fields.type = 'Vacances'
   }
 
   if (errors.length > 0) return { errors }
@@ -582,8 +581,8 @@ export function parseAbsenceInput(
 }
 
 /**
- * Validates and maps a raw request body into Airtable field names for the
- * AlertesLues table. `requireCore` enforces cle as mandatory (create only).
+ * Validates and maps a raw request body into Postgres column names for the
+ * alertes_lues table. `requireCore` enforces cle as mandatory (create only).
  */
 export function parseDismissedAlertInput(
   body: unknown,
@@ -600,7 +599,7 @@ export function parseDismissedAlertInput(
     const v = typeof b.cle === 'string' ? b.cle.trim() : ''
     if (requireCore && v.length === 0) errors.push('La clé est obligatoire.')
     else if (v.length > 200) errors.push('La clé est trop longue.')
-    if (v.length > 0) fields['Clé'] = v
+    if (v.length > 0) fields.cle = v
   }
 
   if (errors.length > 0) return { errors }
@@ -615,20 +614,19 @@ export interface StockItem {
   unite: string
 }
 
-export function mapStock(record: AirtableRecord): StockItem {
-  const f = record.fields
+export function mapStock(row: DbRow): StockItem {
   return {
-    id: record.id,
-    nom: (f['Nom'] as string) ?? '',
-    quantite: (f['Quantité'] as number) ?? 0,
-    seuilBas: (f['Seuil bas'] as number) ?? 0,
-    unite: (f['Unité'] as string) ?? '',
+    id: row.id,
+    nom: (row.nom as string) ?? '',
+    quantite: (row.quantite as number) ?? 0,
+    seuilBas: (row.seuil_bas as number) ?? 0,
+    unite: (row.unite as string) ?? '',
   }
 }
 
 /**
- * Validates and maps a raw request body into Airtable field names for the
- * Stock table. `requireCore` enforces nom/quantite/seuilBas as mandatory
+ * Validates and maps a raw request body into Postgres column names for the
+ * stock table. `requireCore` enforces nom/quantite/seuilBas as mandatory
  * (create only).
  */
 export function parseStockInput(
@@ -646,25 +644,25 @@ export function parseStockInput(
     const v = typeof b.nom === 'string' ? b.nom.trim() : ''
     if (requireCore && v.length === 0) errors.push('Le nom du produit est obligatoire.')
     else if (v.length > 200) errors.push('Le nom est trop long.')
-    if (v.length > 0) fields['Nom'] = v
+    if (v.length > 0) fields.nom = v
   }
 
   if ('quantite' in b || requireCore) {
     const v = b.quantite
-    if (typeof v === 'number' && Number.isFinite(v) && v >= 0) fields['Quantité'] = v
+    if (typeof v === 'number' && Number.isFinite(v) && v >= 0) fields.quantite = v
     else if (requireCore) errors.push('La quantité est obligatoire et doit être un nombre positif.')
   }
 
   if ('seuilBas' in b || requireCore) {
     const v = b.seuilBas
-    if (typeof v === 'number' && Number.isFinite(v) && v >= 0) fields['Seuil bas'] = v
+    if (typeof v === 'number' && Number.isFinite(v) && v >= 0) fields.seuil_bas = v
     else if (requireCore) errors.push('Le seuil bas est obligatoire et doit être un nombre positif.')
   }
 
   if ('unite' in b) {
     const v = typeof b.unite === 'string' ? b.unite.trim() : ''
     if (v.length > 50) errors.push("L'unité est trop longue.")
-    else fields['Unité'] = v
+    else fields.unite = v
   }
 
   if (errors.length > 0) return { errors }
@@ -679,22 +677,21 @@ export interface CommunicationLogItem {
   dateEnvoi: string | null
 }
 
-export function mapCommunicationLog(record: AirtableRecord): CommunicationLogItem {
-  const f = record.fields
+export function mapCommunicationLog(row: DbRow): CommunicationLogItem {
   return {
-    id: record.id,
-    contenu: (f['Contenu'] as string) ?? '',
-    type: (f['Type'] as string) ?? '',
-    destinataires: (f['Destinataires'] as number) ?? 0,
-    dateEnvoi: (f["Date d'envoi"] as string) ?? null,
+    id: row.id,
+    contenu: (row.contenu as string) ?? '',
+    type: (row.type as string) ?? '',
+    destinataires: (row.destinataires as number) ?? 0,
+    dateEnvoi: (row.date_envoi as string) ?? null,
   }
 }
 
 export const COMMUNICATION_TYPE_VALUES = ['SMS', 'Email', 'Newsletter'] as const
 
 /**
- * Validates and maps a raw request body into Airtable field names for the
- * CommunicationsLog table. Always mandatory (append-only log, create only).
+ * Validates and maps a raw request body into Postgres column names for the
+ * communications_log table. Always mandatory (append-only log, create only).
  */
 export function parseCommunicationLogInput(
   body: unknown,
@@ -708,23 +705,23 @@ export function parseCommunicationLogInput(
 
   const contenu = typeof b.contenu === 'string' ? b.contenu.trim() : ''
   if (contenu.length === 0) errors.push('Le contenu est obligatoire.')
-  else fields['Contenu'] = contenu.slice(0, 200)
+  else fields.contenu = contenu.slice(0, 200)
 
   const type = b.type
   if (typeof type === 'string' && (COMMUNICATION_TYPE_VALUES as readonly string[]).includes(type)) {
-    fields['Type'] = type
+    fields.type = type
   } else {
     errors.push('Type de communication invalide.')
   }
 
   const destinataires = b.destinataires
   if (typeof destinataires === 'number' && Number.isFinite(destinataires) && destinataires >= 0) {
-    fields['Destinataires'] = destinataires
+    fields.destinataires = destinataires
   } else {
     errors.push('Le nombre de destinataires est obligatoire.')
   }
 
-  fields["Date d'envoi"] = new Date().toISOString()
+  fields.date_envoi = new Date().toISOString()
 
   if (errors.length > 0) return { errors }
   return { fields }
@@ -736,22 +733,30 @@ export interface Parametres {
 }
 
 const JOURS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'] as const
+const JOUR_COLUMNS: Record<(typeof JOURS)[number], string> = {
+  Lundi: 'lundi',
+  Mardi: 'mardi',
+  Mercredi: 'mercredi',
+  Jeudi: 'jeudi',
+  Vendredi: 'vendredi',
+  Samedi: 'samedi',
+  Dimanche: 'dimanche',
+}
 
-export function mapParametres(record: AirtableRecord | null): Parametres {
-  const f = record?.fields ?? {}
+export function mapParametres(row: DbRow | null): Parametres {
   const horaires: Record<string, string> = {}
   for (const jour of JOURS) {
-    horaires[jour] = (f[jour] as string) ?? ''
+    horaires[jour] = (row?.[JOUR_COLUMNS[jour]] as string) ?? ''
   }
   return {
     horaires,
-    objectifCaMensuel: (f['Objectif CA mensuel'] as number) ?? null,
+    objectifCaMensuel: (row?.objectif_ca_mensuel as number) ?? null,
   }
 }
 
 /**
- * Validates and maps a raw request body into Airtable field names for the
- * Parametres table (single-record settings: horaires + objectif CA).
+ * Validates and maps a raw request body into Postgres column names for the
+ * parametres table (single-row settings: horaires + objectif CA).
  */
 export function parseParametresInput(body: unknown): { fields: Record<string, unknown> } | ClientInputErrors {
   if (typeof body !== 'object' || body === null) {
@@ -771,7 +776,7 @@ export function parseParametresInput(body: unknown): { fields: Record<string, un
         if (jour in h) {
           const v = typeof h[jour] === 'string' ? (h[jour] as string).trim() : ''
           if (v.length > 50) errors.push(`Horaire du ${jour} trop long.`)
-          else fields[jour] = v
+          else fields[JOUR_COLUMNS[jour]] = v
         }
       }
     }
@@ -780,9 +785,9 @@ export function parseParametresInput(body: unknown): { fields: Record<string, un
   if ('objectifCaMensuel' in b) {
     const v = b.objectifCaMensuel
     if (v === null || v === '') {
-      fields['Objectif CA mensuel'] = null
+      fields.objectif_ca_mensuel = null
     } else if (typeof v === 'number' && Number.isFinite(v) && v >= 0) {
-      fields['Objectif CA mensuel'] = v
+      fields.objectif_ca_mensuel = v
     } else {
       errors.push('Objectif de CA invalide.')
     }
@@ -793,8 +798,8 @@ export function parseParametresInput(body: unknown): { fields: Record<string, un
 }
 
 /**
- * Validates and maps a raw request body into Airtable field names for the
- * Prestations table. `requireCore` enforces nom/prix as mandatory (create
+ * Validates and maps a raw request body into Postgres column names for the
+ * prestations table. `requireCore` enforces nom/prix as mandatory (create
  * only). Catégorie/Type are free text (her existing choices aren't a fixed
  * enum) — Type is used by src/lib/cureProgress.ts to auto-detect cures via
  * a "Cure X séances" pattern, so the UI documents that convention.
@@ -814,31 +819,31 @@ export function parsePrestationInput(
     const v = typeof b.nom === 'string' ? b.nom.trim() : ''
     if (requireCore && v.length === 0) errors.push('Le nom de la prestation est obligatoire.')
     else if (v.length > 200) errors.push('Le nom est trop long.')
-    if (v.length > 0) fields['Nom de la prestation'] = v
+    if (v.length > 0) fields.nom = v
   }
 
   if ('categorie' in b) {
     const v = typeof b.categorie === 'string' ? b.categorie.trim() : ''
     if (v.length > 100) errors.push('La catégorie est trop longue.')
-    else fields['Catégorie'] = v
+    else fields.categorie = v
   }
 
   if ('duree' in b) {
     const v = typeof b.duree === 'string' ? b.duree.trim() : ''
     if (v.length > 50) errors.push('La durée est trop longue.')
-    else fields['Durée'] = v
+    else fields.duree = v
   }
 
   if ('prix' in b || requireCore) {
     const v = b.prix
-    if (typeof v === 'number' && Number.isFinite(v) && v >= 0) fields['Prix'] = v
+    if (typeof v === 'number' && Number.isFinite(v) && v >= 0) fields.prix = v
     else if (requireCore) errors.push('Le prix est obligatoire et doit être un nombre positif.')
   }
 
   if ('type' in b) {
     const v = typeof b.type === 'string' ? b.type.trim() : ''
     if (v.length > 100) errors.push('Le type est trop long.')
-    else fields['Type'] = v
+    else fields.type = v
   }
 
   if (errors.length > 0) return { errors }

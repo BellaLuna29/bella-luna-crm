@@ -1,9 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { airtableUploadAttachment, AirtableConfigError } from '../../_lib/airtable.js'
+import { dbUploadFile, dbUpdate, SupabaseConfigError, UUID_RE } from '../../_lib/supabase.js'
 import { setCorsHeaders } from '../../_lib/cors.js'
 import { requireAuth, AuthError } from '../../_lib/auth.js'
 
-const RECORD_ID_RE = /^rec[a-zA-Z0-9]{14}$/
+const BUCKET = 'depenses-justificatifs'
 const MAX_BASE64_LENGTH = 6_000_000 // ~4.5 MB decoded, matches Vercel's request body limit
 
 export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
@@ -26,7 +26,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
   }
 
   const id = req.query.id
-  if (typeof id !== 'string' || !RECORD_ID_RE.test(id)) {
+  if (typeof id !== 'string' || !UUID_RE.test(id)) {
     res.status(400).json({ error: 'Identifiant de dépense invalide.' })
     return
   }
@@ -46,14 +46,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
   }
 
   try {
-    await airtableUploadAttachment(id, 'Justificatif', filename, contentType, dataBase64)
+    const { publicUrl } = await dbUploadFile(BUCKET, `${id}/${filename}`, dataBase64, contentType)
+    await dbUpdate('depenses', id, { justificatif_url: publicUrl, justificatif_nom: filename })
     res.status(200).json({ ok: true })
   } catch (error) {
-    if (error instanceof AirtableConfigError) {
+    if (error instanceof SupabaseConfigError) {
       res.status(500).json({ error: error.message })
       return
     }
     console.error(error)
-    res.status(502).json({ error: "Impossible d'envoyer le justificatif à Airtable." })
+    res.status(502).json({ error: "Impossible d'envoyer le justificatif à la base de données." })
   }
 }

@@ -1,22 +1,11 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import {
-  airtableList,
-  airtableGetByIds,
-  airtableCreate,
-  AirtableConfigError,
-  type AirtableRecord,
-} from './_lib/airtable.js'
+import { dbList, dbCreate, SupabaseConfigError, type DbRow } from './_lib/supabase.js'
 import { setCorsHeaders } from './_lib/cors.js'
 import { requireAuth, AuthError } from './_lib/auth.js'
 import { parseFactureInput } from './_lib/mappers.js'
 
-const TABLE_FACTURES = 'tbl3C95q9hjjIVz8W'
-const TABLE_CLIENTES = 'tblMKV5WKQ7jtwXq4'
-const TABLE_PROMOTIONS = 'tbldqsJCBeZwve20n'
-
-function linkedIds(field: unknown): string[] {
-  return Array.isArray(field) ? (field as string[]) : []
-}
+const TABLE_FACTURES = 'factures'
+const SELECT = '*, cliente:clients(nom_complet), promo:promotions(nom, reduction)'
 
 interface FactureItem {
   id: string
@@ -31,6 +20,25 @@ interface FactureItem {
   promoReduction: number | null
   description: string
   notes: string
+}
+
+function mapRow(r: DbRow): FactureItem {
+  const cliente = r.cliente as { nom_complet?: string } | null
+  const promo = r.promo as { nom?: string; reduction?: number } | null
+  return {
+    id: r.id,
+    date: (r.date_facture as string) ?? null,
+    montant: (r.montant as number) ?? null,
+    payee: Boolean(r.payee),
+    clienteId: (r.cliente_id as string) ?? null,
+    clienteNom: cliente?.nom_complet ?? '',
+    categorieFacture: (r.categorie_facture as string) ?? 'Commercial',
+    promoId: (r.promo_id as string) ?? null,
+    promoNom: promo?.nom ?? '',
+    promoReduction: promo?.reduction ?? null,
+    description: (r.description as string) ?? '',
+    notes: (r.notes as string) ?? '',
+  }
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
@@ -54,52 +62,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
 
   if (req.method === 'GET') {
     try {
-      const records = await airtableList(TABLE_FACTURES)
-
-      const clienteIds = Array.from(
-        new Set(records.flatMap((r) => linkedIds(r.fields['Cliente']))),
-      )
-      const promoIds = Array.from(
-        new Set(records.flatMap((r) => linkedIds(r.fields['Promo appliquée']))),
-      )
-      const [clienteRecords, promoRecords] = await Promise.all([
-        airtableGetByIds(TABLE_CLIENTES, clienteIds),
-        airtableGetByIds(TABLE_PROMOTIONS, promoIds),
-      ])
-      const clienteMap = new Map<string, AirtableRecord>(clienteRecords.map((c) => [c.id, c]))
-      const promoMap = new Map<string, AirtableRecord>(promoRecords.map((p) => [p.id, p]))
-
-      const factures: FactureItem[] = records
-        .map((r) => {
-          const clienteId = linkedIds(r.fields['Cliente'])[0] ?? null
-          const cliente = clienteId ? clienteMap.get(clienteId) : undefined
-          const promoId = linkedIds(r.fields['Promo appliquée'])[0] ?? null
-          const promo = promoId ? promoMap.get(promoId) : undefined
-          return {
-            id: r.id,
-            date: (r.fields['Date de facture'] as string) ?? null,
-            montant: (r.fields['Montant'] as number) ?? null,
-            payee: Boolean(r.fields['Payée']),
-            clienteId,
-            clienteNom: (cliente?.fields['Nom complet'] as string) ?? '',
-            categorieFacture: (r.fields['Catégorie de facture'] as string) ?? 'Commercial',
-            promoId,
-            promoNom: (promo?.fields['Nom'] as string) ?? '',
-            promoReduction: (promo?.fields['Réduction'] as number) ?? null,
-            description: (r.fields['Description'] as string) ?? '',
-            notes: (r.fields['Notes'] as string) ?? '',
-          }
-        })
-        .sort((a, b) => (b.date ?? '').localeCompare(a.date ?? ''))
-
+      const rows = await dbList(TABLE_FACTURES, { select: SELECT, order: { column: 'date_facture', ascending: false } })
+      const factures = rows.map(mapRow)
       res.status(200).json({ factures })
     } catch (error) {
-      if (error instanceof AirtableConfigError) {
+      if (error instanceof SupabaseConfigError) {
         res.status(500).json({ error: error.message })
         return
       }
       console.error(error)
-      res.status(502).json({ error: 'Impossible de récupérer les factures depuis Airtable.' })
+      res.status(502).json({ error: 'Impossible de récupérer les factures depuis la base de données.' })
     }
     return
   }
@@ -112,14 +84,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
   }
 
   try {
-    const record = await airtableCreate(TABLE_FACTURES, parsed.fields)
-    res.status(201).json({ id: record.id })
+    const row = await dbCreate(TABLE_FACTURES, parsed.fields)
+    res.status(201).json({ id: row.id })
   } catch (error) {
-    if (error instanceof AirtableConfigError) {
+    if (error instanceof SupabaseConfigError) {
       res.status(500).json({ error: error.message })
       return
     }
     console.error(error)
-    res.status(502).json({ error: 'Impossible de créer la facture dans Airtable.' })
+    res.status(502).json({ error: 'Impossible de créer la facture dans la base de données.' })
   }
 }

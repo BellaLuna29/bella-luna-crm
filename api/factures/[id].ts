@@ -1,11 +1,10 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { airtableUpdate, AirtableConfigError } from '../_lib/airtable.js'
+import { dbUpdate, SupabaseConfigError, UUID_RE } from '../_lib/supabase.js'
 import { setCorsHeaders } from '../_lib/cors.js'
 import { requireAuth, AuthError } from '../_lib/auth.js'
 import { parseFactureInput } from '../_lib/mappers.js'
 
-const TABLE_FACTURES = 'tbl3C95q9hjjIVz8W'
-const RECORD_ID_RE = /^rec[a-zA-Z0-9]{14}$/
+const TABLE_FACTURES = 'factures'
 
 export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
   setCorsHeaders(req, res)
@@ -27,7 +26,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
   }
 
   const id = req.query.id
-  if (typeof id !== 'string' || !RECORD_ID_RE.test(id)) {
+  if (typeof id !== 'string' || !UUID_RE.test(id)) {
     res.status(400).json({ error: 'Identifiant de facture invalide.' })
     return
   }
@@ -39,19 +38,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
   }
 
   try {
-    const updated = await airtableUpdate(TABLE_FACTURES, id, parsed.fields)
+    const updated = await dbUpdate(TABLE_FACTURES, id, parsed.fields)
     res.status(200).json({
       id: updated.id,
-      montant: (updated.fields['Montant'] as number) ?? null,
-      payee: Boolean(updated.fields['Payée']),
-      date: (updated.fields['Date de facture'] as string) ?? null,
+      montant: (updated.montant as number) ?? null,
+      payee: Boolean(updated.payee),
+      date: (updated.date_facture as string) ?? null,
     })
   } catch (error) {
-    if (error instanceof AirtableConfigError) {
+    if (error instanceof SupabaseConfigError) {
       res.status(500).json({ error: error.message })
       return
     }
     console.error(error)
-    res.status(502).json({ error: 'Impossible de mettre à jour la facture dans Airtable.' })
+    res.status(502).json({ error: 'Impossible de mettre à jour la facture dans la base de données.' })
   }
 }
