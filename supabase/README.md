@@ -44,13 +44,49 @@ tard).
 
 ## 4. Migrer les données existantes
 
-Le script [`scripts/migrate-to-supabase.mjs`](../scripts/migrate-to-supabase.mjs)
-lit tout depuis Airtable et réécrit dans Supabase (avec conversion des
-identifiants et des relations). Il nécessite que le **quota API Airtable**
-soit disponible (attends la réinitialisation mensuelle, ou upgrade ton plan
-Airtable si tu veux migrer immédiatement).
+Deux scripts sont disponibles — utilise celui qui correspond à ta situation.
 
-Depuis la racine du projet :
+### Option A — depuis les CSV déjà exportés (prêt tout de suite)
+
+Le dossier [`BDD/`](../BDD) contient déjà un export CSV de chaque table
+(fait manuellement depuis Airtable, ce qui ne consomme pas le quota API).
+[`scripts/migrate-from-csv.mjs`](../scripts/migrate-from-csv.mjs) lit ces
+fichiers et réécrit tout dans Supabase — **cette option ne dépend pas du
+quota Airtable et peut tourner immédiatement** une fois les étapes 1-3
+faites :
+
+```bash
+SUPABASE_URL=https://xxxxxxxxxxxx.supabase.co \
+SUPABASE_SERVICE_ROLE_KEY=eyJ... \
+node scripts/migrate-from-csv.mjs
+```
+
+Points notables :
+- Les dates/heures des CSV sont interprétées comme heure de Paris (le studio
+  est à Quimper), converties explicitement en UTC — indépendant du fuseau
+  horaire de la machine qui exécute le script.
+- Les identifiants Airtable des enregistrements liés (cliente, prestation,
+  promo...) ne sont pas dans le CSV — le script les reconstruit par
+  correspondance de nom exact (nom complet de la cliente, nom de la
+  prestation).
+- Table **Cures** : non migrée. L'app calcule la progression des cures
+  automatiquement à partir de l'historique des rendez-vous (elle n'a jamais
+  lu cette table). Certaines cures historiques (Elodie Pennec, Nadège Le
+  Bris) ont été suivies avec des rendez-vous enregistrés sur la prestation
+  « Séance unique » plutôt que sur la prestation « Cure X séances » — le
+  calcul automatique ne les détectera donc pas rétroactivement. Dis-le-moi
+  si tu veux que je corrige ces rendez-vous historiques après la migration.
+- Fichier **Collaborators** : ignoré, ce sont les accès à ta base Airtable
+  (métadonnées de compte), pas des données de l'app.
+- Lignes de rendez-vous totalement vides dans l'export (brouillons
+  abandonnés) : ignorées automatiquement.
+
+### Option B — depuis l'API Airtable (si tu préfères, une fois le quota revenu)
+
+[`scripts/migrate-to-supabase.mjs`](../scripts/migrate-to-supabase.mjs) fait
+la même chose mais lit directement l'API Airtable au lieu des CSV — utile si
+tu modifies encore les données dans Airtable après l'export et veux la
+version la plus à jour.
 
 ```bash
 AIRTABLE_API_KEY=pat_... \
@@ -60,15 +96,15 @@ SUPABASE_SERVICE_ROLE_KEY=eyJ... \
 node scripts/migrate-to-supabase.mjs
 ```
 
-Le script est ré-exécutable sans risque (il vide les tables Supabase avant
-chaque import, donc relance-le si besoin pour resynchroniser).
+Les deux scripts sont ré-exécutables sans risque (ils vident les tables
+Supabase avant chaque import).
 
-**Limite connue** : les fichiers joints (PDF de factures, justificatifs de
-dépenses) sont copiés par référence à l'URL Airtable d'origine, qui est une
-URL signée et expire au bout de quelques heures. Si tu as des PDF importants
-à conserver, il faudra les télécharger et les réuploader manuellement dans les
-buckets Supabase créés à l'étape 2 — dis-le-moi si tu veux que j'écrive un
-script dédié pour ça une fois le quota Airtable revenu.
+**Limite connue (les deux options)** : les fichiers joints (PDF de factures,
+justificatifs de dépenses) ne sont pas repris automatiquement — Airtable ne
+les inclut pas dans un export CSV, et son API ne fournit qu'une URL signée
+temporaire. Aucun des enregistrements actuels n'en a d'ailleurs (colonnes
+vides dans l'export). À réattacher manuellement sur Supabase si besoin plus
+tard.
 
 ## 5. Vérifier
 

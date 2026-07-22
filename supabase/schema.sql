@@ -42,7 +42,7 @@ create table prestations (
 create table promotions (
   id uuid primary key default gen_random_uuid(),
   nom text not null,
-  reduction numeric(4, 3) check (reduction > 0 and reduction <= 1),
+  reduction numeric(4, 3) check (reduction >= 0 and reduction <= 1),
   active boolean not null default true,
   date_expiration date
 );

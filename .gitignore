@@ -5,3 +5,7 @@ dist/
 .env
 *.log
 .DS_Store
+
+# Export CSV Airtable — données personnelles clientes (santé, coordonnées),
+# ne doit jamais partir dans l'historique git, même dans un repo privé.
+BDD/
