@@ -17,6 +17,11 @@
   --color-danger: #B5654F;
   --color-danger-pale: #F3E3DE;
   --color-gold-text: #8A6D2F;
+
+  --color-avatar-mauve: #8B6F8C;
+  --color-avatar-indigo: #5D74A6;
+  --color-avatar-forest: #4C6B4F;
+  --color-avatar-teal: #4F8383;
 }
 
 body {

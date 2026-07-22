@@ -84,9 +84,10 @@ function formatMontant(value: number | null): string {
 interface ClientDetailViewProps {
   clientId: string
   onBack: () => void
+  embedded?: boolean
 }
 
-function ClientDetailView({ clientId, onBack }: ClientDetailViewProps) {
+function ClientDetailView({ clientId, onBack, embedded }: ClientDetailViewProps) {
   const { getToken } = useAuth()
   const [state, setState] = useState<State>({ status: 'loading' })
   const [tab, setTab] = useState<'historique' | 'factures'>('historique')
@@ -115,12 +116,16 @@ function ClientDetailView({ clientId, onBack }: ClientDetailViewProps) {
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <button
-          onClick={onBack}
-          className="text-sm text-text-muted hover:text-sage-dark font-medium"
-        >
-          ← Retour aux clientes
-        </button>
+        {embedded ? (
+          <div />
+        ) : (
+          <button
+            onClick={onBack}
+            className="text-sm text-text-muted hover:text-sage-dark font-medium"
+          >
+            ← Retour aux clientes
+          </button>
+        )}
         {state.status === 'success' && (
           <div className="flex items-center gap-2 flex-wrap">
             {state.data.client.telephone && (

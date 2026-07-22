@@ -13,6 +13,12 @@ import {
   parsePromotionInput,
   parseAlerteInput,
   parseDismissedAlertInput,
+  mapStock,
+  parseStockInput,
+  mapCommunicationLog,
+  parseCommunicationLogInput,
+  mapParametres,
+  parseParametresInput,
 } from './_lib/mappers.js'
 
 const TABLE_PRESTATIONS = 'tblDeJttMEKXpYR8X'
@@ -21,6 +27,9 @@ const TABLE_QUESTIONNAIRES = 'tblhPRz9gsVHoq6mb'
 const TABLE_ALERTES = 'tblk5PC1ALEQpHovg'
 const TABLE_ALERTES_LUES = 'tblqKRi9GGYhxdXM3'
 const TABLE_NEWSLETTER_STATUT = 'tblHtw5e4no105cyq'
+const TABLE_STOCK = 'tblYkKjwEJ9oc80zT'
+const TABLE_COMMUNICATIONS_LOG = 'tblH4lFlMJ1MN8zOm'
+const TABLE_PARAMETRES = 'tblLC8VINlc1YUdUJ'
 const RECORD_ID_RE = /^rec[a-zA-Z0-9]{14}$/
 
 interface Prestation {
@@ -251,6 +260,111 @@ async function handleDismissedAlertes(req: VercelRequest, res: VercelResponse): 
   })
 }
 
+async function handleStock(req: VercelRequest, res: VercelResponse): Promise<void> {
+  if (req.method === 'GET') {
+    try {
+      const records = await airtableList(TABLE_STOCK)
+      const stock = records.map(mapStock).sort((a, b) => a.nom.localeCompare(b.nom))
+      res.status(200).json({ stock })
+    } catch (error) {
+      if (error instanceof AirtableConfigError) {
+        res.status(500).json({ error: error.message })
+        return
+      }
+      console.error(error)
+      res.status(502).json({ error: 'Impossible de récupérer le stock depuis Airtable.' })
+    }
+    return
+  }
+  await handleCrud(req, res, { tableId: TABLE_STOCK, parse: parseStockInput, notFoundLabel: 'le produit' })
+}
+
+async function handleCommunicationsLog(req: VercelRequest, res: VercelResponse): Promise<void> {
+  if (req.method === 'GET') {
+    try {
+      const records = await airtableList(TABLE_COMMUNICATIONS_LOG)
+      const communications = records
+        .map(mapCommunicationLog)
+        .sort((a, b) => (b.dateEnvoi ?? '').localeCompare(a.dateEnvoi ?? ''))
+        .slice(0, 50)
+      res.status(200).json({ communications })
+    } catch (error) {
+      if (error instanceof AirtableConfigError) {
+        res.status(500).json({ error: error.message })
+        return
+      }
+      console.error(error)
+      res.status(502).json({ error: "Impossible de récupérer l'historique des communications depuis Airtable." })
+    }
+    return
+  }
+
+  if (req.method === 'POST') {
+    const parsed = parseCommunicationLogInput(req.body)
+    if ('errors' in parsed) {
+      res.status(400).json({ error: parsed.errors.join(' ') })
+      return
+    }
+    try {
+      const record = await airtableCreate(TABLE_COMMUNICATIONS_LOG, parsed.fields, { typecast: true })
+      res.status(201).json({ id: record.id })
+    } catch (error) {
+      if (error instanceof AirtableConfigError) {
+        res.status(500).json({ error: error.message })
+        return
+      }
+      console.error(error)
+      res.status(502).json({ error: "Impossible d'enregistrer la communication dans Airtable." })
+    }
+    return
+  }
+
+  res.status(405).json({ error: 'Méthode non autorisée.' })
+}
+
+async function handleParametres(req: VercelRequest, res: VercelResponse): Promise<void> {
+  if (req.method === 'GET') {
+    try {
+      const records = await airtableList(TABLE_PARAMETRES)
+      res.status(200).json({ parametres: mapParametres(records[0] ?? null) })
+    } catch (error) {
+      if (error instanceof AirtableConfigError) {
+        res.status(500).json({ error: error.message })
+        return
+      }
+      console.error(error)
+      res.status(502).json({ error: 'Impossible de récupérer les paramètres depuis Airtable.' })
+    }
+    return
+  }
+
+  if (req.method === 'PATCH') {
+    const parsed = parseParametresInput(req.body)
+    if ('errors' in parsed) {
+      res.status(400).json({ error: parsed.errors.join(' ') })
+      return
+    }
+    try {
+      const records = await airtableList(TABLE_PARAMETRES)
+      const existing = records[0]
+      const record = existing
+        ? await airtableUpdate(TABLE_PARAMETRES, existing.id, parsed.fields, { typecast: true })
+        : await airtableCreate(TABLE_PARAMETRES, { Libellé: 'Studio', ...parsed.fields }, { typecast: true })
+      res.status(200).json({ parametres: mapParametres(record) })
+    } catch (error) {
+      if (error instanceof AirtableConfigError) {
+        res.status(500).json({ error: error.message })
+        return
+      }
+      console.error(error)
+      res.status(502).json({ error: "Impossible d'enregistrer les paramètres dans Airtable." })
+    }
+    return
+  }
+
+  res.status(405).json({ error: 'Méthode non autorisée.' })
+}
+
 async function handleNewsletterStatut(req: VercelRequest, res: VercelResponse): Promise<void> {
   if (req.method === 'GET') {
     try {
@@ -327,6 +441,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
   }
   if (req.query.resource === 'newsletter-status') {
     await handleNewsletterStatut(req, res)
+    return
+  }
+  if (req.query.resource === 'stock') {
+    await handleStock(req, res)
+    return
+  }
+  if (req.query.resource === 'communications-log') {
+    await handleCommunicationsLog(req, res)
+    return
+  }
+  if (req.query.resource === 'parametres') {
+    await handleParametres(req, res)
     return
   }
 

@@ -3,6 +3,7 @@ import { useAuth } from '@clerk/react'
 import { apiFetch } from '../lib/api'
 import { MESSAGE_TEMPLATES, type TemplateContext } from '../lib/messageTemplates'
 import { buildSmsLink, buildMailtoLink } from '../lib/contactLinks'
+import { logCommunication } from '../lib/communicationsLog'
 
 interface Questionnaire {
   id: string
@@ -89,6 +90,12 @@ function MessageComposerModal({ context, telephone, email, initialTemplateKey, o
   const smsHref = telephone ? buildSmsLink(telephone, body) : null
   const mailHref = email ? buildMailtoLink(email, template.subject, body) : null
 
+  function logSend(type: 'SMS' | 'Email') {
+    logCommunication(getToken, { contenu: `${template.label} — ${context.nomComplet}`, type, destinataires: 1 }).catch(() => {
+      // best effort — l'historique ne sera juste pas mis à jour
+    })
+  }
+
   return (
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center p-4 z-50">
       <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6">
@@ -147,6 +154,7 @@ function MessageComposerModal({ context, telephone, email, initialTemplateKey, o
           {mailHref && (
             <a
               href={mailHref}
+              onClick={() => logSend('Email')}
               className="bg-white border border-border text-sage-dark px-5 py-2.5 rounded-[10px] text-sm font-semibold hover:bg-sage-pale"
             >
               Ouvrir par e-mail
@@ -155,6 +163,7 @@ function MessageComposerModal({ context, telephone, email, initialTemplateKey, o
           {smsHref && (
             <a
               href={smsHref}
+              onClick={() => logSend('SMS')}
               className="bg-sage-dark text-white px-5 py-2.5 rounded-[10px] text-sm font-semibold hover:bg-sage-dark/90"
             >
               Ouvrir par SMS

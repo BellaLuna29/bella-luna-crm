@@ -17,6 +17,7 @@ import {
   dismissAlertKey,
   reconcileDismissedAlerts,
 } from '../lib/dismissedAlerts'
+import { fetchParametres } from '../lib/parametres'
 
 interface Client {
   id: string
@@ -24,6 +25,13 @@ interface Client {
   statut: string
   newsletter: boolean
   dateNaissance: string | null
+}
+
+interface StockItem {
+  id: string
+  nom: string
+  quantite: number
+  seuilBas: number
 }
 
 interface RdvItem {
@@ -60,6 +68,8 @@ type State =
       rendezvous: RdvItem[]
       factures: FactureItem[]
       prestations: Prestation[]
+      stock: StockItem[]
+      objectifCaMensuel: number | null
     }
 
 function startOfDay(d: Date): Date {
@@ -71,6 +81,12 @@ function startOfDay(d: Date): Date {
 function endOfDay(d: Date): Date {
   const copy = new Date(d)
   copy.setHours(23, 59, 59, 999)
+  return copy
+}
+
+function addDays(d: Date, n: number): Date {
+  const copy = new Date(d)
+  copy.setDate(copy.getDate() + n)
   return copy
 }
 
@@ -136,12 +152,14 @@ interface DashboardViewProps {
   onSelectClient: (id: string) => void
   onNavigateAgenda: () => void
   onNavigateFacturation: () => void
+  onNavigateCompta: () => void
 }
 
 function DashboardView({
   onSelectClient,
   onNavigateAgenda,
   onNavigateFacturation,
+  onNavigateCompta,
 }: DashboardViewProps) {
   const { getToken } = useAuth()
   const [state, setState] = useState<State>({ status: 'loading' })
@@ -156,15 +174,19 @@ function DashboardView({
       apiFetch<{ rendezvous: RdvItem[] }>(getToken, '/api/rendezvous'),
       apiFetch<{ factures: FactureItem[] }>(getToken, '/api/factures'),
       apiFetch<{ prestations: Prestation[] }>(getToken, '/api/prestations'),
+      apiFetch<{ stock: StockItem[] }>(getToken, '/api/prestations?resource=stock').catch(() => ({ stock: [] })),
+      fetchParametres(getToken).catch(() => ({ horaires: {}, objectifCaMensuel: null })),
       fetchDismissedAlerts(getToken).catch(() => []),
     ])
-      .then(([clientsData, rdvData, facturesData, prestationsData, dismissedData]) => {
+      .then(([clientsData, rdvData, facturesData, prestationsData, stockData, parametresData, dismissedData]) => {
         setState({
           status: 'success',
           clients: clientsData.clients,
           rendezvous: rdvData.rendezvous,
           factures: facturesData.factures,
           prestations: prestationsData.prestations,
+          stock: stockData.stock,
+          objectifCaMensuel: parametresData.objectifCaMensuel,
         })
         setDismissedRaw(dismissedData)
       })
@@ -219,6 +241,21 @@ function DashboardView({
 
     const facturesImpayeesCount = state.factures.filter((f) => !f.payee).length
 
+    const weeklyChart = Array.from({ length: 7 }, (_, i) => {
+      const day = addDays(todayStart, i - 6)
+      const dayStart = startOfDay(day)
+      const dayEnd = endOfDay(day)
+      const total = state.factures
+        .filter((f) => {
+          if (!f.date) return false
+          const d = new Date(f.date)
+          return d >= dayStart && d <= dayEnd
+        })
+        .reduce((sum, f) => sum + (f.montant ?? 0), 0)
+      return { label: day.toLocaleDateString('fr-FR', { weekday: 'short' }), total }
+    })
+    const weeklyChartMax = Math.max(1, ...weeklyChart.map((d) => d.total))
+
     return {
       todayCount: todayRdv.length,
       weekRdvCount,
@@ -226,19 +263,26 @@ function DashboardView({
       facturesImpayeesCount,
       todayRdv,
       upcoming,
+      weeklyChart,
+      weeklyChartMax,
     }
   }, [state, now])
 
   const rawAlerts = useMemo(() => {
     if (state.status !== 'success') return null
     const cureProgress = computeCureProgress(state.rendezvous, state.prestations)
+    const stockBas = state.stock.filter((s) => s.quantite <= s.seuilBas)
+    const objectifAtteint =
+      state.objectifCaMensuel !== null && state.objectifCaMensuel > 0 && (stats?.caCeMois ?? 0) >= state.objectifCaMensuel
     return {
       anniversaires: computeAnniversaires(state.clients, now),
       facturesImpayeesEnRetard: computeFacturesImpayeesEnRetard(state.factures, now),
       clientesARecontacter: computeClientesARecontacter(state.clients, state.rendezvous, now),
       curesBientotTerminees: computeCuresBientotTerminees(cureProgress),
+      stockBas,
+      objectifAtteint,
     }
-  }, [state, now])
+  }, [state, now, stats])
 
   useEffect(() => {
     if (!rawAlerts) return
@@ -247,6 +291,8 @@ function DashboardView({
     for (const f of rawAlerts.facturesImpayeesEnRetard) keys.add(`facture-${f.id}`)
     for (const { client } of rawAlerts.clientesARecontacter) keys.add(`recontact-${client.id}`)
     for (const c of rawAlerts.curesBientotTerminees) keys.add(`cure-${c.id}`)
+    for (const s of rawAlerts.stockBas) keys.add(`stock-${s.id}`)
+    if (rawAlerts.objectifAtteint) keys.add(`objectif-${now.getFullYear()}-${now.getMonth()}`)
     reconcileDismissedAlerts(getToken, dismissedRaw, keys).then(setValidDismissedKeys)
   }, [rawAlerts, dismissedRaw, getToken, now])
 
@@ -280,17 +326,24 @@ function DashboardView({
     const curesBientotTerminees = rawAlerts.curesBientotTerminees.filter(
       (c) => !validDismissedKeys.has(`cure-${c.id}`),
     )
+    const stockBas = rawAlerts.stockBas.filter((s) => !validDismissedKeys.has(`stock-${s.id}`))
+    const objectifAtteint =
+      rawAlerts.objectifAtteint && !validDismissedKeys.has(`objectif-${now.getFullYear()}-${now.getMonth()}`)
 
     return {
       anniversaires,
       facturesImpayeesEnRetard,
       clientesARecontacter,
       curesBientotTerminees,
+      stockBas,
+      objectifAtteint,
       total:
         anniversaires.length +
         facturesImpayeesEnRetard.length +
         clientesARecontacter.length +
-        curesBientotTerminees.length,
+        curesBientotTerminees.length +
+        stockBas.length +
+        (objectifAtteint ? 1 : 0),
     }
   }, [rawAlerts, validDismissedKeys, now])
 
@@ -367,6 +420,28 @@ function DashboardView({
                     subtitle={c.prestationNom}
                   />
                 ))}
+
+                {alerts.stockBas.map((s) => (
+                  <AlertRow
+                    key={`stock-${s.id}`}
+                    colorClass="bg-danger-pale hover:bg-danger/10 transition-colors"
+                    subtitleClassName="text-danger"
+                    onClick={onNavigateCompta}
+                    onDismiss={() => handleDismiss(`stock-${s.id}`)}
+                    title={`📦 Stock bas — ${s.nom}`}
+                    subtitle={`${s.quantite} restant${s.quantite > 1 ? 's' : ''}`}
+                  />
+                ))}
+
+                {alerts.objectifAtteint && (
+                  <AlertRow
+                    colorClass="bg-gold-pale hover:bg-gold/20 transition-colors"
+                    subtitleClassName="text-gold-text"
+                    onDismiss={() => handleDismiss(`objectif-${now.getFullYear()}-${now.getMonth()}`)}
+                    title="🎯 Objectif de CA mensuel atteint"
+                    subtitle={formatEuros(stats.caCeMois)}
+                  />
+                )}
               </div>
             </div>
           )}
@@ -445,6 +520,26 @@ function DashboardView({
                   ))}
                 </div>
               )}
+            </div>
+          </div>
+
+          <div className="bg-white border border-border rounded-2xl p-5">
+            <h3 className="font-serif text-lg font-semibold text-sage-dark mb-4">
+              Chiffre d'affaires — 7 derniers jours
+            </h3>
+            <div className="flex items-end gap-3 h-40">
+              {stats.weeklyChart.map((d, i) => (
+                <div key={i} className="flex-1 flex flex-col items-center gap-1.5 h-full justify-end">
+                  <span className="text-xs font-semibold text-text-muted">
+                    {d.total > 0 ? formatEuros(d.total) : ''}
+                  </span>
+                  <div
+                    className={`w-full rounded-t-md ${i === 6 ? 'bg-sage-dark' : 'bg-sage-light'}`}
+                    style={{ height: `${Math.max(4, (d.total / stats.weeklyChartMax) * 100)}%` }}
+                  />
+                  <span className="text-xs text-text-muted capitalize">{d.label}</span>
+                </div>
+              ))}
             </div>
           </div>
         </div>

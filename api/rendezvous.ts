@@ -28,6 +28,7 @@ interface RdvItem {
   prestationId: string | null
   prestationNom: string
   prix: number | null
+  duree: string
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
@@ -84,6 +85,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
           prestationId,
           prestationNom: (prestation?.fields['Nom de la prestation'] as string) ?? '',
           prix: (prestation?.fields['Prix'] as number) ?? null,
+          duree: (prestation?.fields['Durée'] as string) ?? '',
         }
       })
 

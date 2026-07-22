@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@clerk/react'
 import { apiFetch, ApiError } from '../lib/api'
 import RdvStatusPill from '../components/RdvStatusPill'
+import AgendaDayGrid from '../components/AgendaDayGrid'
 import RdvFormModal, { type RdvFormInitial } from '../components/RdvFormModal'
 import AbsenceFormModal from '../components/AbsenceFormModal'
 import MessageComposerModal from '../components/MessageComposerModal'
@@ -18,6 +19,7 @@ interface RdvItem {
   prestationId: string | null
   prestationNom: string
   prix: number | null
+  duree: string
 }
 
 interface Client {
@@ -377,7 +379,7 @@ function AgendaView() {
       {state.status === 'error' && <p className="text-sm text-danger">{state.message}</p>}
 
       {state.status === 'success' && viewMode === 'jour' && (
-        <div className="bg-white border border-border rounded-2xl p-5 max-w-2xl">
+        <div className="bg-white border border-border rounded-2xl p-5 max-w-3xl">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-serif text-lg font-semibold text-sage-dark capitalize">
               {focusDate.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' })}
@@ -408,34 +410,27 @@ function AgendaView() {
           {(byDay.get(dayKey(focusDate)) ?? []).length === 0 ? (
             <p className="text-sm text-text-muted">Aucun rendez-vous ce jour-là.</p>
           ) : (
-            <div className="flex flex-col gap-3">
-              {(byDay.get(dayKey(focusDate)) ?? []).map((item) => (
-                <div key={item.id} className="border border-border rounded-2xl p-4 flex items-start gap-4">
-                  <div className="font-serif text-xl font-semibold text-sage-dark w-16 shrink-0">
-                    {formatHeure(item.date)}
-                  </div>
-                  <button onClick={() => openEdit(item)} className="flex-1 min-w-0 text-left">
-                    <div className="flex items-center gap-2 flex-wrap mb-1">
-                      <span className="text-base font-semibold">{item.clienteNom || 'Cliente inconnue'}</span>
-                      <RdvStatusPill statut={item.statut} />
-                    </div>
-                    <div className="text-sm text-text-muted">
-                      {item.prestationNom || 'Prestation inconnue'}
-                      {item.prix !== null ? ` — ${item.prix} €` : ''}
-                    </div>
-                    {item.notes && <div className="text-xs text-text-muted mt-1.5 italic">{item.notes}</div>}
-                  </button>
-                  <button
-                    onClick={() => sendReminder(item)}
-                    className="shrink-0 w-8 h-8 flex items-center justify-center rounded-full bg-sage-pale hover:bg-sage-light text-sage-dark print:hidden"
-                    aria-label={`Envoyer le rappel à ${item.clienteNom || 'la cliente'}`}
-                    title="Envoyer le rappel"
-                  >
-                    💬
-                  </button>
-                </div>
-              ))}
-            </div>
+            <AgendaDayGrid
+              items={(byDay.get(dayKey(focusDate)) ?? [])
+                .filter((item): item is RdvItem & { date: string } => item.date !== null)
+                .map((item) => ({
+                  id: item.id,
+                  date: item.date,
+                  duree: item.duree,
+                  statut: item.statut,
+                  clienteNom: item.clienteNom,
+                  prestationNom: item.prestationNom,
+                  prix: item.prix,
+                }))}
+              onClickItem={(id) => {
+                const item = state.items.find((i) => i.id === id)
+                if (item) openEdit(item)
+              }}
+              onSendReminder={(id) => {
+                const item = state.items.find((i) => i.id === id)
+                if (item) sendReminder(item)
+              }}
+            />
           )}
         </div>
       )}

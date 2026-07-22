@@ -10,9 +10,9 @@ const NAV_ITEMS: { view: View; label: string; icon: string }[] = [
   { view: 'billing', label: 'Facturation', icon: '💶' },
   { view: 'compta', label: 'Comptabilité', icon: '🧾' },
   { view: 'stats', label: 'Statistiques', icon: '📈' },
-  { view: 'sms', label: 'SMS', icon: '💬' },
-  { view: 'newsletter', label: 'Newsletter', icon: '📧' },
+  { view: 'communication', label: 'Communication', icon: '💬' },
   { view: 'formulaires', label: 'Formulaires', icon: '📝' },
+  { view: 'parametres', label: 'Paramètres', icon: '⚙️' },
 ]
 
 interface SidebarProps {

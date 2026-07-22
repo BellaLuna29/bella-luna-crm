@@ -3,6 +3,7 @@ import { useAuth } from '@clerk/react'
 import { apiFetch, ApiError } from '../lib/api'
 import { exportRowsToExcel } from '../lib/exportExcel'
 import DepenseFormModal from '../components/DepenseFormModal'
+import StockManager from '../components/StockManager'
 import { formatMontant } from '../lib/formatMontant'
 
 interface DepenseItem {
@@ -31,7 +32,7 @@ type State =
   | { status: 'error'; message: string }
   | { status: 'success'; depenses: DepenseItem[] }
 
-type SubTab = 'depenses' | 'export'
+type SubTab = 'depenses' | 'stock' | 'export'
 
 function formatDate(iso: string | null): string {
   if (!iso) return '—'
@@ -205,7 +206,7 @@ function ComptaView() {
   return (
     <div>
       <div className="flex items-center gap-2 mb-5">
-        {(['depenses', 'export'] as SubTab[]).map((tab) => (
+        {(['depenses', 'stock', 'export'] as SubTab[]).map((tab) => (
           <button
             key={tab}
             onClick={() => setSubTab(tab)}
@@ -213,7 +214,7 @@ function ComptaView() {
               subTab === tab ? 'bg-sage-dark text-white' : 'bg-white border border-border text-text-muted hover:bg-sage-pale'
             }`}
           >
-            {tab === 'depenses' ? 'Dépenses' : 'Export'}
+            {tab === 'depenses' ? 'Dépenses' : tab === 'stock' ? 'Stock' : 'Export'}
           </button>
         ))}
       </div>
@@ -333,6 +334,8 @@ function ComptaView() {
           </div>
         </div>
       )}
+
+      {subTab === 'stock' && <StockManager />}
 
       {subTab === 'export' && (
         <div className="bg-white border border-border rounded-2xl p-5">

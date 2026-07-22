@@ -594,3 +594,188 @@ export function parseDismissedAlertInput(
   if (errors.length > 0) return { errors }
   return { fields }
 }
+
+export interface StockItem {
+  id: string
+  nom: string
+  quantite: number
+  seuilBas: number
+  unite: string
+}
+
+export function mapStock(record: AirtableRecord): StockItem {
+  const f = record.fields
+  return {
+    id: record.id,
+    nom: (f['Nom'] as string) ?? '',
+    quantite: (f['Quantité'] as number) ?? 0,
+    seuilBas: (f['Seuil bas'] as number) ?? 0,
+    unite: (f['Unité'] as string) ?? '',
+  }
+}
+
+/**
+ * Validates and maps a raw request body into Airtable field names for the
+ * Stock table. `requireCore` enforces nom/quantite/seuilBas as mandatory
+ * (create only).
+ */
+export function parseStockInput(
+  body: unknown,
+  { requireCore }: { requireCore: boolean },
+): { fields: Record<string, unknown> } | ClientInputErrors {
+  if (typeof body !== 'object' || body === null) {
+    return { errors: ['Corps de requête invalide.'] }
+  }
+  const b = body as Record<string, unknown>
+  const errors: string[] = []
+  const fields: Record<string, unknown> = {}
+
+  if ('nom' in b || requireCore) {
+    const v = typeof b.nom === 'string' ? b.nom.trim() : ''
+    if (requireCore && v.length === 0) errors.push('Le nom du produit est obligatoire.')
+    else if (v.length > 200) errors.push('Le nom est trop long.')
+    if (v.length > 0) fields['Nom'] = v
+  }
+
+  if ('quantite' in b || requireCore) {
+    const v = b.quantite
+    if (typeof v === 'number' && Number.isFinite(v) && v >= 0) fields['Quantité'] = v
+    else if (requireCore) errors.push('La quantité est obligatoire et doit être un nombre positif.')
+  }
+
+  if ('seuilBas' in b || requireCore) {
+    const v = b.seuilBas
+    if (typeof v === 'number' && Number.isFinite(v) && v >= 0) fields['Seuil bas'] = v
+    else if (requireCore) errors.push('Le seuil bas est obligatoire et doit être un nombre positif.')
+  }
+
+  if ('unite' in b) {
+    const v = typeof b.unite === 'string' ? b.unite.trim() : ''
+    if (v.length > 50) errors.push("L'unité est trop longue.")
+    else fields['Unité'] = v
+  }
+
+  if (errors.length > 0) return { errors }
+  return { fields }
+}
+
+export interface CommunicationLogItem {
+  id: string
+  contenu: string
+  type: string
+  destinataires: number
+  dateEnvoi: string | null
+}
+
+export function mapCommunicationLog(record: AirtableRecord): CommunicationLogItem {
+  const f = record.fields
+  return {
+    id: record.id,
+    contenu: (f['Contenu'] as string) ?? '',
+    type: (f['Type'] as string) ?? '',
+    destinataires: (f['Destinataires'] as number) ?? 0,
+    dateEnvoi: (f["Date d'envoi"] as string) ?? null,
+  }
+}
+
+export const COMMUNICATION_TYPE_VALUES = ['SMS', 'Email', 'Newsletter'] as const
+
+/**
+ * Validates and maps a raw request body into Airtable field names for the
+ * CommunicationsLog table. Always mandatory (append-only log, create only).
+ */
+export function parseCommunicationLogInput(
+  body: unknown,
+): { fields: Record<string, unknown> } | ClientInputErrors {
+  if (typeof body !== 'object' || body === null) {
+    return { errors: ['Corps de requête invalide.'] }
+  }
+  const b = body as Record<string, unknown>
+  const errors: string[] = []
+  const fields: Record<string, unknown> = {}
+
+  const contenu = typeof b.contenu === 'string' ? b.contenu.trim() : ''
+  if (contenu.length === 0) errors.push('Le contenu est obligatoire.')
+  else fields['Contenu'] = contenu.slice(0, 200)
+
+  const type = b.type
+  if (typeof type === 'string' && (COMMUNICATION_TYPE_VALUES as readonly string[]).includes(type)) {
+    fields['Type'] = type
+  } else {
+    errors.push('Type de communication invalide.')
+  }
+
+  const destinataires = b.destinataires
+  if (typeof destinataires === 'number' && Number.isFinite(destinataires) && destinataires >= 0) {
+    fields['Destinataires'] = destinataires
+  } else {
+    errors.push('Le nombre de destinataires est obligatoire.')
+  }
+
+  fields["Date d'envoi"] = new Date().toISOString()
+
+  if (errors.length > 0) return { errors }
+  return { fields }
+}
+
+export interface Parametres {
+  horaires: Record<string, string>
+  objectifCaMensuel: number | null
+}
+
+const JOURS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'] as const
+
+export function mapParametres(record: AirtableRecord | null): Parametres {
+  const f = record?.fields ?? {}
+  const horaires: Record<string, string> = {}
+  for (const jour of JOURS) {
+    horaires[jour] = (f[jour] as string) ?? ''
+  }
+  return {
+    horaires,
+    objectifCaMensuel: (f['Objectif CA mensuel'] as number) ?? null,
+  }
+}
+
+/**
+ * Validates and maps a raw request body into Airtable field names for the
+ * Parametres table (single-record settings: horaires + objectif CA).
+ */
+export function parseParametresInput(body: unknown): { fields: Record<string, unknown> } | ClientInputErrors {
+  if (typeof body !== 'object' || body === null) {
+    return { errors: ['Corps de requête invalide.'] }
+  }
+  const b = body as Record<string, unknown>
+  const errors: string[] = []
+  const fields: Record<string, unknown> = {}
+
+  const horaires = b.horaires
+  if (horaires !== undefined) {
+    if (typeof horaires !== 'object' || horaires === null) {
+      errors.push('Horaires invalides.')
+    } else {
+      const h = horaires as Record<string, unknown>
+      for (const jour of JOURS) {
+        if (jour in h) {
+          const v = typeof h[jour] === 'string' ? (h[jour] as string).trim() : ''
+          if (v.length > 50) errors.push(`Horaire du ${jour} trop long.`)
+          else fields[jour] = v
+        }
+      }
+    }
+  }
+
+  if ('objectifCaMensuel' in b) {
+    const v = b.objectifCaMensuel
+    if (v === null || v === '') {
+      fields['Objectif CA mensuel'] = null
+    } else if (typeof v === 'number' && Number.isFinite(v) && v >= 0) {
+      fields['Objectif CA mensuel'] = v
+    } else {
+      errors.push('Objectif de CA invalide.')
+    }
+  }
+
+  if (errors.length > 0) return { errors }
+  return { fields }
+}

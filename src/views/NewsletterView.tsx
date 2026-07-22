@@ -3,6 +3,7 @@ import { useAuth } from '@clerk/react'
 import { apiFetch, ApiError } from '../lib/api'
 import { NEWSLETTER_TEMPLATES } from '../lib/newsletterTemplates'
 import { recordNewsletterSent } from '../lib/newsletterStatus'
+import { logCommunication } from '../lib/communicationsLog'
 
 interface Client {
   id: string
@@ -30,11 +31,13 @@ const CATEGORIE_METIER_VALUES = [
 ] as const
 
 const MAILTO_WARNING_THRESHOLD = 40
+const STATUT_FILTERS = ['Tous', 'Nouvelle', 'Régulière', 'Inactive'] as const
 
 function NewsletterView() {
   const { getToken } = useAuth()
   const [state, setState] = useState<State>({ status: 'loading' })
   const [optInOnly, setOptInOnly] = useState(true)
+  const [statutFilter, setStatutFilter] = useState<(typeof STATUT_FILTERS)[number]>('Tous')
   const [genreFilter, setGenreFilter] = useState('')
   const [categories, setCategories] = useState<string[]>([])
   const [excluded, setExcluded] = useState<Set<string>>(new Set())
@@ -56,6 +59,9 @@ function NewsletterView() {
   function handleNewsletterSent() {
     recordNewsletterSent(getToken).catch(() => {
       // best effort — la date de dernier envoi ne sera juste pas mise à jour
+    })
+    logCommunication(getToken, { contenu: subject, type: 'Newsletter', destinataires: selected.length }).catch(() => {
+      // best effort — l'historique ne sera juste pas mis à jour
     })
   }
 
@@ -83,12 +89,13 @@ function NewsletterView() {
     if (state.status !== 'success') return []
     return state.clients.filter((c) => {
       if (optInOnly && !c.newsletter) return false
+      if (statutFilter !== 'Tous' && c.statut !== statutFilter) return false
       if (genreFilter && c.genre !== genreFilter) return false
       if (categories.length > 0 && !categories.includes(c.categorieMetier)) return false
       if (!c.email) return false
       return true
     })
-  }, [state, optInOnly, genreFilter, categories])
+  }, [state, optInOnly, statutFilter, genreFilter, categories])
 
   const selected = useMemo(() => matching.filter((c) => !excluded.has(c.id)), [matching, excluded])
 
@@ -134,6 +141,21 @@ function NewsletterView() {
           />
           Uniquement les clientes ayant accepté la newsletter
         </label>
+
+        <div className="mb-2 text-xs font-semibold text-text-muted uppercase tracking-wide">Statut</div>
+        <div className="flex flex-wrap gap-2 mb-4">
+          {STATUT_FILTERS.map((s) => (
+            <button
+              key={s}
+              onClick={() => setStatutFilter(s)}
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+                statutFilter === s ? 'bg-sage-dark text-white' : 'bg-sage-pale text-sage-dark hover:bg-sage-light'
+              }`}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
 
         <div className="mb-2 text-xs font-semibold text-text-muted uppercase tracking-wide">Genre</div>
         <div className="flex flex-wrap gap-2 mb-4">

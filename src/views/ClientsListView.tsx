@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@clerk/react'
 import { apiFetch, ApiError } from '../lib/api'
+import { formatMontant } from '../lib/formatMontant'
+import { avatarColorClass } from '../lib/avatarColor'
 import StatusPill from '../components/StatusPill'
 import ClientFormModal from '../components/ClientFormModal'
+import ClientDetailView from './ClientDetailView'
 
 interface Client {
   id: string
@@ -17,6 +20,13 @@ interface Client {
   newsletter: boolean
 }
 
+interface FactureItem {
+  id: string
+  clienteId: string | null
+  montant: number | null
+}
+
+const STATUT_FILTERS = ['Tous', 'Nouvelle', 'Régulière', 'Inactive'] as const
 const CATEGORIE_METIER_OPTIONS = [
   'Médecine',
   'Sport',
@@ -30,7 +40,7 @@ const CATEGORIE_METIER_OPTIONS = [
 type State =
   | { status: 'loading' }
   | { status: 'error'; message: string }
-  | { status: 'success'; clients: Client[] }
+  | { status: 'success'; clients: Client[]; totalByClient: Map<string, number> }
 
 function initials(name: string): string {
   return name
@@ -41,23 +51,29 @@ function initials(name: string): string {
     .join('')
 }
 
-interface ClientsListViewProps {
-  onSelectClient: (id: string) => void
-}
-
-function ClientsListView({ onSelectClient }: ClientsListViewProps) {
+function ClientsListView() {
   const { getToken } = useAuth()
   const [state, setState] = useState<State>({ status: 'loading' })
   const [search, setSearch] = useState('')
+  const [statutFilter, setStatutFilter] = useState<(typeof STATUT_FILTERS)[number]>('Tous')
   const [categorieFilter, setCategorieFilter] = useState('')
   const [newsletterOnly, setNewsletterOnly] = useState(false)
   const [showCreate, setShowCreate] = useState(false)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
 
   const load = useCallback(() => {
     setState({ status: 'loading' })
-    apiFetch<{ clients: Client[] }>(getToken, '/api/clients')
-      .then((data) => {
-        setState({ status: 'success', clients: data.clients })
+    Promise.all([
+      apiFetch<{ clients: Client[] }>(getToken, '/api/clients'),
+      apiFetch<{ factures: FactureItem[] }>(getToken, '/api/factures'),
+    ])
+      .then(([clientsData, facturesData]) => {
+        const totalByClient = new Map<string, number>()
+        for (const f of facturesData.factures) {
+          if (!f.clienteId) continue
+          totalByClient.set(f.clienteId, (totalByClient.get(f.clienteId) ?? 0) + (f.montant ?? 0))
+        }
+        setState({ status: 'success', clients: clientsData.clients, totalByClient })
       })
       .catch((error: unknown) => {
         setState({
@@ -76,16 +92,24 @@ function ClientsListView({ onSelectClient }: ClientsListViewProps) {
     const q = search.trim().toLowerCase()
     return state.clients.filter((c) => {
       if (q && !c.nomComplet.toLowerCase().includes(q)) return false
+      if (statutFilter !== 'Tous' && c.statut !== statutFilter) return false
       if (categorieFilter && c.categorieMetier !== categorieFilter) return false
       if (newsletterOnly && !c.newsletter) return false
       return true
     })
-  }, [state, search, categorieFilter, newsletterOnly])
+  }, [state, search, statutFilter, categorieFilter, newsletterOnly])
+
+  useEffect(() => {
+    if (state.status !== 'success') return
+    if (selectedId && filtered.some((c) => c.id === selectedId)) return
+    setSelectedId(filtered[0]?.id ?? null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtered, state.status])
 
   return (
     <div>
       <div className="flex justify-between items-center gap-3 mb-5 flex-wrap">
-        <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-3 flex-wrap flex-1 min-w-0">
           <input
             type="text"
             placeholder="Rechercher une cliente..."
@@ -112,94 +136,84 @@ function ClientsListView({ onSelectClient }: ClientsListViewProps) {
               onChange={(e) => setNewsletterOnly(e.target.checked)}
               className="w-4 h-4"
             />
-            Inscrites newsletter uniquement
+            Newsletter uniquement
           </label>
         </div>
         <button
           onClick={() => setShowCreate(true)}
-          className="bg-sage-dark text-white px-4.5 py-2.5 rounded-[10px] text-sm font-semibold hover:bg-sage-dark/90"
+          className="bg-sage-dark text-white px-4.5 py-2.5 rounded-[10px] text-sm font-semibold hover:bg-sage-dark/90 shrink-0"
         >
           Ajouter une cliente
         </button>
       </div>
 
-      <div className="bg-white border border-border rounded-2xl overflow-hidden">
-        {state.status === 'loading' && (
-          <p className="p-6 text-sm text-text-muted">Chargement…</p>
-        )}
-
-        {state.status === 'error' && (
-          <p className="p-6 text-sm text-danger">{state.message}</p>
-        )}
-
-        {state.status === 'success' && (
-          <div className="overflow-x-auto">
-          <table className="w-full border-collapse">
-            <thead>
-              <tr>
-                {['Cliente', 'Téléphone', 'Métier', 'Catégorie', 'Newsletter', 'Statut', 'Notes'].map((h) => (
-                  <th
-                    key={h}
-                    className="text-left text-[11px] text-text-muted font-semibold uppercase tracking-wide px-4 pb-2.5 pt-4 border-b border-border"
-                  >
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((client) => (
-                <tr
-                  key={client.id}
-                  onClick={() => onSelectClient(client.id)}
-                  className="cursor-pointer hover:bg-sage-pale transition-colors"
-                >
-                  <td className="px-4 py-3.5 border-b border-sage-light whitespace-nowrap">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-full bg-sage-light text-sage-dark flex items-center justify-center font-semibold text-xs shrink-0">
-                        {initials(client.nomComplet)}
-                      </div>
-                      {client.nomComplet}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3.5 border-b border-sage-light text-sm whitespace-nowrap">
-                    {client.telephone}
-                  </td>
-                  <td className="px-4 py-3.5 border-b border-sage-light text-sm">
-                    {client.metier}
-                  </td>
-                  <td className="px-4 py-3.5 border-b border-sage-light text-sm text-text-muted whitespace-nowrap">
-                    {client.categorieMetier || '—'}
-                  </td>
-                  <td className="px-4 py-3.5 border-b border-sage-light text-sm">
-                    {client.newsletter ? (
-                      <span className="text-xs font-semibold px-2.5 py-1 rounded-full inline-block bg-sage-light text-sage-dark">
-                        Inscrite
-                      </span>
-                    ) : (
-                      <span className="text-text-muted">—</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3.5 border-b border-sage-light">
-                    <StatusPill statut={client.statut} />
-                  </td>
-                  <td className="px-4 py-3.5 border-b border-sage-light text-sm text-text-muted min-w-40 max-w-md">
-                    {client.notes}
-                  </td>
-                </tr>
-              ))}
-              {filtered.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-sm text-text-muted">
-                    Aucune cliente ne correspond à la recherche.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-          </div>
-        )}
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
+        {STATUT_FILTERS.map((s) => (
+          <button
+            key={s}
+            onClick={() => setStatutFilter(s)}
+            className={`px-3.5 py-2 rounded-[10px] text-sm font-semibold transition-colors ${
+              statutFilter === s ? 'bg-sage-dark text-white' : 'bg-white border border-border text-text-muted hover:bg-sage-pale'
+            }`}
+          >
+            {s}
+          </button>
+        ))}
       </div>
+
+      {state.status === 'loading' && <p className="text-sm text-text-muted">Chargement…</p>}
+      {state.status === 'error' && <p className="text-sm text-danger">{state.message}</p>}
+
+      {state.status === 'success' && (
+        <div className="grid grid-cols-1 lg:grid-cols-[340px_1fr] gap-5 items-start">
+          <div className="bg-white border border-border rounded-2xl overflow-hidden">
+            <div className="px-4 py-3 border-b border-border text-xs font-semibold text-text-muted uppercase tracking-wide">
+              {filtered.length} cliente{filtered.length !== 1 ? 's' : ''}
+            </div>
+            <div className="max-h-[70vh] overflow-y-auto">
+              {filtered.length === 0 ? (
+                <p className="p-6 text-sm text-text-muted">Aucune cliente ne correspond à la recherche.</p>
+              ) : (
+                filtered.map((client) => (
+                  <button
+                    key={client.id}
+                    onClick={() => setSelectedId(client.id)}
+                    className={`w-full text-left px-4 py-3 flex items-center gap-3 border-b border-sage-light last:border-none transition-colors ${
+                      selectedId === client.id ? 'bg-sage-pale' : 'hover:bg-sage-pale/60'
+                    }`}
+                  >
+                    <div
+                      className={`w-9 h-9 rounded-full text-white flex items-center justify-center font-semibold text-xs shrink-0 ${avatarColorClass(client.nomComplet)}`}
+                    >
+                      {initials(client.nomComplet)}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-semibold truncate">{client.nomComplet}</div>
+                      <div className="text-xs text-text-muted truncate">{client.telephone || '—'}</div>
+                    </div>
+                    <div className="shrink-0 flex flex-col items-end gap-1">
+                      <StatusPill statut={client.statut} />
+                      <span className="text-[11px] text-text-muted">
+                        {formatMontant(state.totalByClient.get(client.id) ?? 0)}
+                      </span>
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+
+          <div>
+            {selectedId ? (
+              <ClientDetailView clientId={selectedId} onBack={() => setSelectedId(null)} embedded />
+            ) : (
+              <div className="bg-white border border-border rounded-2xl p-10 text-center text-sm text-text-muted">
+                Sélectionne une cliente dans la liste pour voir sa fiche.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {showCreate && (
         <ClientFormModal

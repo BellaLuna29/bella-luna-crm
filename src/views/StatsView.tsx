@@ -8,10 +8,22 @@ interface Client {
   dateCreation: string | null
 }
 
+const WEEKDAY_LABELS: Record<number, string> = {
+  1: 'Lundi',
+  2: 'Mardi',
+  3: 'Mercredi',
+  4: 'Jeudi',
+  5: 'Vendredi',
+  6: 'Samedi',
+  0: 'Dimanche',
+}
+const WEEKDAY_ORDER = [1, 2, 3, 4, 5, 6, 0]
+
 interface RdvItem {
   id: string
   date: string | null
   statut: string
+  clienteId: string | null
   prestationNom: string
   prix: number | null
 }
@@ -215,6 +227,45 @@ function StatsView() {
       .map(([nom, v]) => ({ nom, count: v.count, ca: v.ca, panierMoyen: v.count > 0 ? v.ca / v.count : 0 }))
       .sort((a, b) => b.count - a.count)
 
+    const facturesA = commerciales.filter((f) => inRange(f.date, periodADebut, periodAFin))
+    const facturesB = commerciales.filter((f) => inRange(f.date, periodBDebut, periodBFin))
+    const panierMoyenA = facturesA.length > 0 ? caA / facturesA.length : 0
+    const panierMoyenB = facturesB.length > 0 ? caB / facturesB.length : 0
+
+    const clientById = new Map(state.clients.map((c) => [c.id, c]))
+    const regulieresCount = state.clients.filter((c) => c.statut === 'Régulière').length
+    const tauxFidelisation = state.clients.length > 0 ? Math.round((regulieresCount / state.clients.length) * 100) : 0
+
+    const clientIdsActifsA = new Set(
+      state.rendezvous
+        .filter((r) => r.clienteId && inRange(r.date, periodADebut, periodAFin))
+        .map((r) => r.clienteId as string),
+    )
+    let nouveauxActifs = 0
+    let fidelesActifs = 0
+    for (const id of clientIdsActifsA) {
+      const c = clientById.get(id)
+      if (c && inRange(c.dateCreation, periodADebut, periodAFin)) nouveauxActifs += 1
+      else fidelesActifs += 1
+    }
+    const totalActifs = nouveauxActifs + fidelesActifs
+    const pctNouveaux = totalActifs > 0 ? Math.round((nouveauxActifs / totalActifs) * 100) : 0
+    const pctFideles = totalActifs > 0 ? 100 - pctNouveaux : 0
+
+    const byWeekday = new Array(7).fill(0) as number[]
+    for (const r of state.rendezvous) {
+      if (!inRange(r.date, periodADebut, periodAFin)) continue
+      const d = new Date(r.date as string)
+      if (Number.isNaN(d.getTime())) continue
+      byWeekday[d.getDay()] += 1
+    }
+    const totalRdvSemaine = byWeekday.reduce((a, b) => a + b, 0)
+    const repartitionSemaine = WEEKDAY_ORDER.map((day) => ({
+      label: WEEKDAY_LABELS[day],
+      count: byWeekday[day],
+      pct: totalRdvSemaine > 0 ? Math.round((byWeekday[day] / totalRdvSemaine) * 100) : 0,
+    }))
+
     return {
       caA,
       caB,
@@ -231,6 +282,13 @@ function StatsView() {
       sansPromoCount,
       sansPromoCa,
       sansPromoPanierMoyen: sansPromoCount > 0 ? sansPromoCa / sansPromoCount : 0,
+      panierMoyenA,
+      panierMoyenB,
+      tauxFidelisation,
+      pctNouveaux,
+      pctFideles,
+      totalActifs,
+      repartitionSemaine,
     }
   }, [state, periodADebut, periodAFin, periodBDebut, periodBFin, prestationsMonth])
 
@@ -270,7 +328,7 @@ function StatsView() {
             </p>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
             <ComparisonCard label="Chiffre d'affaires facturé" current={data.caA} previous={data.caB} formatValue={formatEuros} />
             <ComparisonCard
               label="Dépenses"
@@ -282,6 +340,49 @@ function StatsView() {
             <ComparisonCard label="Résultat net" current={data.resultatA} previous={data.resultatB} formatValue={formatEuros} />
             <ComparisonCard label="Rendez-vous" current={data.rdvA} previous={data.rdvB} />
             <ComparisonCard label="Nouvelles clientes" current={data.nouvellesA} previous={data.nouvellesB} />
+            <ComparisonCard label="Panier moyen" current={data.panierMoyenA} previous={data.panierMoyenB} formatValue={formatEuros} />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="bg-white border border-border rounded-2xl p-5">
+              <h3 className="font-serif text-lg font-semibold text-sage-dark mb-1">Taux de fidélisation</h3>
+              <p className="text-xs text-text-muted mb-3">Part des clientes au statut « Régulière » dans ta base.</p>
+              <div className="font-serif text-4xl font-semibold text-sage-dark">{data.tauxFidelisation} %</div>
+            </div>
+            <div className="bg-white border border-border rounded-2xl p-5">
+              <h3 className="font-serif text-lg font-semibold text-sage-dark mb-1">Clientes actives : nouvelles vs fidèles</h3>
+              <p className="text-xs text-text-muted mb-3">Sur la période A ({data.totalActifs} cliente{data.totalActifs > 1 ? 's' : ''} vue{data.totalActifs > 1 ? 's' : ''}).</p>
+              <div className="flex items-center gap-8">
+                <div>
+                  <div className="font-serif text-3xl font-semibold text-sage-dark">{data.pctNouveaux} %</div>
+                  <div className="text-xs text-text-muted">Nouvelles clientes</div>
+                </div>
+                <div>
+                  <div className="font-serif text-3xl font-semibold text-sage-dark">{data.pctFideles} %</div>
+                  <div className="text-xs text-text-muted">Clientes fidèles</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white border border-border rounded-2xl p-5">
+            <h3 className="font-serif text-lg font-semibold text-sage-dark mb-1">Rendez-vous par jour de la semaine</h3>
+            <p className="text-xs text-text-muted mb-4">Répartition sur la période A.</p>
+            {data.repartitionSemaine.every((d) => d.count === 0) ? (
+              <p className="text-sm text-text-muted">Aucun rendez-vous sur cette période.</p>
+            ) : (
+              <div className="flex flex-col gap-2.5">
+                {data.repartitionSemaine.map((d) => (
+                  <div key={d.label} className="flex items-center gap-3">
+                    <span className="w-24 shrink-0 text-sm text-text-muted">{d.label}</span>
+                    <div className="flex-1 h-2.5 bg-sage-pale rounded-full overflow-hidden">
+                      <div className="h-full bg-sage-dark rounded-full" style={{ width: `${d.pct}%` }} />
+                    </div>
+                    <span className="w-16 shrink-0 text-sm font-semibold text-sage-dark text-right">{d.count} RDV</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="bg-white border border-border rounded-2xl p-5">
@@ -303,7 +404,7 @@ function StatsView() {
               <table className="w-full border-collapse">
                 <thead>
                   <tr>
-                    {['Prestation', 'Nombre de RDV', 'Chiffre d’affaires'].map((h) => (
+                    {['Prestation', 'Part des RDV', 'Nombre de RDV', 'Chiffre d’affaires'].map((h) => (
                       <th
                         key={h}
                         className="text-left text-[11px] text-text-muted font-semibold uppercase tracking-wide pb-2.5 border-b border-border"
@@ -314,15 +415,27 @@ function StatsView() {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.topPrestations.map((p) => (
+                  {data.topPrestations.map((p, i) => {
+                    const maxCount = data.topPrestations[0]?.count ?? 1
+                    const pct = maxCount > 0 ? Math.round((p.count / maxCount) * 100) : 0
+                    return (
                     <tr key={p.nom}>
                       <td className="py-2.5 border-b border-sage-light text-sm">{p.nom}</td>
+                      <td className="py-2.5 border-b border-sage-light text-sm w-40">
+                        <div className="h-2 bg-sage-pale rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full ${i === 0 ? 'bg-sage-dark' : 'bg-sage-light'}`}
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                      </td>
                       <td className="py-2.5 border-b border-sage-light text-sm">{p.count}</td>
                       <td className="py-2.5 border-b border-sage-light text-sm font-semibold text-sage-dark">
                         {formatEuros(p.ca)}
                       </td>
                     </tr>
-                  ))}
+                    )
+                  })}
                 </tbody>
               </table>
               </div>
