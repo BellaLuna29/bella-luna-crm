@@ -1,12 +1,27 @@
-import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { createClient as createClientTyped } from '@supabase/supabase-js'
+
+// See SupabaseLike below: we deliberately erase @supabase/supabase-js's generic
+// return type so tsc never instantiates it. Casting through `unknown` skips the
+// structural-compatibility check that would otherwise re-trigger the blow-up.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const createClient = createClientTyped as unknown as (url: string, key: string, opts?: unknown) => any
 
 export class SupabaseConfigError extends Error {}
 
 export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-let client: SupabaseClient | null = null
+// The PostgREST query-builder generics in @supabase/supabase-js instantiate to
+// an extreme depth when the table name is a plain `string` (not a literal from
+// a typed Database schema). Since every helper here takes a dynamic table name,
+// that blows up type-checking ("Type instantiation is excessively deep and
+// possibly infinite", ts2589) — which fails the build on Vercel. We therefore
+// type the client loosely and cast each query's result via the generic <T>.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type SupabaseLike = any
 
-function getClient(): SupabaseClient {
+let client: SupabaseLike = null
+
+function getClient(): SupabaseLike {
   if (client) return client
   const url = process.env.SUPABASE_URL
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -29,8 +44,7 @@ export async function dbList<T extends DbRow = DbRow>(
   opts?: { select?: string; order?: { column: string; ascending?: boolean }; eq?: [string, unknown] },
 ): Promise<T[]> {
   const sb = getClient()
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let query: any = sb.from(table).select(opts?.select ?? '*')
+  let query = sb.from(table).select(opts?.select ?? '*')
   if (opts?.eq) query = query.eq(opts.eq[0], opts.eq[1])
   if (opts?.order) query = query.order(opts.order.column, { ascending: opts.order.ascending ?? true })
   const { data, error } = await query
