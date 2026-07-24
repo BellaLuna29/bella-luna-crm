@@ -34,7 +34,7 @@ function Sidebar({ activeView, onNavigate, collapsed, onToggleCollapsed, mobileO
         <div className="fixed inset-0 bg-black/30 z-30 md:hidden" onClick={onCloseMobile} aria-hidden="true" />
       )}
       <nav
-        className={`bg-sage-dark text-white flex flex-col p-7 px-4.5 shrink-0 fixed inset-y-0 left-0 z-40 transition-transform duration-200 w-60 md:static md:translate-x-0 ${
+        className={`bg-sage-dark text-white flex flex-col p-7 px-4.5 shrink-0 fixed inset-y-0 left-0 z-40 transition-transform duration-200 w-60 md:static md:h-full md:translate-x-0 ${
           mobileOpen ? 'translate-x-0' : '-translate-x-full'
         } ${collapsed ? 'md:w-[72px] md:px-3' : ''}`}
       >

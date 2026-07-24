@@ -66,7 +66,7 @@ function App() {
       </Show>
 
       <Show when="signed-in">
-        <div className="flex min-h-screen">
+        <div className="flex h-screen overflow-hidden print:h-auto print:overflow-visible">
           <div className="print:hidden">
             <Sidebar
               activeView={view}
@@ -77,7 +77,7 @@ function App() {
               onCloseMobile={() => setMobileMenuOpen(false)}
             />
           </div>
-          <div className="flex-1 flex flex-col min-w-0">
+          <div className="flex-1 flex flex-col min-w-0 print:overflow-visible">
             <div className="print:hidden">
               <Topbar title={title} subtitle={subtitle} onOpenMobileMenu={() => setMobileMenuOpen(true)} />
             </div>
