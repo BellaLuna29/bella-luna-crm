@@ -15,6 +15,12 @@ export interface Client {
   statut: string
   newsletter: boolean
   dateCreation: string | null
+  dejaMasse: boolean | null
+  antecedentsMedicaux: string
+  zonesASurveiller: string
+  pressionSouhaitee: string
+  allergies: string
+  zonesAEviter: string
 }
 
 export function mapClient(row: DbRow): Client {
@@ -32,6 +38,12 @@ export function mapClient(row: DbRow): Client {
     statut: (row.statut as string) ?? 'Nouvelle',
     newsletter: Boolean(row.newsletter_ok),
     dateCreation: (row.created_at as string) ?? null,
+    dejaMasse: row.deja_masse === null || row.deja_masse === undefined ? null : Boolean(row.deja_masse),
+    antecedentsMedicaux: (row.antecedents_medicaux as string) ?? '',
+    zonesASurveiller: (row.zones_a_surveiller as string) ?? '',
+    pressionSouhaitee: (row.pression_souhaitee as string) ?? '',
+    allergies: (row.allergies as string) ?? '',
+    zonesAEviter: (row.zones_a_eviter as string) ?? '',
   }
 }
 
@@ -141,6 +153,26 @@ export function parseClientInput(
     const v = typeof b.notes === 'string' ? b.notes.trim() : ''
     if (v.length > 5000) errors.push('La note est trop longue (5000 caractères max).')
     else fields.notes = v
+  }
+
+  if ('dejaMasse' in b) {
+    const v = b.dejaMasse
+    fields.deja_masse = v === null ? null : Boolean(v)
+  }
+
+  const HEALTH_TEXT_FIELDS: [string, string, string][] = [
+    ['antecedentsMedicaux', 'antecedents_medicaux', 'Les antécédents médicaux sont trop longs (2000 caractères max).'],
+    ['zonesASurveiller', 'zones_a_surveiller', 'Les zones à surveiller sont trop longues (2000 caractères max).'],
+    ['pressionSouhaitee', 'pression_souhaitee', 'La pression souhaitée est trop longue (2000 caractères max).'],
+    ['allergies', 'allergies', 'Les allergies sont trop longues (2000 caractères max).'],
+    ['zonesAEviter', 'zones_a_eviter', 'Les zones à éviter sont trop longues (2000 caractères max).'],
+  ]
+  for (const [key, column, errorMsg] of HEALTH_TEXT_FIELDS) {
+    if (key in b) {
+      const v = typeof b[key] === 'string' ? (b[key] as string).trim() : ''
+      if (v.length > 2000) errors.push(errorMsg)
+      else fields[column] = v
+    }
   }
 
   if ('statut' in b) {

@@ -14,6 +14,12 @@ export interface ClientFormValues {
   notes: string
   statut: string
   newsletter: boolean
+  dejaMasse: boolean | null
+  antecedentsMedicaux: string
+  zonesASurveiller: string
+  pressionSouhaitee: string
+  allergies: string
+  zonesAEviter: string
 }
 
 const EMPTY_VALUES: ClientFormValues = {
@@ -28,6 +34,12 @@ const EMPTY_VALUES: ClientFormValues = {
   notes: '',
   statut: 'Nouvelle',
   newsletter: false,
+  dejaMasse: null,
+  antecedentsMedicaux: '',
+  zonesASurveiller: '',
+  pressionSouhaitee: '',
+  allergies: '',
+  zonesAEviter: '',
 }
 
 interface ClientFormModalProps {
@@ -71,6 +83,12 @@ function ClientFormModal({ mode, clientId, initialValues, onClose, onSaved }: Cl
         notes: values.notes.trim(),
         statut: values.statut,
         newsletter: values.newsletter,
+        dejaMasse: values.dejaMasse,
+        antecedentsMedicaux: values.antecedentsMedicaux.trim(),
+        zonesASurveiller: values.zonesASurveiller.trim(),
+        pressionSouhaitee: values.pressionSouhaitee.trim(),
+        allergies: values.allergies.trim(),
+        zonesAEviter: values.zonesAEviter.trim(),
       }
 
       if (mode === 'create') {
@@ -184,6 +202,78 @@ function ClientFormModal({ mode, clientId, initialValues, onClose, onSaved }: Cl
               className="input"
             />
           </Field>
+
+          <div className="border-t border-border pt-4 mt-1">
+            <div className="text-sm font-serif font-semibold text-sage-dark mb-3">
+              Santé &amp; préférences de massage
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <Field label="Déjà massé">
+                <select
+                  value={values.dejaMasse === null ? '' : values.dejaMasse ? 'oui' : 'non'}
+                  onChange={(e) =>
+                    set('dejaMasse', e.target.value === '' ? null : e.target.value === 'oui')
+                  }
+                  className="input"
+                >
+                  <option value="">Non renseigné</option>
+                  <option value="oui">Oui</option>
+                  <option value="non">Non</option>
+                </select>
+              </Field>
+              <Field label="Pression souhaitée">
+                <input
+                  type="text"
+                  value={values.pressionSouhaitee}
+                  onChange={(e) => set('pressionSouhaitee', e.target.value)}
+                  maxLength={2000}
+                  className="input"
+                />
+              </Field>
+            </div>
+
+            <Field label="Antécédents médicaux">
+              <textarea
+                value={values.antecedentsMedicaux}
+                onChange={(e) => set('antecedentsMedicaux', e.target.value)}
+                maxLength={2000}
+                rows={2}
+                className="input resize-y mb-3"
+              />
+            </Field>
+
+            <Field label="Allergies">
+              <textarea
+                value={values.allergies}
+                onChange={(e) => set('allergies', e.target.value)}
+                maxLength={2000}
+                rows={2}
+                className="input resize-y mb-3"
+              />
+            </Field>
+
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Zones à surveiller">
+                <textarea
+                  value={values.zonesASurveiller}
+                  onChange={(e) => set('zonesASurveiller', e.target.value)}
+                  maxLength={2000}
+                  rows={2}
+                  className="input resize-y"
+                />
+              </Field>
+              <Field label="Zones à éviter">
+                <textarea
+                  value={values.zonesAEviter}
+                  onChange={(e) => set('zonesAEviter', e.target.value)}
+                  maxLength={2000}
+                  rows={2}
+                  className="input resize-y"
+                />
+              </Field>
+            </div>
+          </div>
 
           <Field label="Statut">
             <select

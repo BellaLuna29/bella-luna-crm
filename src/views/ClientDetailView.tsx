@@ -24,6 +24,12 @@ interface Client {
   hobbies: string
   notes: string
   statut: string
+  dejaMasse: boolean | null
+  antecedentsMedicaux: string
+  zonesASurveiller: string
+  pressionSouhaitee: string
+  allergies: string
+  zonesAEviter: string
 }
 
 interface HistoriqueItem {
@@ -238,6 +244,26 @@ function ClientDetailView({ clientId, onBack, embedded }: ClientDetailViewProps)
           </div>
 
           <div>
+            <div className="bg-white border border-border rounded-2xl p-5 mb-5">
+              <div className="font-serif text-base font-semibold text-sage-dark mb-3.5">
+                Santé &amp; préférences de massage
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3.5 text-sm">
+                <HealthField label="Déjà massé">
+                  {state.data.client.dejaMasse === null
+                    ? '—'
+                    : state.data.client.dejaMasse
+                      ? 'Oui'
+                      : 'Non'}
+                </HealthField>
+                <HealthField label="Pression souhaitée">{state.data.client.pressionSouhaitee || '—'}</HealthField>
+                <HealthField label="Antécédents médicaux">{state.data.client.antecedentsMedicaux || '—'}</HealthField>
+                <HealthField label="Allergies">{state.data.client.allergies || '—'}</HealthField>
+                <HealthField label="Zones à surveiller">{state.data.client.zonesASurveiller || '—'}</HealthField>
+                <HealthField label="Zones à éviter">{state.data.client.zonesAEviter || '—'}</HealthField>
+              </div>
+            </div>
+
             <div className="flex gap-4.5 mb-4 border-b border-border">
               <button
                 onClick={() => setTab('historique')}
@@ -320,6 +346,12 @@ function ClientDetailView({ clientId, onBack, embedded }: ClientDetailViewProps)
             hobbies: state.data.client.hobbies,
             notes: state.data.client.notes,
             statut: state.data.client.statut,
+            dejaMasse: state.data.client.dejaMasse,
+            antecedentsMedicaux: state.data.client.antecedentsMedicaux,
+            zonesASurveiller: state.data.client.zonesASurveiller,
+            pressionSouhaitee: state.data.client.pressionSouhaitee,
+            allergies: state.data.client.allergies,
+            zonesAEviter: state.data.client.zonesAEviter,
           }}
           onClose={() => setShowEdit(false)}
           onSaved={() => {
@@ -349,6 +381,15 @@ function ClientDetailView({ clientId, onBack, embedded }: ClientDetailViewProps)
           }}
         />
       )}
+    </div>
+  )
+}
+
+function HealthField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <div className="text-[11px] text-text-muted font-medium mb-0.5">{label}</div>
+      <div className="leading-relaxed whitespace-pre-line">{children}</div>
     </div>
   )
 }
