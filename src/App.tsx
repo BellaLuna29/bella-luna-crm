@@ -31,7 +31,7 @@ const TITLES: Record<View, [string, string]> = {
 const SIDEBAR_COLLAPSED_KEY = 'bella-luna-sidebar-collapsed'
 
 function App() {
-  const [view, setView] = useState<View>('clients')
+  const [view, setView] = useState<View>('dashboard')
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null)
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1')
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -82,7 +82,7 @@ function App() {
               <Topbar title={title} subtitle={subtitle} onOpenMobileMenu={() => setMobileMenuOpen(true)} />
             </div>
             <main className="flex-1 p-4 md:p-8 overflow-y-auto overflow-x-hidden print:p-0 print:overflow-visible">
-              <div className="max-w-[1440px] mx-auto">
+              <div>
               {view === 'clients' && <ClientsListView />}
               {view === 'client-detail' && selectedClientId && (
                 <ClientDetailView
