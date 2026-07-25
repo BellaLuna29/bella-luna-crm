@@ -14,6 +14,7 @@ interface FactureItem {
   payee: boolean
   clienteId: string | null
   clienteNom: string
+  rendezvousId: string | null
   categorieFacture: string
   promoId: string | null
   promoNom: string
@@ -32,6 +33,7 @@ function mapRow(r: DbRow): FactureItem {
     payee: Boolean(r.payee),
     clienteId: (r.cliente_id as string) ?? null,
     clienteNom: cliente?.nom_complet ?? '',
+    rendezvousId: (r.rendezvous_id as string) ?? null,
     categorieFacture: (r.categorie_facture as string) ?? 'Commercial',
     promoId: (r.promo_id as string) ?? null,
     promoNom: promo?.nom ?? '',

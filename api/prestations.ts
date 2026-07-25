@@ -24,6 +24,8 @@ import {
   mapParametres,
   parseParametresInput,
   parsePrestationInput,
+  parseSmsTemplateInput,
+  parseEmailTemplateInput,
 } from './_lib/mappers.js'
 import { buildNewsletterHtml, sendNewsletterBatch, EmailConfigError } from './_lib/email.js'
 
@@ -37,6 +39,10 @@ const TABLE_STOCK = 'stock'
 const TABLE_COMMUNICATIONS_LOG = 'communications_log'
 const TABLE_PARAMETRES = 'parametres'
 const TABLE_CLIENTS = 'clients'
+const TABLE_RENDEZVOUS = 'rendezvous'
+const TABLE_FACTURES = 'factures'
+const TABLE_SMS_TEMPLATES = 'sms_templates'
+const TABLE_EMAIL_TEMPLATES = 'email_templates'
 const SITE_URL = process.env.ALLOWED_ORIGIN || 'https://bella-luna-crm-bella-luna.vercel.app'
 
 interface Prestation {
@@ -75,6 +81,21 @@ interface AlerteItem {
 interface DismissedAlertItem {
   id: string
   cle: string
+}
+
+interface SmsTemplateItem {
+  id: string
+  cle: string
+  libelle: string
+  corps: string
+}
+
+interface EmailTemplateItem {
+  id: string
+  cle: string
+  libelle: string
+  objet: string
+  corps: string
 }
 
 type ParseFn = (
@@ -176,6 +197,59 @@ async function handleQuestionnaires(req: VercelRequest, res: VercelResponse): Pr
     return
   }
   await handleCrud(req, res, { table: TABLE_QUESTIONNAIRES, parse: parseQuestionnaireInput, notFoundLabel: 'le formulaire' })
+}
+
+async function handleSmsTemplates(req: VercelRequest, res: VercelResponse): Promise<void> {
+  if (req.method === 'GET') {
+    try {
+      const rows = await dbList(TABLE_SMS_TEMPLATES)
+      const templates: SmsTemplateItem[] = rows
+        .map((r) => ({
+          id: r.id,
+          cle: (r.cle as string) ?? '',
+          libelle: (r.libelle as string) ?? '',
+          corps: (r.corps as string) ?? '',
+        }))
+        .sort((a, b) => a.libelle.localeCompare(b.libelle))
+      res.status(200).json({ templates })
+    } catch (error) {
+      if (error instanceof SupabaseConfigError) {
+        res.status(500).json({ error: error.message })
+        return
+      }
+      console.error(error)
+      res.status(502).json({ error: 'Impossible de récupérer les modèles SMS depuis la base de données.' })
+    }
+    return
+  }
+  await handleCrud(req, res, { table: TABLE_SMS_TEMPLATES, parse: parseSmsTemplateInput, notFoundLabel: 'le modèle SMS' })
+}
+
+async function handleEmailTemplates(req: VercelRequest, res: VercelResponse): Promise<void> {
+  if (req.method === 'GET') {
+    try {
+      const rows = await dbList(TABLE_EMAIL_TEMPLATES)
+      const templates: EmailTemplateItem[] = rows
+        .map((r) => ({
+          id: r.id,
+          cle: (r.cle as string) ?? '',
+          libelle: (r.libelle as string) ?? '',
+          objet: (r.objet as string) ?? '',
+          corps: (r.corps as string) ?? '',
+        }))
+        .sort((a, b) => a.libelle.localeCompare(b.libelle))
+      res.status(200).json({ templates })
+    } catch (error) {
+      if (error instanceof SupabaseConfigError) {
+        res.status(500).json({ error: error.message })
+        return
+      }
+      console.error(error)
+      res.status(502).json({ error: 'Impossible de récupérer les modèles e-mail depuis la base de données.' })
+    }
+    return
+  }
+  await handleCrud(req, res, { table: TABLE_EMAIL_TEMPLATES, parse: parseEmailTemplateInput, notFoundLabel: 'le modèle e-mail' })
 }
 
 async function handlePromotions(req: VercelRequest, res: VercelResponse): Promise<void> {
@@ -533,6 +607,53 @@ async function handleNewsletterUnsubscribe(req: VercelRequest, res: VercelRespon
   }
 }
 
+/**
+ * Safety net alongside the automatic "Honoré → facture" hook in
+ * api/rendezvous/[id].ts — scans every honoré rendezvous without a linked
+ * facture yet and creates one. Useful if the hook was ever bypassed (e.g. a
+ * bulk update) or for RDVs that were already honoré before this feature shipped.
+ */
+async function handleSyncFacturesHonorees(req: VercelRequest, res: VercelResponse): Promise<void> {
+  if (req.method !== 'POST') {
+    res.status(405).json({ error: 'Méthode non autorisée.' })
+    return
+  }
+  try {
+    const [rdvRows, factureRows, prestationRows] = await Promise.all([
+      dbList(TABLE_RENDEZVOUS, { eq: ['statut', 'Honoré'] }),
+      dbList(TABLE_FACTURES),
+      dbList(TABLE_PRESTATIONS),
+    ])
+    const invoicedRdvIds = new Set(factureRows.map((f) => f.rendezvous_id as string | null).filter(Boolean))
+    const prestationById = new Map(prestationRows.map((p) => [p.id, p]))
+
+    let created = 0
+    for (const r of rdvRows) {
+      if (invoicedRdvIds.has(r.id)) continue
+      const prestation = r.prestation_id ? prestationById.get(r.prestation_id as string) : undefined
+      const dateStr = typeof r.date === 'string' ? r.date.slice(0, 10) : new Date().toISOString().slice(0, 10)
+      await dbCreate(TABLE_FACTURES, {
+        cliente_id: r.cliente_id ?? null,
+        rendezvous_id: r.id,
+        montant: (prestation?.prix as number) ?? 0,
+        date_facture: dateStr,
+        payee: false,
+        categorie_facture: 'Commercial',
+        description: (prestation?.nom as string) ?? '',
+      })
+      created += 1
+    }
+    res.status(200).json({ created })
+  } catch (error) {
+    if (error instanceof SupabaseConfigError) {
+      res.status(500).json({ error: error.message })
+      return
+    }
+    console.error(error)
+    res.status(502).json({ error: 'Impossible de générer les factures manquantes.' })
+  }
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
   setCorsHeaders(req, res)
 
@@ -588,6 +709,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
   }
   if (req.query.resource === 'parametres') {
     await handleParametres(req, res)
+    return
+  }
+  if (req.query.resource === 'sms-templates') {
+    await handleSmsTemplates(req, res)
+    return
+  }
+  if (req.query.resource === 'email-templates') {
+    await handleEmailTemplates(req, res)
+    return
+  }
+  if (req.query.resource === 'sync-factures-honorees') {
+    await handleSyncFacturesHonorees(req, res)
     return
   }
 

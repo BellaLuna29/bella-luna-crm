@@ -1,11 +1,13 @@
 import { apiFetch } from './api'
 
 export interface Parametres {
-  horaires: Record<string, string>
   objectifCaMensuel: number | null
+  seuilRecontactJours: number
+  seuilFactureImpayeeJours: number
+  seuilPromoExpirationJours: number
+  seuilNewsletterJours: number
+  seuilAnniversaireJours: number
 }
-
-export const JOURS_SEMAINE = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'] as const
 
 type GetToken = () => Promise<string | null>
 

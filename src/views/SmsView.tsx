@@ -4,7 +4,7 @@ import { apiFetch, ApiError } from '../lib/api'
 import MessageComposerModal from '../components/MessageComposerModal'
 import SearchableSelect from '../components/SearchableSelect'
 import Icon, { type IconName } from '../components/Icon'
-import type { TemplateContext } from '../lib/messageTemplates'
+import type { TemplateContext } from '../lib/templateEngine'
 import { formatDateHeureNaturel } from '../lib/formatDate'
 import { computeAnniversaires, computeFacturesImpayeesEnRetard, computeClientesARecontacter, daysSince } from '../lib/alerts'
 import {
@@ -143,7 +143,10 @@ function SmsView() {
   }, [load])
 
   async function handleDismissRecontact(clientId: string) {
-    const key = `recontact-${clientId}`
+    await handleDismissKey(`recontact-${clientId}`)
+  }
+
+  async function handleDismissKey(key: string) {
     setValidDismissedKeys((prev) => new Set(prev).add(key))
     try {
       await dismissAlertKey(getToken, key)
@@ -159,30 +162,42 @@ function SmsView() {
     if (state.status !== 'success') return null
     const clientById = new Map(state.clients.map((c) => [c.id, c]))
 
-    const in24h = state.rendezvous
-      .filter((r) => {
-        if (!r.date) return false
-        const t = new Date(r.date).getTime()
-        if (Number.isNaN(t)) return false
-        const diff = t - now.getTime()
-        if (diff <= 0) return false
-        const client = r.clienteId ? clientById.get(r.clienteId) : undefined
-        const window = client?.statut === 'Nouvelle' ? 72 * HOUR_MS : 48 * HOUR_MS
-        return diff <= window
-      })
-      .sort((a, b) => new Date(a.date as string).getTime() - new Date(b.date as string).getTime())
+    const rdvCountByClient = new Map<string, number>()
+    for (const r of state.rendezvous) {
+      if (!r.clienteId) continue
+      rdvCountByClient.set(r.clienteId, (rdvCountByClient.get(r.clienteId) ?? 0) + 1)
+    }
+    const hasHistory = (clienteId: string | null) => (clienteId ? (rdvCountByClient.get(clienteId) ?? 0) > 1 : false)
+
+    function upcomingWithin(window: number, wantHistory: boolean) {
+      return state.rendezvous
+        .filter((r) => {
+          if (!r.date) return false
+          const t = new Date(r.date).getTime()
+          if (Number.isNaN(t)) return false
+          const diff = t - now.getTime()
+          if (diff <= 0 || diff > window) return false
+          return hasHistory(r.clienteId) === wantHistory
+        })
+        .sort((a, b) => new Date(a.date as string).getTime() - new Date(b.date as string).getTime())
+    }
+
+    const rappelsNouveauClient = upcomingWithin(72 * HOUR_MS, false)
+    const rappelsClientExistant = upcomingWithin(48 * HOUR_MS, true)
 
     const aRecontacter = computeClientesARecontacter(state.clients, state.rendezvous, now)
     const anniversaires = computeAnniversaires(state.clients, now)
     const facturesImpayees = computeFacturesImpayeesEnRetard(state.factures, now)
 
-    return { in24h, aRecontacter, anniversaires, facturesImpayees, clientById }
+    return { rappelsNouveauClient, rappelsClientExistant, aRecontacter, anniversaires, facturesImpayees, clientById }
   }, [state, now])
 
   useEffect(() => {
     if (!rawSections) return
     const keys = new Set<string>()
     for (const { client } of rawSections.aRecontacter) keys.add(`recontact-${client.id}`)
+    for (const r of rawSections.rappelsNouveauClient) keys.add(`rappel-nouveau-${r.id}`)
+    for (const r of rawSections.rappelsClientExistant) keys.add(`rappel-existant-${r.id}`)
     reconcileDismissedAlerts(getToken, dismissedRaw, keys).then(setValidDismissedKeys)
   }, [rawSections, dismissedRaw, getToken])
 
@@ -191,10 +206,16 @@ function SmsView() {
     return {
       ...rawSections,
       aRecontacter: rawSections.aRecontacter.filter(({ client }) => !validDismissedKeys.has(`recontact-${client.id}`)),
+      rappelsNouveauClient: rawSections.rappelsNouveauClient.filter(
+        (r) => !validDismissedKeys.has(`rappel-nouveau-${r.id}`),
+      ),
+      rappelsClientExistant: rawSections.rappelsClientExistant.filter(
+        (r) => !validDismissedKeys.has(`rappel-existant-${r.id}`),
+      ),
     }
   }, [rawSections, validDismissedKeys])
 
-  function contactFromRdv(r: RdvItem) {
+  function contactFromRdv(r: RdvItem, templateKey: 'rappel' | 'nouveauClient' = 'rappel') {
     const client = sections?.clientById.get(r.clienteId ?? '')
     setComposer({
       context: {
@@ -205,7 +226,7 @@ function SmsView() {
       },
       telephone: client?.telephone ?? '',
       email: client?.email ?? '',
-      templateKey: 'rappel',
+      templateKey,
     })
   }
 
@@ -277,15 +298,38 @@ function SmsView() {
       {state.status === 'success' && sections && (
         <div className="flex flex-col gap-6">
           <div className="bg-white border border-border rounded-2xl p-5">
-            <h3 className="font-serif text-lg font-semibold text-sage-dark mb-4">
-              Rappels de rendez-vous
-            </h3>
-            <p className="text-xs text-text-muted mb-4">72 h pour les nouvelles clientes, 48 h pour les anciennes.</p>
-            {sections.in24h.length === 0 ? (
+            <h3 className="font-serif text-lg font-semibold text-sage-dark mb-1">Rappel nouveau client</h3>
+            <p className="text-xs text-text-muted mb-4">
+              72 h avant, pour les clientes qui n'ont encore aucun autre rendez-vous enregistré.
+            </p>
+            {sections.rappelsNouveauClient.length === 0 ? (
+              <p className="text-sm text-text-muted">Aucun premier rendez-vous à rappeler pour le moment.</p>
+            ) : (
+              <div className="flex flex-col gap-1.5">
+                {sections.rappelsNouveauClient.map((r) => (
+                  <ContactRow
+                    key={r.id}
+                    title={r.clienteNom || 'Cliente inconnue'}
+                    subtitle={`${r.prestationNom || 'Prestation'} — ${formatDateCourte(r.date)}`}
+                    colorClass="bg-gold-pale"
+                    icon="calendar"
+                    iconClass="bg-gold/25 text-gold-text"
+                    onContact={() => contactFromRdv(r, 'nouveauClient')}
+                    onDismiss={() => handleDismissKey(`rappel-nouveau-${r.id}`)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="bg-white border border-border rounded-2xl p-5">
+            <h3 className="font-serif text-lg font-semibold text-sage-dark mb-1">Rappel client</h3>
+            <p className="text-xs text-text-muted mb-4">48 h avant, pour les clientes déjà venues.</p>
+            {sections.rappelsClientExistant.length === 0 ? (
               <p className="text-sm text-text-muted">Aucun rendez-vous à rappeler pour le moment.</p>
             ) : (
               <div className="flex flex-col gap-1.5">
-                {sections.in24h.map((r) => (
+                {sections.rappelsClientExistant.map((r) => (
                   <ContactRow
                     key={r.id}
                     title={r.clienteNom || 'Cliente inconnue'}
@@ -294,6 +338,7 @@ function SmsView() {
                     icon="calendar"
                     iconClass="bg-sage/20 text-sage-dark"
                     onContact={() => contactFromRdv(r)}
+                    onDismiss={() => handleDismissKey(`rappel-existant-${r.id}`)}
                   />
                 ))}
               </div>

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useAuth } from '@clerk/react'
 import { apiFetch } from '../lib/api'
-import { MESSAGE_TEMPLATES, type TemplateContext } from '../lib/messageTemplates'
+import { fetchSmsTemplates, fetchEmailTemplates, type SmsTemplate, type EmailTemplate } from '../lib/messageTemplates'
+import { renderTemplate, type TemplateContext } from '../lib/templateEngine'
 import { buildSmsLink, buildMailtoLink } from '../lib/contactLinks'
 import { logCommunication } from '../lib/communicationsLog'
 
@@ -46,55 +47,98 @@ function findBestQuestionnaire(questionnaires: Questionnaire[], prestation?: str
   return null
 }
 
+function pickInitial<T extends { cle: string }>(items: T[], key?: string): T | null {
+  if (items.length === 0) return null
+  return items.find((t) => t.cle === key) ?? items[0]
+}
+
 function MessageComposerModal({ context, telephone, email, initialTemplateKey, onClose }: MessageComposerModalProps) {
   const { getToken } = useAuth()
-  const initialTemplate = MESSAGE_TEMPLATES.find((t) => t.key === initialTemplateKey) ?? MESSAGE_TEMPLATES[0]
-  const [templateKey, setTemplateKey] = useState(initialTemplate.key)
+  const [smsTemplates, setSmsTemplates] = useState<SmsTemplate[]>([])
+  const [emailTemplates, setEmailTemplates] = useState<EmailTemplate[]>([])
   const [questionnaires, setQuestionnaires] = useState<Questionnaire[]>([])
   const [questionnaireId, setQuestionnaireId] = useState('')
-  const [body, setBody] = useState(initialTemplate.build(context))
-  const template = MESSAGE_TEMPLATES.find((t) => t.key === templateKey) ?? MESSAGE_TEMPLATES[0]
+  const [smsTemplateId, setSmsTemplateId] = useState('')
+  const [emailTemplateId, setEmailTemplateId] = useState('')
+  const [smsBody, setSmsBody] = useState('')
+  const [emailSubject, setEmailSubject] = useState('')
+  const [emailBody, setEmailBody] = useState('')
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   useEffect(() => {
-    apiFetch<{ questionnaires: Questionnaire[] }>(getToken, '/api/prestations?resource=questionnaires')
-      .then((data) => {
-        setQuestionnaires(data.questionnaires)
-        const best = findBestQuestionnaire(data.questionnaires, context.prestation)
-        if (best) {
-          setQuestionnaireId(best.id)
-          if (initialTemplate.key === 'rappel') {
-            setBody(initialTemplate.build({ ...context, lienQuestionnaire: best.lien }))
-          }
+    Promise.all([
+      fetchSmsTemplates(getToken),
+      fetchEmailTemplates(getToken),
+      apiFetch<{ questionnaires: Questionnaire[] }>(getToken, '/api/prestations?resource=questionnaires').catch(
+        () => ({ questionnaires: [] as Questionnaire[] }),
+      ),
+    ])
+      .then(([sms, mails, qData]) => {
+        setSmsTemplates(sms)
+        setEmailTemplates(mails)
+        setQuestionnaires(qData.questionnaires)
+
+        const bestQuestionnaire = findBestQuestionnaire(qData.questionnaires, context.prestation)
+        const lienQuestionnaire = bestQuestionnaire?.lien
+        if (bestQuestionnaire) setQuestionnaireId(bestQuestionnaire.id)
+
+        const smsInitial = pickInitial(sms, initialTemplateKey)
+        if (smsInitial) {
+          setSmsTemplateId(smsInitial.id)
+          setSmsBody(renderTemplate(smsInitial.corps, { ...context, lienQuestionnaire }))
+        }
+        const emailInitial = pickInitial(mails, initialTemplateKey)
+        if (emailInitial) {
+          setEmailTemplateId(emailInitial.id)
+          setEmailSubject(emailInitial.objet)
+          setEmailBody(renderTemplate(emailInitial.corps, { ...context, lienQuestionnaire }))
         }
       })
-      .catch(() => setQuestionnaires([]))
+      .catch(() => setLoadError('Impossible de charger les modèles de message.'))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  function rebuild(nextTemplateKey: string, nextQuestionnaireId: string) {
-    const t = MESSAGE_TEMPLATES.find((tpl) => tpl.key === nextTemplateKey) ?? MESSAGE_TEMPLATES[0]
-    const lien = questionnaires.find((q) => q.id === nextQuestionnaireId)?.lien
-    setBody(t.build({ ...context, lienQuestionnaire: lien }))
+  function currentLien(nextQuestionnaireId: string): string | undefined {
+    return questionnaires.find((q) => q.id === nextQuestionnaireId)?.lien
   }
 
-  function handleTemplateChange(key: string) {
-    setTemplateKey(key)
-    rebuild(key, questionnaireId)
+  function handleSmsTemplateChange(id: string) {
+    setSmsTemplateId(id)
+    const t = smsTemplates.find((tpl) => tpl.id === id)
+    if (t) setSmsBody(renderTemplate(t.corps, { ...context, lienQuestionnaire: currentLien(questionnaireId) }))
+  }
+
+  function handleEmailTemplateChange(id: string) {
+    setEmailTemplateId(id)
+    const t = emailTemplates.find((tpl) => tpl.id === id)
+    if (t) {
+      setEmailSubject(t.objet)
+      setEmailBody(renderTemplate(t.corps, { ...context, lienQuestionnaire: currentLien(questionnaireId) }))
+    }
   }
 
   function handleQuestionnaireChange(id: string) {
     setQuestionnaireId(id)
-    rebuild(templateKey, id)
+    const lien = currentLien(id)
+    const smsT = smsTemplates.find((tpl) => tpl.id === smsTemplateId)
+    if (smsT) setSmsBody(renderTemplate(smsT.corps, { ...context, lienQuestionnaire: lien }))
+    const mailT = emailTemplates.find((tpl) => tpl.id === emailTemplateId)
+    if (mailT) setEmailBody(renderTemplate(mailT.corps, { ...context, lienQuestionnaire: lien }))
   }
 
-  const smsHref = telephone ? buildSmsLink(telephone, body) : null
-  const mailHref = email ? buildMailtoLink(email, template.subject, body) : null
+  const smsHref = telephone ? buildSmsLink(telephone, smsBody) : null
+  const mailHref = email ? buildMailtoLink(email, emailSubject, emailBody) : null
+  const smsLabel = smsTemplates.find((t) => t.id === smsTemplateId)?.libelle ?? 'SMS'
+  const emailLabel = emailTemplates.find((t) => t.id === emailTemplateId)?.libelle ?? 'E-mail'
 
   function logSend(type: 'SMS' | 'Email') {
-    logCommunication(getToken, { contenu: `${template.label} — ${context.nomComplet}`, type, destinataires: 1 }).catch(() => {
+    const label = type === 'SMS' ? smsLabel : emailLabel
+    logCommunication(getToken, { contenu: `${label} — ${context.nomComplet}`, type, destinataires: 1 }).catch(() => {
       // best effort — l'historique ne sera juste pas mis à jour
     })
   }
+
+  const showQuestionnairePicker = questionnaires.length > 0
 
   return (
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center p-4 z-50">
@@ -104,19 +148,10 @@ function MessageComposerModal({ context, telephone, email, initialTemplateKey, o
           Prépare le message puis ouvre l'app SMS ou Mail de ta tablette pour l'envoyer.
         </p>
 
-        <label className="block mb-3">
-          <span className="block text-xs font-semibold text-text-muted mb-1">Modèle</span>
-          <select value={templateKey} onChange={(e) => handleTemplateChange(e.target.value)} className="input">
-            {MESSAGE_TEMPLATES.map((t) => (
-              <option key={t.key} value={t.key}>
-                {t.label}
-              </option>
-            ))}
-          </select>
-        </label>
+        {loadError && <p className="text-sm text-danger mb-3">{loadError}</p>}
 
-        {templateKey === 'rappel' && (
-          <label className="block mb-3">
+        {showQuestionnairePicker && (
+          <label className="block mb-4">
             <span className="block text-xs font-semibold text-text-muted mb-1">Formulaire à insérer</span>
             <select value={questionnaireId} onChange={(e) => handleQuestionnaireChange(e.target.value)} className="input">
               <option value="">Aucun (garder « [Lien à insérer] »)</option>
@@ -129,15 +164,49 @@ function MessageComposerModal({ context, telephone, email, initialTemplateKey, o
           </label>
         )}
 
-        <label className="block mb-4">
-          <span className="block text-xs font-semibold text-text-muted mb-1">Message</span>
+        <div className="border border-border rounded-2xl p-4 mb-4">
+          <div className="text-xs font-semibold text-sage-dark uppercase tracking-wide mb-3">Message SMS</div>
+          <label className="block mb-3">
+            <span className="block text-xs font-semibold text-text-muted mb-1">Modèle</span>
+            <select value={smsTemplateId} onChange={(e) => handleSmsTemplateChange(e.target.value)} className="input">
+              {smsTemplates.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.libelle}
+                </option>
+              ))}
+            </select>
+          </label>
           <textarea
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
+            value={smsBody}
+            onChange={(e) => setSmsBody(e.target.value)}
+            rows={5}
+            className="input resize-none"
+          />
+        </div>
+
+        <div className="border border-border rounded-2xl p-4 mb-4">
+          <div className="text-xs font-semibold text-sage-dark uppercase tracking-wide mb-3">Message e-mail</div>
+          <label className="block mb-3">
+            <span className="block text-xs font-semibold text-text-muted mb-1">Modèle</span>
+            <select value={emailTemplateId} onChange={(e) => handleEmailTemplateChange(e.target.value)} className="input">
+              {emailTemplates.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.libelle}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block mb-3">
+            <span className="block text-xs font-semibold text-text-muted mb-1">Objet</span>
+            <input type="text" value={emailSubject} onChange={(e) => setEmailSubject(e.target.value)} className="input" />
+          </label>
+          <textarea
+            value={emailBody}
+            onChange={(e) => setEmailBody(e.target.value)}
             rows={8}
             className="input resize-none"
           />
-        </label>
+        </div>
 
         {!telephone && !email && (
           <p className="text-sm text-danger mb-3">Aucun téléphone ni email enregistré pour cette cliente.</p>

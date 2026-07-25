@@ -1,21 +1,31 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useAuth } from '@clerk/react'
 import { ApiError } from '../lib/api'
-import { fetchParametres, saveParametres, JOURS_SEMAINE } from '../lib/parametres'
+import { fetchParametres, saveParametres, type Parametres } from '../lib/parametres'
 import AlertesView from './AlertesView'
 import FormulairesView from './FormulairesView'
+import ModelesView from './ModelesView'
 
 type State =
   | { status: 'loading' }
   | { status: 'error'; message: string }
   | { status: 'success' }
 
-type SubTab = 'general' | 'alertes' | 'formulaires'
+type SubTab = 'general' | 'alertes' | 'formulaires' | 'modeles'
 
 const TABS: { key: SubTab; label: string }[] = [
   { key: 'general', label: 'Général' },
   { key: 'alertes', label: 'Alertes' },
+  { key: 'modeles', label: 'Modèles' },
   { key: 'formulaires', label: 'Formulaires' },
+]
+
+const SEUIL_FIELDS: { key: keyof Parametres; label: string; hint: string }[] = [
+  { key: 'seuilRecontactJours', label: 'Clientes à recontacter', hint: 'Jours sans rendez-vous avant alerte' },
+  { key: 'seuilFactureImpayeeJours', label: 'Factures impayées', hint: 'Jours de retard avant alerte' },
+  { key: 'seuilPromoExpirationJours', label: 'Codes promo bientôt expirés', hint: "Jours avant l'expiration" },
+  { key: 'seuilNewsletterJours', label: 'Newsletter pas envoyée', hint: "Jours sans envoi avant alerte" },
+  { key: 'seuilAnniversaireJours', label: 'Anniversaires à venir', hint: "Jours avant l'anniversaire" },
 ]
 
 interface ParametresViewProps {
@@ -28,8 +38,8 @@ function ParametresView({ onSelectClient, onNavigateFacturation, onNavigateNewsl
   const { getToken } = useAuth()
   const [subTab, setSubTab] = useState<SubTab>('general')
   const [state, setState] = useState<State>({ status: 'loading' })
-  const [horaires, setHoraires] = useState<Record<string, string>>({})
   const [objectifCa, setObjectifCa] = useState('')
+  const [seuils, setSeuils] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
@@ -38,8 +48,8 @@ function ParametresView({ onSelectClient, onNavigateFacturation, onNavigateNewsl
     setState({ status: 'loading' })
     fetchParametres(getToken)
       .then((data) => {
-        setHoraires(data.horaires)
         setObjectifCa(data.objectifCaMensuel !== null ? String(data.objectifCaMensuel) : '')
+        setSeuils(Object.fromEntries(SEUIL_FIELDS.map(({ key }) => [key, String(data[key])])))
         setState({ status: 'success' })
       })
       .catch((error: unknown) => {
@@ -60,9 +70,20 @@ function ParametresView({ onSelectClient, onNavigateFacturation, onNavigateNewsl
       setSaveError("L'objectif de CA doit être un nombre positif.")
       return
     }
+
+    const seuilUpdates: Partial<Parametres> = {}
+    for (const { key, label } of SEUIL_FIELDS) {
+      const n = Number(seuils[key])
+      if (!Number.isFinite(n) || n < 0 || !Number.isInteger(n)) {
+        setSaveError(`Le seuil « ${label} » doit être un nombre entier positif.`)
+        return
+      }
+      ;(seuilUpdates as Record<string, number>)[key] = n
+    }
+
     setSaving(true)
     try {
-      await saveParametres(getToken, { horaires, objectifCaMensuel: objectifNum })
+      await saveParametres(getToken, { objectifCaMensuel: objectifNum, ...seuilUpdates })
       setSaved(true)
       setTimeout(() => setSaved(false), 3000)
     } catch (err) {
@@ -96,6 +117,8 @@ function ParametresView({ onSelectClient, onNavigateFacturation, onNavigateNewsl
         />
       )}
 
+      {subTab === 'modeles' && <ModelesView />}
+
       {subTab === 'formulaires' && <FormulairesView />}
 
       {subTab === 'general' && (
@@ -105,28 +128,6 @@ function ParametresView({ onSelectClient, onNavigateFacturation, onNavigateNewsl
 
           {state.status === 'success' && (
             <form onSubmit={handleSave} className="flex flex-col gap-6 max-w-2xl">
-              <div className="bg-white border border-border rounded-2xl p-5">
-                <h3 className="font-serif text-lg font-semibold text-sage-dark mb-1">Horaires d'ouverture</h3>
-                <p className="text-xs text-text-muted mb-4">
-                  Ex : « 9h00 – 19h00 ». Laisse vide pour un jour fermé.
-                </p>
-                <div className="flex flex-col gap-2.5">
-                  {JOURS_SEMAINE.map((jour) => (
-                    <div key={jour} className="flex items-center gap-3">
-                      <span className="w-24 shrink-0 text-sm text-text-muted">{jour}</span>
-                      <input
-                        type="text"
-                        value={horaires[jour] ?? ''}
-                        onChange={(e) => setHoraires((h) => ({ ...h, [jour]: e.target.value }))}
-                        placeholder="Fermé"
-                        maxLength={50}
-                        className="input"
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-
               <div className="bg-white border border-border rounded-2xl p-5">
                 <h3 className="font-serif text-lg font-semibold text-sage-dark mb-1">Objectif de chiffre d'affaires</h3>
                 <p className="text-xs text-text-muted mb-4">
@@ -143,6 +144,31 @@ function ParametresView({ onSelectClient, onNavigateFacturation, onNavigateNewsl
                     className="input"
                   />
                 </label>
+              </div>
+
+              <div className="bg-white border border-border rounded-2xl p-5">
+                <h3 className="font-serif text-lg font-semibold text-sage-dark mb-1">Seuils d'alertes</h3>
+                <p className="text-xs text-text-muted mb-4">
+                  Ajuste à partir de combien de jours chaque alerte automatique se déclenche (onglet « Alertes »).
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {SEUIL_FIELDS.map(({ key, label, hint }) => (
+                    <label key={key} className="block">
+                      <span className="block text-xs font-semibold text-text-muted mb-1">{label}</span>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min={0}
+                          value={seuils[key] ?? ''}
+                          onChange={(e) => setSeuils((s) => ({ ...s, [key]: e.target.value }))}
+                          className="input max-w-24"
+                        />
+                        <span className="text-xs text-text-muted">jours</span>
+                      </div>
+                      <span className="block text-[11px] text-text-muted mt-0.5">{hint}</span>
+                    </label>
+                  ))}
+                </div>
               </div>
 
               {saveError && <p className="text-sm text-danger">{saveError}</p>}

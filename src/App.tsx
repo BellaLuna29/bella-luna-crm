@@ -25,7 +25,7 @@ const TITLES: Record<View, [string, string]> = {
   prestations: ['Prestations', 'Le catalogue de tes soins et massages'],
   compta: ['Comptabilité', 'Dépenses et exports pour ta comptabilité'],
   communication: ['Communication', 'SMS, newsletter et historique des envois'],
-  parametres: ['Paramètres', "Horaires, alertes, formulaires et objectifs"],
+  parametres: ['Paramètres', "Alertes, modèles, formulaires et objectifs"],
 }
 
 const SIDEBAR_COLLAPSED_KEY = 'bella-luna-sidebar-collapsed'

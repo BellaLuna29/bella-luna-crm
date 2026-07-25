@@ -59,6 +59,8 @@ function FacturationView({ onSelectClient }: FacturationViewProps) {
   >(null)
   const [togglingId, setTogglingId] = useState<string | null>(null)
   const [toggleError, setToggleError] = useState<string | null>(null)
+  const [syncing, setSyncing] = useState(false)
+  const [syncFeedback, setSyncFeedback] = useState<string | null>(null)
 
   const load = useCallback(() => {
     setState({ status: 'loading' })
@@ -104,6 +106,24 @@ function FacturationView({ onSelectClient }: FacturationViewProps) {
     if (filter === 'impayees') return scoped.filter((f) => !f.payee)
     return scoped
   }, [scoped, filter])
+
+  async function syncMissingFactures() {
+    setSyncing(true)
+    setSyncFeedback(null)
+    try {
+      const data = await apiFetch<{ created: number }>(getToken, '/api/prestations?resource=sync-factures-honorees', {
+        method: 'POST',
+      })
+      setSyncFeedback(
+        data.created > 0 ? `${data.created} facture(s) générée(s).` : 'Toutes les factures étaient déjà à jour.',
+      )
+      if (data.created > 0) load()
+    } catch (err) {
+      setSyncFeedback(err instanceof ApiError ? err.message : 'Impossible de générer les factures manquantes.')
+    } finally {
+      setSyncing(false)
+    }
+  }
 
   async function togglePayee(facture: FactureItem) {
     setTogglingId(facture.id)
@@ -155,13 +175,25 @@ function FacturationView({ onSelectClient }: FacturationViewProps) {
             </button>
           ))}
         </div>
-        <button
-          onClick={() => setModal({ mode: 'create' })}
-          className="bg-sage-dark text-white px-4.5 py-2.5 rounded-[10px] text-sm font-semibold hover:bg-sage-dark/90"
-        >
-          Nouvelle facture
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={syncMissingFactures}
+            disabled={syncing}
+            title="Génère une facture pour chaque rendez-vous honoré qui n'en a pas encore"
+            className="bg-white border border-border text-sage-dark px-4.5 py-2.5 rounded-[10px] text-sm font-semibold hover:bg-sage-pale disabled:opacity-50"
+          >
+            {syncing ? 'Génération…' : 'Générer les factures manquantes'}
+          </button>
+          <button
+            onClick={() => setModal({ mode: 'create' })}
+            className="bg-sage-dark text-white px-4.5 py-2.5 rounded-[10px] text-sm font-semibold hover:bg-sage-dark/90"
+          >
+            Nouvelle facture
+          </button>
+        </div>
       </div>
+
+      {syncFeedback && <p className="text-sm text-sage-dark mb-3">{syncFeedback}</p>}
 
       <div className="mb-5">
         <select

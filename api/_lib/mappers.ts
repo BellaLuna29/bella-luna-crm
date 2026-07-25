@@ -760,35 +760,44 @@ export function parseCommunicationLogInput(
 }
 
 export interface Parametres {
-  horaires: Record<string, string>
   objectifCaMensuel: number | null
+  seuilRecontactJours: number
+  seuilFactureImpayeeJours: number
+  seuilPromoExpirationJours: number
+  seuilNewsletterJours: number
+  seuilAnniversaireJours: number
 }
 
-const JOURS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'] as const
-const JOUR_COLUMNS: Record<(typeof JOURS)[number], string> = {
-  Lundi: 'lundi',
-  Mardi: 'mardi',
-  Mercredi: 'mercredi',
-  Jeudi: 'jeudi',
-  Vendredi: 'vendredi',
-  Samedi: 'samedi',
-  Dimanche: 'dimanche',
-}
+const SEUIL_COLUMNS = {
+  seuilRecontactJours: 'seuil_recontact_jours',
+  seuilFactureImpayeeJours: 'seuil_facture_impayee_jours',
+  seuilPromoExpirationJours: 'seuil_promo_expiration_jours',
+  seuilNewsletterJours: 'seuil_newsletter_jours',
+  seuilAnniversaireJours: 'seuil_anniversaire_jours',
+} as const
+const SEUIL_DEFAULTS = {
+  seuilRecontactJours: 30,
+  seuilFactureImpayeeJours: 14,
+  seuilPromoExpirationJours: 14,
+  seuilNewsletterJours: 14,
+  seuilAnniversaireJours: 7,
+} as const
 
 export function mapParametres(row: DbRow | null): Parametres {
-  const horaires: Record<string, string> = {}
-  for (const jour of JOURS) {
-    horaires[jour] = (row?.[JOUR_COLUMNS[jour]] as string) ?? ''
+  const seuils = {} as Record<keyof typeof SEUIL_COLUMNS, number>
+  for (const key of Object.keys(SEUIL_COLUMNS) as (keyof typeof SEUIL_COLUMNS)[]) {
+    const v = row?.[SEUIL_COLUMNS[key]]
+    seuils[key] = typeof v === 'number' && Number.isFinite(v) ? v : SEUIL_DEFAULTS[key]
   }
   return {
-    horaires,
     objectifCaMensuel: (row?.objectif_ca_mensuel as number) ?? null,
+    ...seuils,
   }
 }
 
 /**
  * Validates and maps a raw request body into Postgres column names for the
- * parametres table (single-row settings: horaires + objectif CA).
+ * parametres table (single-row settings: objectif CA + seuils d'alertes).
  */
 export function parseParametresInput(body: unknown): { fields: Record<string, unknown> } | ClientInputErrors {
   if (typeof body !== 'object' || body === null) {
@@ -797,22 +806,6 @@ export function parseParametresInput(body: unknown): { fields: Record<string, un
   const b = body as Record<string, unknown>
   const errors: string[] = []
   const fields: Record<string, unknown> = {}
-
-  const horaires = b.horaires
-  if (horaires !== undefined) {
-    if (typeof horaires !== 'object' || horaires === null) {
-      errors.push('Horaires invalides.')
-    } else {
-      const h = horaires as Record<string, unknown>
-      for (const jour of JOURS) {
-        if (jour in h) {
-          const v = typeof h[jour] === 'string' ? (h[jour] as string).trim() : ''
-          if (v.length > 50) errors.push(`Horaire du ${jour} trop long.`)
-          else fields[JOUR_COLUMNS[jour]] = v
-        }
-      }
-    }
-  }
 
   if ('objectifCaMensuel' in b) {
     const v = b.objectifCaMensuel
@@ -823,6 +816,88 @@ export function parseParametresInput(body: unknown): { fields: Record<string, un
     } else {
       errors.push('Objectif de CA invalide.')
     }
+  }
+
+  for (const key of Object.keys(SEUIL_COLUMNS) as (keyof typeof SEUIL_COLUMNS)[]) {
+    if (!(key in b)) continue
+    const v = b[key]
+    if (typeof v === 'number' && Number.isFinite(v) && v >= 0 && Number.isInteger(v)) {
+      fields[SEUIL_COLUMNS[key]] = v
+    } else {
+      errors.push(`Le seuil "${key}" doit être un nombre entier positif.`)
+    }
+  }
+
+  if (errors.length > 0) return { errors }
+  return { fields }
+}
+
+const MAX_TEMPLATE_CORPS = 3000
+
+/**
+ * Validates and maps a raw request body into Postgres column names for the
+ * sms_templates table. `requireCore` enforces libellé as mandatory (create only).
+ */
+export function parseSmsTemplateInput(
+  body: unknown,
+  { requireCore }: { requireCore: boolean },
+): { fields: Record<string, unknown> } | ClientInputErrors {
+  if (typeof body !== 'object' || body === null) {
+    return { errors: ['Corps de requête invalide.'] }
+  }
+  const b = body as Record<string, unknown>
+  const errors: string[] = []
+  const fields: Record<string, unknown> = {}
+
+  if ('libelle' in b || requireCore) {
+    const v = typeof b.libelle === 'string' ? b.libelle.trim() : ''
+    if (requireCore && v.length === 0) errors.push('Le libellé est obligatoire.')
+    else if (v.length > 200) errors.push('Le libellé est trop long.')
+    if (v.length > 0) fields.libelle = v
+  }
+
+  if ('corps' in b) {
+    const v = typeof b.corps === 'string' ? b.corps.trim() : ''
+    if (v.length > MAX_TEMPLATE_CORPS) errors.push(`Le message est trop long (${MAX_TEMPLATE_CORPS} caractères max).`)
+    else fields.corps = v
+  }
+
+  if (errors.length > 0) return { errors }
+  return { fields }
+}
+
+/**
+ * Validates and maps a raw request body into Postgres column names for the
+ * email_templates table. `requireCore` enforces libellé as mandatory (create only).
+ */
+export function parseEmailTemplateInput(
+  body: unknown,
+  { requireCore }: { requireCore: boolean },
+): { fields: Record<string, unknown> } | ClientInputErrors {
+  if (typeof body !== 'object' || body === null) {
+    return { errors: ['Corps de requête invalide.'] }
+  }
+  const b = body as Record<string, unknown>
+  const errors: string[] = []
+  const fields: Record<string, unknown> = {}
+
+  if ('libelle' in b || requireCore) {
+    const v = typeof b.libelle === 'string' ? b.libelle.trim() : ''
+    if (requireCore && v.length === 0) errors.push('Le libellé est obligatoire.')
+    else if (v.length > 200) errors.push('Le libellé est trop long.')
+    if (v.length > 0) fields.libelle = v
+  }
+
+  if ('objet' in b) {
+    const v = typeof b.objet === 'string' ? b.objet.trim() : ''
+    if (v.length > 200) errors.push("L'objet est trop long.")
+    else fields.objet = v
+  }
+
+  if ('corps' in b) {
+    const v = typeof b.corps === 'string' ? b.corps.trim() : ''
+    if (v.length > MAX_TEMPLATE_CORPS) errors.push(`Le message est trop long (${MAX_TEMPLATE_CORPS} caractères max).`)
+    else fields.corps = v
   }
 
   if (errors.length > 0) return { errors }

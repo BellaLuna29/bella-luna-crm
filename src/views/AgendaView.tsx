@@ -8,7 +8,7 @@ import RdvFormModal, { type RdvFormInitial } from '../components/RdvFormModal'
 import AbsenceFormModal from '../components/AbsenceFormModal'
 import MessageComposerModal from '../components/MessageComposerModal'
 import { formatDateHeureNaturel } from '../lib/formatDate'
-import type { TemplateContext } from '../lib/messageTemplates'
+import type { TemplateContext } from '../lib/templateEngine'
 
 interface RdvItem {
   id: string

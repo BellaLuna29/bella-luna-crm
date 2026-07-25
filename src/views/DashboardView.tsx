@@ -197,7 +197,14 @@ function DashboardView({
       apiFetch<{ factures: FactureItem[] }>(getToken, '/api/factures'),
       apiFetch<{ prestations: Prestation[] }>(getToken, '/api/prestations'),
       apiFetch<{ stock: StockItem[] }>(getToken, '/api/prestations?resource=stock').catch(() => ({ stock: [] })),
-      fetchParametres(getToken).catch(() => ({ horaires: {}, objectifCaMensuel: null })),
+      fetchParametres(getToken).catch(() => ({
+        objectifCaMensuel: null,
+        seuilRecontactJours: 30,
+        seuilFactureImpayeeJours: 14,
+        seuilPromoExpirationJours: 14,
+        seuilNewsletterJours: 14,
+        seuilAnniversaireJours: 7,
+      })),
       fetchDismissedAlerts(getToken).catch(() => []),
     ])
       .then(([clientsData, rdvData, facturesData, prestationsData, stockData, parametresData, dismissedData]) => {

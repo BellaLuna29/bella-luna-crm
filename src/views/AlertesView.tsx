@@ -15,6 +15,7 @@ import {
 } from '../lib/alerts'
 import { fetchLastNewsletterSentAt } from '../lib/newsletterStatus'
 import { computeCureProgress } from '../lib/cureProgress'
+import { fetchParametres, type Parametres } from '../lib/parametres'
 import {
   type DismissedAlert,
   fetchDismissedAlerts,
@@ -77,6 +78,7 @@ type State =
       factures: FactureItem[]
       prestations: Prestation[]
       promotions: Promotion[]
+      parametres: Parametres
     }
 
 type ManualState =
@@ -121,10 +123,11 @@ function AlertesView({ onSelectClient, onNavigateFacturation, onNavigateNewslett
       apiFetch<{ factures: FactureItem[] }>(getToken, '/api/factures'),
       apiFetch<{ prestations: Prestation[] }>(getToken, '/api/prestations'),
       apiFetch<{ promotions: Promotion[] }>(getToken, '/api/prestations?resource=promotions'),
+      fetchParametres(getToken),
       fetchDismissedAlerts(getToken).catch(() => []),
       fetchLastNewsletterSentAt(getToken).catch(() => null),
     ])
-      .then(([clientsData, rdvData, facturesData, prestationsData, promosData, dismissedData, lastSentAt]) => {
+      .then(([clientsData, rdvData, facturesData, prestationsData, promosData, parametresData, dismissedData, lastSentAt]) => {
         setState({
           status: 'success',
           clients: clientsData.clients,
@@ -132,6 +135,7 @@ function AlertesView({ onSelectClient, onNavigateFacturation, onNavigateNewslett
           factures: facturesData.factures,
           prestations: prestationsData.prestations,
           promotions: promosData.promotions,
+          parametres: parametresData,
         })
         setDismissedRaw(dismissedData)
         setLastNewsletterSentAt(lastSentAt)
@@ -175,13 +179,14 @@ function AlertesView({ onSelectClient, onNavigateFacturation, onNavigateNewslett
   const rawComputed = useMemo(() => {
     if (state.status !== 'success') return null
     const cureProgress = computeCureProgress(state.rendezvous, state.prestations)
+    const { parametres } = state
 
     return {
-      newsletterStale: isNewsletterStale(lastNewsletterSentAt, now),
-      promosBientotExpirees: computePromosBientotExpirees(state.promotions, now),
-      anniversaires: computeAnniversaires(state.clients, now),
-      facturesImpayeesEnRetard: computeFacturesImpayeesEnRetard(state.factures, now),
-      clientesARecontacter: computeClientesARecontacter(state.clients, state.rendezvous, now),
+      newsletterStale: isNewsletterStale(lastNewsletterSentAt, now, parametres.seuilNewsletterJours),
+      promosBientotExpirees: computePromosBientotExpirees(state.promotions, now, parametres.seuilPromoExpirationJours),
+      anniversaires: computeAnniversaires(state.clients, now, parametres.seuilAnniversaireJours),
+      facturesImpayeesEnRetard: computeFacturesImpayeesEnRetard(state.factures, now, parametres.seuilFactureImpayeeJours),
+      clientesARecontacter: computeClientesARecontacter(state.clients, state.rendezvous, now, parametres.seuilRecontactJours),
       curesBientotTerminees: computeCuresBientotTerminees(cureProgress),
     }
   }, [state, now, lastNewsletterSentAt])
