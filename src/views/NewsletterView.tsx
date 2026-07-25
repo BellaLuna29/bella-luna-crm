@@ -4,6 +4,7 @@ import { apiFetch, ApiError } from '../lib/api'
 import { NEWSLETTER_TEMPLATES } from '../lib/newsletterTemplates'
 import { recordNewsletterSent } from '../lib/newsletterStatus'
 import { logCommunication } from '../lib/communicationsLog'
+import { sendNewsletter } from '../lib/newsletterSend'
 
 interface Client {
   id: string
@@ -30,7 +31,7 @@ const CATEGORIE_METIER_VALUES = [
   'Autre',
 ] as const
 
-const MAILTO_WARNING_THRESHOLD = 40
+const RESEND_BATCH_LIMIT = 100
 const STATUT_FILTERS = ['Tous', 'Nouvelle', 'Régulière', 'Inactive'] as const
 
 function NewsletterView() {
@@ -46,6 +47,8 @@ function NewsletterView() {
   const [subject, setSubject] = useState(NEWSLETTER_TEMPLATES[0].subject)
   const [body, setBody] = useState(NEWSLETTER_TEMPLATES[0].body)
   const [copyFeedback, setCopyFeedback] = useState<{ message: string; isError: boolean } | null>(null)
+  const [sending, setSending] = useState(false)
+  const [sendFeedback, setSendFeedback] = useState<{ message: string; isError: boolean } | null>(null)
 
   function handleTemplateChange(key: string) {
     setTemplateKey(key)
@@ -56,13 +59,40 @@ function NewsletterView() {
     }
   }
 
-  function handleNewsletterSent() {
-    recordNewsletterSent(getToken).catch(() => {
-      // best effort — la date de dernier envoi ne sera juste pas mise à jour
-    })
-    logCommunication(getToken, { contenu: subject, type: 'Newsletter', destinataires: selected.length }).catch(() => {
-      // best effort — l'historique ne sera juste pas mis à jour
-    })
+  async function handleSend() {
+    setSending(true)
+    setSendFeedback(null)
+    try {
+      const result = await sendNewsletter(getToken, {
+        subject,
+        body,
+        clientIds: selected.map((c) => c.id),
+      })
+      if (result.error) {
+        setSendFeedback({ message: result.error, isError: true })
+      } else {
+        setSendFeedback({
+          message:
+            result.failed > 0
+              ? `${result.sent} e-mail(s) envoyé(s), ${result.failed} échec(s).`
+              : `${result.sent} e-mail(s) envoyé(s) avec succès.`,
+          isError: result.failed > 0,
+        })
+        recordNewsletterSent(getToken).catch(() => {
+          // best effort — la date de dernier envoi ne sera juste pas mise à jour
+        })
+        logCommunication(getToken, { contenu: subject, type: 'Newsletter', destinataires: result.sent }).catch(() => {
+          // best effort — l'historique ne sera juste pas mis à jour
+        })
+      }
+    } catch (error) {
+      setSendFeedback({
+        message: error instanceof ApiError ? error.message : "Impossible d'envoyer la newsletter.",
+        isError: true,
+      })
+    } finally {
+      setSending(false)
+    }
   }
 
   const load = useCallback(() => {
@@ -121,11 +151,6 @@ function NewsletterView() {
     }
     setTimeout(() => setCopyFeedback(null), 4000)
   }
-
-  const mailtoHref = useMemo(() => {
-    const bcc = selected.map((c) => c.email).join(',')
-    return `mailto:?bcc=${encodeURIComponent(bcc)}&subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
-  }, [selected, subject, body])
 
   return (
     <div className="flex flex-col gap-6">
@@ -278,11 +303,10 @@ function NewsletterView() {
           />
         </label>
 
-        {selected.length > MAILTO_WARNING_THRESHOLD && (
+        {selected.length > RESEND_BATCH_LIMIT && (
           <p className="text-sm text-danger mb-3">
-            {selected.length} destinataires sélectionnés — certaines applications mail peuvent tronquer les liens
-            trop longs. Si « Ouvrir dans Mail » ne fonctionne pas, utilise plutôt « Copier les e-mails » et colle-les
-            en copie cachée (Cci) manuellement.
+            {selected.length} destinataires sélectionnées — {RESEND_BATCH_LIMIT} maximum par envoi (limite du plan
+            gratuit). Affine le ciblage ou envoie en plusieurs fois.
           </p>
         )}
 
@@ -294,19 +318,22 @@ function NewsletterView() {
           >
             Copier les e-mails
           </button>
-          <a
-            href={mailtoHref}
-            onClick={handleNewsletterSent}
-            className={`bg-sage-dark text-white px-5 py-2.5 rounded-[10px] text-sm font-semibold hover:bg-sage-dark/90 ${
-              selected.length === 0 ? 'pointer-events-none opacity-50' : ''
-            }`}
+          <button
+            onClick={handleSend}
+            disabled={selected.length === 0 || selected.length > RESEND_BATCH_LIMIT || sending}
+            className="bg-sage-dark text-white px-5 py-2.5 rounded-[10px] text-sm font-semibold hover:bg-sage-dark/90 disabled:opacity-50"
           >
-            Ouvrir dans Mail
-          </a>
+            {sending ? 'Envoi en cours…' : `Envoyer la newsletter (${selected.length})`}
+          </button>
         </div>
         {copyFeedback && (
           <p className={`text-sm mt-3 ${copyFeedback.isError ? 'text-danger' : 'text-sage-dark'}`}>
             {copyFeedback.message}
+          </p>
+        )}
+        {sendFeedback && (
+          <p className={`text-sm mt-3 ${sendFeedback.isError ? 'text-danger' : 'text-sage-dark'}`}>
+            {sendFeedback.message}
           </p>
         )}
       </div>
