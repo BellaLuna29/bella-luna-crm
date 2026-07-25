@@ -7,6 +7,7 @@ import {
   computeAnniversaires,
   computeFacturesImpayeesEnRetard,
   computeClientesARecontacter,
+  computeClientesInactivesLongues,
   computeCuresBientotTerminees,
   computePromosBientotExpirees,
   isNewsletterStale,
@@ -14,7 +15,8 @@ import {
   daysUntil,
 } from '../lib/alerts'
 import { fetchLastNewsletterSentAt } from '../lib/newsletterStatus'
-import { computeCureProgress } from '../lib/cureProgress'
+import { computeCureProgress, computeCuresMiParcours } from '../lib/cureProgress'
+import { computeFideliteMassage, computeFideliteCils } from '../lib/loyalty'
 import { fetchParametres, type Parametres } from '../lib/parametres'
 import {
   type DismissedAlert,
@@ -36,6 +38,8 @@ interface RdvItem {
   date: string | null
   prestationId: string | null
   prestationNom: string
+  prestationCategorie: string
+  notes: string
   statut: string
 }
 
@@ -181,13 +185,31 @@ function AlertesView({ onSelectClient, onNavigateFacturation, onNavigateNewslett
     const cureProgress = computeCureProgress(state.rendezvous, state.prestations)
     const { parametres } = state
 
+    const clientesInactivesLongues = computeClientesInactivesLongues(
+      state.clients,
+      state.rendezvous,
+      now,
+      parametres.seuilInactiviteLongueJours,
+    )
+    const inactivesLonguesIds = new Set(clientesInactivesLongues.map(({ client }) => client.id))
+    const clientesARecontacter = computeClientesARecontacter(
+      state.clients,
+      state.rendezvous,
+      now,
+      parametres.seuilRecontactJours,
+    ).filter(({ client }) => !inactivesLonguesIds.has(client.id))
+
     return {
       newsletterStale: isNewsletterStale(lastNewsletterSentAt, now, parametres.seuilNewsletterJours),
       promosBientotExpirees: computePromosBientotExpirees(state.promotions, now, parametres.seuilPromoExpirationJours),
       anniversaires: computeAnniversaires(state.clients, now, parametres.seuilAnniversaireJours),
       facturesImpayeesEnRetard: computeFacturesImpayeesEnRetard(state.factures, now, parametres.seuilFactureImpayeeJours),
-      clientesARecontacter: computeClientesARecontacter(state.clients, state.rendezvous, now, parametres.seuilRecontactJours),
+      clientesARecontacter,
+      clientesInactivesLongues,
       curesBientotTerminees: computeCuresBientotTerminees(cureProgress),
+      curesMiParcours: computeCuresMiParcours(cureProgress),
+      fideliteMassage: computeFideliteMassage(state.rendezvous),
+      fideliteCils: computeFideliteCils(state.rendezvous),
     }
   }, [state, now, lastNewsletterSentAt])
 
@@ -199,7 +221,11 @@ function AlertesView({ onSelectClient, onNavigateFacturation, onNavigateNewslett
     for (const { client } of rawComputed.anniversaires) keys.add(`anniv-${client.id}-${now.getFullYear()}`)
     for (const f of rawComputed.facturesImpayeesEnRetard) keys.add(`facture-${f.id}`)
     for (const { client } of rawComputed.clientesARecontacter) keys.add(`recontact-${client.id}`)
+    for (const { client } of rawComputed.clientesInactivesLongues) keys.add(`inactive-${client.id}`)
     for (const c of rawComputed.curesBientotTerminees) keys.add(`cure-${c.id}`)
+    for (const c of rawComputed.curesMiParcours) keys.add(`cure-mi-${c.id}`)
+    for (const m of rawComputed.fideliteMassage) keys.add(`fidelite-massage-${m.id}`)
+    for (const m of rawComputed.fideliteCils) keys.add(`fidelite-cils-${m.id}`)
     reconcileDismissedAlerts(getToken, dismissedRaw, keys).then(setValidDismissedKeys)
   }, [rawComputed, dismissedRaw, getToken, now])
 
@@ -217,7 +243,13 @@ function AlertesView({ onSelectClient, onNavigateFacturation, onNavigateNewslett
       clientesARecontacter: rawComputed.clientesARecontacter.filter(
         ({ client }) => !validDismissedKeys.has(`recontact-${client.id}`),
       ),
+      clientesInactivesLongues: rawComputed.clientesInactivesLongues.filter(
+        ({ client }) => !validDismissedKeys.has(`inactive-${client.id}`),
+      ),
       curesBientotTerminees: rawComputed.curesBientotTerminees.filter((c) => !validDismissedKeys.has(`cure-${c.id}`)),
+      curesMiParcours: rawComputed.curesMiParcours.filter((c) => !validDismissedKeys.has(`cure-mi-${c.id}`)),
+      fideliteMassage: rawComputed.fideliteMassage.filter((m) => !validDismissedKeys.has(`fidelite-massage-${m.id}`)),
+      fideliteCils: rawComputed.fideliteCils.filter((m) => !validDismissedKeys.has(`fidelite-cils-${m.id}`)),
     }
   }, [rawComputed, validDismissedKeys, now])
 
@@ -273,7 +305,11 @@ function AlertesView({ onSelectClient, onNavigateFacturation, onNavigateNewslett
     ? computed.anniversaires.length +
       computed.facturesImpayeesEnRetard.length +
       computed.clientesARecontacter.length +
+      computed.clientesInactivesLongues.length +
       computed.curesBientotTerminees.length +
+      computed.curesMiParcours.length +
+      computed.fideliteMassage.length +
+      computed.fideliteCils.length +
       computed.promosBientotExpirees.length +
       (computed.newsletterStale ? 1 : 0)
     : 0
@@ -390,6 +426,62 @@ function AlertesView({ onSelectClient, onNavigateFacturation, onNavigateNewslett
                 onDismiss={() => handleDismiss(`cure-${c.id}`)}
                 title={`Dernière séance de cure — ${c.clienteNom || 'Cliente inconnue'}`}
                 subtitle={c.prestationNom}
+              />
+            ))}
+
+            {computed.curesMiParcours.map((c) => (
+              <AlertRow
+                key={`cure-mi-${c.id}`}
+                colorClass="bg-sage-pale hover:bg-sage-light transition-colors"
+                subtitleClassName="text-sage-dark"
+                icon="sparkles"
+                iconClass="bg-avatar-teal/20 text-avatar-teal"
+                onClick={() => onSelectClient(c.clienteId)}
+                onDismiss={() => handleDismiss(`cure-mi-${c.id}`)}
+                title={`Milieu de cure — ${c.clienteNom || 'Cliente inconnue'}`}
+                subtitle={`${c.prestationNom} — ${c.seancesFaites}/${c.seancesTotales} séances`}
+              />
+            ))}
+
+            {computed.fideliteMassage.map((m) => (
+              <AlertRow
+                key={`fidelite-massage-${m.id}`}
+                colorClass="bg-gold-pale hover:bg-gold/20 transition-colors"
+                subtitleClassName="text-gold-text"
+                icon="sparkles"
+                iconClass="bg-gold/25 text-gold-text"
+                onClick={() => onSelectClient(m.clienteId)}
+                onDismiss={() => handleDismiss(`fidelite-massage-${m.id}`)}
+                title={`Palier de fidélité — ${m.clienteNom}`}
+                subtitle={`${m.count}e massage honoré — ${m.recompense}`}
+              />
+            ))}
+
+            {computed.fideliteCils.map((m) => (
+              <AlertRow
+                key={`fidelite-cils-${m.id}`}
+                colorClass="bg-gold-pale hover:bg-gold/20 transition-colors"
+                subtitleClassName="text-gold-text"
+                icon="sparkles"
+                iconClass="bg-gold/25 text-gold-text"
+                onClick={() => onSelectClient(m.clienteId)}
+                onDismiss={() => handleDismiss(`fidelite-cils-${m.id}`)}
+                title={`Palier de fidélité — ${m.clienteNom}`}
+                subtitle={`${m.count}e pose/remplissage honoré — ${m.recompense}`}
+              />
+            ))}
+
+            {computed.clientesInactivesLongues.map(({ client, jours }) => (
+              <AlertRow
+                key={`inactive-${client.id}`}
+                colorClass="bg-danger-pale hover:bg-danger/10 transition-colors"
+                subtitleClassName="text-danger"
+                icon="phone"
+                iconClass="bg-danger/20 text-danger"
+                onClick={() => onSelectClient(client.id)}
+                onDismiss={() => handleDismiss(`inactive-${client.id}`)}
+                title={`Inactive depuis longtemps — ${client.nomComplet}`}
+                subtitle={`Vue il y a ${jours} jours — proposer une offre de retour`}
               />
             ))}
           </div>

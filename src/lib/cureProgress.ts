@@ -59,3 +59,14 @@ export function computeCureProgress(rendezvous: RdvForCure[], prestations: Prest
     .map((e) => ({ ...e, seancesRestantes: Math.max(0, e.seancesTotales - e.seancesFaites) }))
     .filter((e) => e.seancesRestantes > 0)
 }
+
+/**
+ * Cures arrivées à leur mi-parcours (pour proposer un petit bilan), en
+ * excluant les cures courtes (< 4 séances) où un "milieu" n'a pas vraiment
+ * de sens, et la dernière séance déjà couverte par computeCuresBientotTerminees.
+ */
+export function computeCuresMiParcours<C extends CureProgressItem>(cures: C[]) {
+  return cures.filter(
+    (c) => c.seancesTotales >= 4 && c.seancesRestantes > 1 && c.seancesFaites === Math.ceil(c.seancesTotales / 2),
+  )
+}

@@ -7,6 +7,7 @@ export interface Parametres {
   seuilPromoExpirationJours: number
   seuilNewsletterJours: number
   seuilAnniversaireJours: number
+  seuilInactiviteLongueJours: number
 }
 
 type GetToken = () => Promise<string | null>

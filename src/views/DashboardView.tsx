@@ -8,10 +8,12 @@ import {
   computeAnniversaires,
   computeFacturesImpayeesEnRetard,
   computeClientesARecontacter,
+  computeClientesInactivesLongues,
   computeCuresBientotTerminees,
   daysSince,
 } from '../lib/alerts'
-import { computeCureProgress } from '../lib/cureProgress'
+import { computeCureProgress, computeCuresMiParcours } from '../lib/cureProgress'
+import { computeFideliteMassage, computeFideliteCils } from '../lib/loyalty'
 import {
   type DismissedAlert,
   fetchDismissedAlerts,
@@ -55,6 +57,8 @@ interface RdvItem {
   clienteNom: string
   prestationId: string | null
   prestationNom: string
+  prestationCategorie: string
+  notes: string
   prix: number | null
 }
 
@@ -204,6 +208,7 @@ function DashboardView({
         seuilPromoExpirationJours: 14,
         seuilNewsletterJours: 14,
         seuilAnniversaireJours: 7,
+        seuilInactiviteLongueJours: 180,
       })),
       fetchDismissedAlerts(getToken).catch(() => []),
     ])
@@ -303,11 +308,22 @@ function DashboardView({
     const stockBas = state.stock.filter((s) => s.quantite <= s.seuilBas)
     const objectifAtteint =
       state.objectifCaMensuel !== null && state.objectifCaMensuel > 0 && (stats?.caCeMois ?? 0) >= state.objectifCaMensuel
+
+    const clientesInactivesLongues = computeClientesInactivesLongues(state.clients, state.rendezvous, now)
+    const inactivesLonguesIds = new Set(clientesInactivesLongues.map(({ client }) => client.id))
+    const clientesARecontacter = computeClientesARecontacter(state.clients, state.rendezvous, now).filter(
+      ({ client }) => !inactivesLonguesIds.has(client.id),
+    )
+
     return {
       anniversaires: computeAnniversaires(state.clients, now),
       facturesImpayeesEnRetard: computeFacturesImpayeesEnRetard(state.factures, now),
-      clientesARecontacter: computeClientesARecontacter(state.clients, state.rendezvous, now),
+      clientesARecontacter,
+      clientesInactivesLongues,
       curesBientotTerminees: computeCuresBientotTerminees(cureProgress),
+      curesMiParcours: computeCuresMiParcours(cureProgress),
+      fideliteMassage: computeFideliteMassage(state.rendezvous),
+      fideliteCils: computeFideliteCils(state.rendezvous),
       stockBas,
       objectifAtteint,
     }
@@ -319,7 +335,11 @@ function DashboardView({
     for (const { client } of rawAlerts.anniversaires) keys.add(`anniv-${client.id}-${now.getFullYear()}`)
     for (const f of rawAlerts.facturesImpayeesEnRetard) keys.add(`facture-${f.id}`)
     for (const { client } of rawAlerts.clientesARecontacter) keys.add(`recontact-${client.id}`)
+    for (const { client } of rawAlerts.clientesInactivesLongues) keys.add(`inactive-${client.id}`)
     for (const c of rawAlerts.curesBientotTerminees) keys.add(`cure-${c.id}`)
+    for (const c of rawAlerts.curesMiParcours) keys.add(`cure-mi-${c.id}`)
+    for (const m of rawAlerts.fideliteMassage) keys.add(`fidelite-massage-${m.id}`)
+    for (const m of rawAlerts.fideliteCils) keys.add(`fidelite-cils-${m.id}`)
     for (const s of rawAlerts.stockBas) keys.add(`stock-${s.id}`)
     if (rawAlerts.objectifAtteint) keys.add(`objectif-${now.getFullYear()}-${now.getMonth()}`)
     reconcileDismissedAlerts(getToken, dismissedRaw, keys).then(setValidDismissedKeys)
@@ -355,6 +375,12 @@ function DashboardView({
     const curesBientotTerminees = rawAlerts.curesBientotTerminees.filter(
       (c) => !validDismissedKeys.has(`cure-${c.id}`),
     )
+    const curesMiParcours = rawAlerts.curesMiParcours.filter((c) => !validDismissedKeys.has(`cure-mi-${c.id}`))
+    const fideliteMassage = rawAlerts.fideliteMassage.filter((m) => !validDismissedKeys.has(`fidelite-massage-${m.id}`))
+    const fideliteCils = rawAlerts.fideliteCils.filter((m) => !validDismissedKeys.has(`fidelite-cils-${m.id}`))
+    const clientesInactivesLongues = rawAlerts.clientesInactivesLongues.filter(
+      ({ client }) => !validDismissedKeys.has(`inactive-${client.id}`),
+    )
     const stockBas = rawAlerts.stockBas.filter((s) => !validDismissedKeys.has(`stock-${s.id}`))
     const objectifAtteint =
       rawAlerts.objectifAtteint && !validDismissedKeys.has(`objectif-${now.getFullYear()}-${now.getMonth()}`)
@@ -363,14 +389,22 @@ function DashboardView({
       anniversaires,
       facturesImpayeesEnRetard,
       clientesARecontacter,
+      clientesInactivesLongues,
       curesBientotTerminees,
+      curesMiParcours,
+      fideliteMassage,
+      fideliteCils,
       stockBas,
       objectifAtteint,
       total:
         anniversaires.length +
         facturesImpayeesEnRetard.length +
         clientesARecontacter.length +
+        clientesInactivesLongues.length +
         curesBientotTerminees.length +
+        curesMiParcours.length +
+        fideliteMassage.length +
+        fideliteCils.length +
         stockBas.length +
         (objectifAtteint ? 1 : 0),
     }
@@ -448,6 +482,62 @@ function DashboardView({
         subtitle: c.prestationNom,
         onClick: () => onSelectClient(c.clienteId),
         dismissKey: `cure-${c.id}`,
+      })
+    }
+
+    for (const c of alerts.curesMiParcours) {
+      items.push({
+        key: `cure-mi-${c.id}`,
+        colorClass: 'bg-sage-pale hover:bg-sage-light transition-colors',
+        subtitleClassName: 'text-sage-dark',
+        icon: 'sparkles',
+        iconClass: 'bg-avatar-teal/20 text-avatar-teal',
+        title: `Milieu de cure — ${c.clienteNom || 'Cliente inconnue'}`,
+        subtitle: `${c.prestationNom} — ${c.seancesFaites}/${c.seancesTotales} séances`,
+        onClick: () => onSelectClient(c.clienteId),
+        dismissKey: `cure-mi-${c.id}`,
+      })
+    }
+
+    for (const m of alerts.fideliteMassage) {
+      items.push({
+        key: `fidelite-massage-${m.id}`,
+        colorClass: 'bg-gold-pale hover:bg-gold/20 transition-colors',
+        subtitleClassName: 'text-gold-text',
+        icon: 'sparkles',
+        iconClass: 'bg-gold/25 text-gold-text',
+        title: `Palier de fidélité — ${m.clienteNom}`,
+        subtitle: `${m.count}e massage honoré — ${m.recompense}`,
+        onClick: () => onSelectClient(m.clienteId),
+        dismissKey: `fidelite-massage-${m.id}`,
+      })
+    }
+
+    for (const m of alerts.fideliteCils) {
+      items.push({
+        key: `fidelite-cils-${m.id}`,
+        colorClass: 'bg-gold-pale hover:bg-gold/20 transition-colors',
+        subtitleClassName: 'text-gold-text',
+        icon: 'sparkles',
+        iconClass: 'bg-gold/25 text-gold-text',
+        title: `Palier de fidélité — ${m.clienteNom}`,
+        subtitle: `${m.count}e pose/remplissage honoré — ${m.recompense}`,
+        onClick: () => onSelectClient(m.clienteId),
+        dismissKey: `fidelite-cils-${m.id}`,
+      })
+    }
+
+    for (const { client, jours } of alerts.clientesInactivesLongues) {
+      items.push({
+        key: `inactive-${client.id}`,
+        colorClass: 'bg-danger-pale hover:bg-danger/10 transition-colors',
+        subtitleClassName: 'text-danger',
+        icon: 'phone',
+        iconClass: 'bg-danger/20 text-danger',
+        title: `Inactive depuis longtemps — ${client.nomComplet}`,
+        subtitle: `Vue il y a ${jours} jours — proposer une offre de retour`,
+        onClick: () => onSelectClient(client.id),
+        dismissKey: `inactive-${client.id}`,
       })
     }
 

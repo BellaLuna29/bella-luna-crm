@@ -5,6 +5,7 @@ export interface TemplateContext {
   montant?: number
   promoNom?: string
   lienQuestionnaire?: string
+  recompense?: string
 }
 
 /**
@@ -20,6 +21,7 @@ export function renderTemplate(corps: string, ctx: TemplateContext): string {
     montant: ctx.montant !== undefined ? `${ctx.montant.toFixed(0)} €` : '—',
     promoNom: ctx.promoNom ?? '',
     lienQuestionnaire: ctx.lienQuestionnaire ?? '[Lien à insérer]',
+    recompense: ctx.recompense ?? 'un avantage fidélité',
   }
   return corps.replace(/\{\{(\w+)\}\}/g, (match, key: string) => values[key] ?? match)
 }

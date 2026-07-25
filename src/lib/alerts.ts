@@ -103,6 +103,39 @@ export function computeClientesARecontacter<C extends ClientLike, R extends RdvL
     .sort((a, b) => (b.jours ?? Infinity) - (a.jours ?? Infinity))
 }
 
+/**
+ * Second, longer-tier inactivity alert: clientes qui avaient déjà un
+ * historique de visites mais qui ont disparu depuis longtemps (par défaut
+ * 6 mois), pour leur proposer une offre de retour plutôt qu'une simple
+ * relance. Les appelants doivent exclure ces clientes de
+ * computeClientesARecontacter pour ne pas doubler l'alerte.
+ */
+export function computeClientesInactivesLongues<C extends ClientLike, R extends RdvLike>(
+  clients: C[],
+  rendezvous: R[],
+  now: Date,
+  minDays = 180,
+) {
+  const lastRdvByClient = new Map<string, number>()
+  for (const r of rendezvous) {
+    if (!r.clienteId || !r.date) continue
+    const t = new Date(r.date).getTime()
+    if (Number.isNaN(t) || t > now.getTime()) continue
+    const prev = lastRdvByClient.get(r.clienteId)
+    if (!prev || t > prev) lastRdvByClient.set(r.clienteId, t)
+  }
+
+  return clients
+    .filter((c) => c.statut === 'Régulière' || c.statut === 'Inactive')
+    .map((c) => {
+      const lastTime = lastRdvByClient.get(c.id)
+      const jours = lastTime ? Math.round((now.getTime() - lastTime) / DAY_MS) : null
+      return { client: c, jours }
+    })
+    .filter((x): x is { client: C; jours: number } => x.jours !== null && x.jours > minDays)
+    .sort((a, b) => b.jours - a.jours)
+}
+
 export function computeCuresBientotTerminees<C extends CureLike>(cures: C[]) {
   return cures.filter((c) => c.seancesRestantes === 1)
 }

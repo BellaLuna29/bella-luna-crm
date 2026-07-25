@@ -26,6 +26,11 @@ const SEUIL_FIELDS: { key: keyof Parametres; label: string; hint: string }[] = [
   { key: 'seuilPromoExpirationJours', label: 'Codes promo bientôt expirés', hint: "Jours avant l'expiration" },
   { key: 'seuilNewsletterJours', label: 'Newsletter pas envoyée', hint: "Jours sans envoi avant alerte" },
   { key: 'seuilAnniversaireJours', label: 'Anniversaires à venir', hint: "Jours avant l'anniversaire" },
+  {
+    key: 'seuilInactiviteLongueJours',
+    label: 'Inactivité longue (offre de retour)',
+    hint: 'Jours sans rendez-vous avant proposition de retour',
+  },
 ]
 
 interface ParametresViewProps {

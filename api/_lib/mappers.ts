@@ -766,6 +766,7 @@ export interface Parametres {
   seuilPromoExpirationJours: number
   seuilNewsletterJours: number
   seuilAnniversaireJours: number
+  seuilInactiviteLongueJours: number
 }
 
 const SEUIL_COLUMNS = {
@@ -774,6 +775,7 @@ const SEUIL_COLUMNS = {
   seuilPromoExpirationJours: 'seuil_promo_expiration_jours',
   seuilNewsletterJours: 'seuil_newsletter_jours',
   seuilAnniversaireJours: 'seuil_anniversaire_jours',
+  seuilInactiviteLongueJours: 'seuil_inactivite_longue_jours',
 } as const
 const SEUIL_DEFAULTS = {
   seuilRecontactJours: 30,
@@ -781,6 +783,7 @@ const SEUIL_DEFAULTS = {
   seuilPromoExpirationJours: 14,
   seuilNewsletterJours: 14,
   seuilAnniversaireJours: 7,
+  seuilInactiviteLongueJours: 180,
 } as const
 
 export function mapParametres(row: DbRow | null): Parametres {
