@@ -160,17 +160,18 @@ function SmsView() {
 
   const rawSections = useMemo(() => {
     if (state.status !== 'success') return null
-    const clientById = new Map(state.clients.map((c) => [c.id, c]))
+    const { clients, rendezvous, factures } = state
+    const clientById = new Map(clients.map((c) => [c.id, c]))
 
     const rdvCountByClient = new Map<string, number>()
-    for (const r of state.rendezvous) {
+    for (const r of rendezvous) {
       if (!r.clienteId) continue
       rdvCountByClient.set(r.clienteId, (rdvCountByClient.get(r.clienteId) ?? 0) + 1)
     }
     const hasHistory = (clienteId: string | null) => (clienteId ? (rdvCountByClient.get(clienteId) ?? 0) > 1 : false)
 
     function upcomingWithin(window: number, wantHistory: boolean) {
-      return state.rendezvous
+      return rendezvous
         .filter((r) => {
           if (!r.date) return false
           const t = new Date(r.date).getTime()
@@ -185,9 +186,9 @@ function SmsView() {
     const rappelsNouveauClient = upcomingWithin(72 * HOUR_MS, false)
     const rappelsClientExistant = upcomingWithin(48 * HOUR_MS, true)
 
-    const aRecontacter = computeClientesARecontacter(state.clients, state.rendezvous, now)
-    const anniversaires = computeAnniversaires(state.clients, now)
-    const facturesImpayees = computeFacturesImpayeesEnRetard(state.factures, now)
+    const aRecontacter = computeClientesARecontacter(clients, rendezvous, now)
+    const anniversaires = computeAnniversaires(clients, now)
+    const facturesImpayees = computeFacturesImpayeesEnRetard(factures, now)
 
     return { rappelsNouveauClient, rappelsClientExistant, aRecontacter, anniversaires, facturesImpayees, clientById }
   }, [state, now])
