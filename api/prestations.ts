@@ -1,5 +1,15 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { dbList, dbCreate, dbUpdate, dbDelete, SupabaseConfigError, UUID_RE, type DbRow } from './_lib/supabase.js'
+import {
+  dbList,
+  dbCreate,
+  dbUpdate,
+  dbDelete,
+  dbGet,
+  dbGetByIds,
+  SupabaseConfigError,
+  UUID_RE,
+  type DbRow,
+} from './_lib/supabase.js'
 import { setCorsHeaders } from './_lib/cors.js'
 import { requireAuth, AuthError } from './_lib/auth.js'
 import {
@@ -15,6 +25,7 @@ import {
   parseParametresInput,
   parsePrestationInput,
 } from './_lib/mappers.js'
+import { buildNewsletterHtml, sendNewsletterBatch, EmailConfigError } from './_lib/email.js'
 
 const TABLE_PRESTATIONS = 'prestations'
 const TABLE_PROMOTIONS = 'promotions'
@@ -25,6 +36,8 @@ const TABLE_NEWSLETTER_STATUT = 'newsletter_statut'
 const TABLE_STOCK = 'stock'
 const TABLE_COMMUNICATIONS_LOG = 'communications_log'
 const TABLE_PARAMETRES = 'parametres'
+const TABLE_CLIENTS = 'clients'
+const SITE_URL = process.env.ALLOWED_ORIGIN || 'https://bella-luna-crm-bella-luna.vercel.app'
 
 interface Prestation {
   id: string
@@ -390,11 +403,147 @@ async function handleNewsletterStatut(req: VercelRequest, res: VercelResponse): 
   res.status(405).json({ error: 'Méthode non autorisée.' })
 }
 
+async function handleNewsletterSend(req: VercelRequest, res: VercelResponse): Promise<void> {
+  if (req.method !== 'POST') {
+    res.status(405).json({ error: 'Méthode non autorisée.' })
+    return
+  }
+
+  const body = req.body as { subject?: unknown; body?: unknown; clientIds?: unknown }
+  const subject = typeof body.subject === 'string' ? body.subject.trim() : ''
+  const bodyText = typeof body.body === 'string' ? body.body.trim() : ''
+  const clientIds = Array.isArray(body.clientIds)
+    ? body.clientIds.filter((id): id is string => typeof id === 'string' && UUID_RE.test(id))
+    : []
+
+  if (!subject) {
+    res.status(400).json({ error: 'Le sujet est obligatoire.' })
+    return
+  }
+  if (!bodyText) {
+    res.status(400).json({ error: 'Le message est obligatoire.' })
+    return
+  }
+  if (clientIds.length === 0) {
+    res.status(400).json({ error: 'Aucune destinataire sélectionnée.' })
+    return
+  }
+  if (clientIds.length > 100) {
+    res.status(400).json({ error: '100 destinataires maximum par envoi (limite du plan gratuit Resend).' })
+    return
+  }
+
+  try {
+    const clients = await dbGetByIds(TABLE_CLIENTS, clientIds)
+    const recipients = clients.filter((c) => typeof c.email === 'string' && c.email.length > 0)
+
+    if (recipients.length === 0) {
+      res.status(400).json({ error: "Aucune des destinataires sélectionnées n'a d'adresse e-mail." })
+      return
+    }
+
+    const items = recipients.map((c) => ({
+      to: c.email as string,
+      subject,
+      html: buildNewsletterHtml({
+        bodyText,
+        unsubscribeUrl: `${SITE_URL}/api/prestations?resource=newsletter-unsubscribe&id=${c.id}`,
+      }),
+    }))
+
+    const result = await sendNewsletterBatch(items)
+    res.status(200).json({
+      sent: result.sent,
+      failed: recipients.length - result.sent,
+      error: result.errorMessage,
+    })
+  } catch (error) {
+    if (error instanceof EmailConfigError) {
+      res.status(500).json({ error: error.message })
+      return
+    }
+    console.error(error)
+    res.status(502).json({ error: "Impossible d'envoyer la newsletter." })
+  }
+}
+
+function unsubscribePage(title: string, message: string): string {
+  return `<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${title} — Bella Luna</title>
+  </head>
+  <body style="margin:0;padding:0;background:#F4F8F6;font-family:Georgia,'Times New Roman',serif;color:#23332D;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="min-height:100vh;">
+      <tr>
+        <td align="center" style="padding:48px 16px;">
+          <table role="presentation" width="100%" style="max-width:420px;background:#fff;border-radius:16px;border:1px solid #DCE7E1;overflow:hidden;">
+            <tr>
+              <td style="background:#3A5A50;padding:24px;text-align:center;">
+                <div style="color:#fff;font-size:18px;font-weight:600;letter-spacing:0.04em;">Bella Luna</div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:32px;text-align:center;">
+                <h1 style="font-size:18px;margin:0 0 12px;">${title}</h1>
+                <p style="font-size:14px;color:#6B8074;line-height:1.6;margin:0;">${message}</p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`
+}
+
+// Public — no auth: recipients click this from an email, they aren't signed into the CRM.
+async function handleNewsletterUnsubscribe(req: VercelRequest, res: VercelResponse): Promise<void> {
+  res.setHeader('Content-Type', 'text/html; charset=utf-8')
+
+  const id = req.query.id
+  if (typeof id !== 'string' || !UUID_RE.test(id)) {
+    res.status(400).send(unsubscribePage('Lien invalide', "Ce lien de désinscription n'est pas valide."))
+    return
+  }
+
+  try {
+    const client = await dbGet(TABLE_CLIENTS, id)
+    if (!client) {
+      res.status(404).send(unsubscribePage('Introuvable', "Nous n'avons pas trouvé votre fiche cliente."))
+      return
+    }
+    await dbUpdate(TABLE_CLIENTS, id, { newsletter_ok: false })
+    const nom = typeof client.nom_complet === 'string' && client.nom_complet ? client.nom_complet : null
+    res.status(200).send(
+      unsubscribePage(
+        'Désinscription confirmée',
+        `${nom ? `${nom}, vous` : 'Vous'} ne recevrez plus la newsletter de Bella Luna. À très bientôt !`,
+      ),
+    )
+  } catch (error) {
+    if (error instanceof SupabaseConfigError) {
+      res.status(500).send(unsubscribePage('Erreur', error.message))
+      return
+    }
+    console.error(error)
+    res.status(502).send(unsubscribePage('Erreur', 'Une erreur est survenue, réessaie plus tard.'))
+  }
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
   setCorsHeaders(req, res)
 
   if (req.method === 'OPTIONS') {
     res.status(204).end()
+    return
+  }
+
+  // Public — a recipient clicking this from an email isn't signed into the CRM.
+  if (req.query.resource === 'newsletter-unsubscribe') {
+    await handleNewsletterUnsubscribe(req, res)
     return
   }
 
@@ -405,6 +554,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     return
   }
 
+  if (req.query.resource === 'newsletter-send') {
+    await handleNewsletterSend(req, res)
+    return
+  }
   if (req.query.resource === 'questionnaires') {
     await handleQuestionnaires(req, res)
     return

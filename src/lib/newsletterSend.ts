@@ -12,7 +12,7 @@ export async function sendNewsletter(
   getToken: GetToken,
   payload: { subject: string; body: string; clientIds: string[] },
 ): Promise<NewsletterSendResponse> {
-  return apiFetch<NewsletterSendResponse>(getToken, '/api/newsletter/send', {
+  return apiFetch<NewsletterSendResponse>(getToken, '/api/prestations?resource=newsletter-send', {
     method: 'POST',
     body: payload,
   })
