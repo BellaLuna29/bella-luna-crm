@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { dbGet, dbUpdate, dbList, dbGetByIds, SupabaseConfigError, UUID_RE } from '../_lib/supabase.js'
+import { dbGet, dbUpdate, dbDelete, dbList, dbGetByIds, SupabaseConfigError, UUID_RE } from '../_lib/supabase.js'
 import { setCorsHeaders } from '../_lib/cors.js'
 import { requireAuth, AuthError } from '../_lib/auth.js'
 import { mapClient, parseClientInput } from '../_lib/mappers.js'
@@ -41,7 +41,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     res.status(204).end()
     return
   }
-  if (req.method !== 'GET' && req.method !== 'PATCH') {
+  if (req.method !== 'GET' && req.method !== 'PATCH' && req.method !== 'DELETE') {
     res.status(405).json({ error: 'Méthode non autorisée.' })
     return
   }
@@ -75,6 +75,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       }
       console.error(error)
       res.status(502).json({ error: 'Impossible de mettre à jour la cliente dans la base de données.' })
+    }
+    return
+  }
+
+  if (req.method === 'DELETE') {
+    try {
+      const [rdvRows, factureRows] = await Promise.all([
+        dbList(TABLE_RENDEZVOUS, { select: 'id', eq: ['cliente_id', id] }),
+        dbList(TABLE_FACTURES, { select: 'id', eq: ['cliente_id', id] }),
+      ])
+      if (rdvRows.length > 0 || factureRows.length > 0) {
+        res.status(409).json({
+          error: `Impossible de supprimer : cette cliente a ${rdvRows.length} rendez-vous et ${factureRows.length} facture(s) enregistrés. Passez plutôt son statut à « Inactive ».`,
+        })
+        return
+      }
+      await dbDelete(TABLE_CLIENTS, id)
+      res.status(200).json({ ok: true })
+    } catch (error) {
+      if (error instanceof SupabaseConfigError) {
+        res.status(500).json({ error: error.message })
+        return
+      }
+      console.error(error)
+      res.status(502).json({ error: 'Impossible de supprimer la cliente dans la base de données.' })
     }
     return
   }

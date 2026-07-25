@@ -101,6 +101,9 @@ function ClientDetailView({ clientId, onBack, embedded }: ClientDetailViewProps)
   const [showEdit, setShowEdit] = useState(false)
   const [showContact, setShowContact] = useState(false)
   const [showNewRdv, setShowNewRdv] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const load = useCallback(() => {
     setState({ status: 'loading' })
@@ -119,6 +122,19 @@ function ClientDetailView({ clientId, onBack, embedded }: ClientDetailViewProps)
   useEffect(() => {
     load()
   }, [load])
+
+  async function handleDelete() {
+    setDeleting(true)
+    setDeleteError(null)
+    try {
+      await apiFetch(getToken, `/api/clients/${clientId}`, { method: 'DELETE' })
+      onBack()
+    } catch (err) {
+      setDeleteError(err instanceof ApiError ? err.message : 'Erreur inconnue.')
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   return (
     <div>
@@ -161,6 +177,15 @@ function ClientDetailView({ clientId, onBack, embedded }: ClientDetailViewProps)
               className="bg-white border border-border text-sage-dark px-4 py-2 rounded-[10px] text-sm font-semibold hover:bg-sage-pale"
             >
               Modifier
+            </button>
+            <button
+              onClick={() => {
+                setDeleteError(null)
+                setShowDeleteConfirm(true)
+              }}
+              className="bg-white border border-border text-danger px-4 py-2 rounded-[10px] text-sm font-semibold hover:bg-danger-pale"
+            >
+              Supprimer
             </button>
           </div>
         )}
@@ -380,6 +405,33 @@ function ClientDetailView({ clientId, onBack, embedded }: ClientDetailViewProps)
             load()
           }}
         />
+      )}
+
+      {showDeleteConfirm && state.status === 'success' && (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl w-full max-w-sm p-6">
+            <h3 className="font-serif text-xl font-semibold text-sage-dark mb-3">Supprimer cette cliente ?</h3>
+            <p className="text-sm text-text-muted mb-4">
+              {state.data.client.nomComplet} sera définitivement supprimée. Cette action est irréversible.
+            </p>
+            {deleteError && <p className="text-sm text-danger mb-4">{deleteError}</p>}
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="px-4 py-2.5 rounded-[10px] text-sm font-semibold text-text-muted hover:bg-sage-pale"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="bg-danger text-white px-5 py-2.5 rounded-[10px] text-sm font-semibold disabled:opacity-50"
+              >
+                {deleting ? 'Suppression…' : 'Supprimer'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
