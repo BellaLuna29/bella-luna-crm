@@ -1,21 +1,26 @@
-import { Resend } from 'resend'
+import nodemailer from 'nodemailer'
 
 export class EmailConfigError extends Error {}
 
-let client: Resend | null = null
+let transporter: nodemailer.Transporter | null = null
 
-function getResendClient(): Resend {
-  if (client) return client
-  const apiKey = process.env.RESEND_API_KEY
-  if (!apiKey) {
-    throw new EmailConfigError("RESEND_API_KEY n'est pas défini sur Vercel.")
+function getTransporter(): nodemailer.Transporter {
+  if (transporter) return transporter
+  const user = process.env.GMAIL_USER
+  const pass = process.env.GMAIL_APP_PASSWORD
+  if (!user || !pass) {
+    throw new EmailConfigError("GMAIL_USER et/ou GMAIL_APP_PASSWORD ne sont pas définis sur Vercel.")
   }
-  client = new Resend(apiKey)
-  return client
+  transporter = nodemailer.createTransport({
+    service: 'gmail',
+    pool: true,
+    maxConnections: 5,
+    auth: { user, pass },
+  })
+  return transporter
 }
 
 const SITE_URL = process.env.ALLOWED_ORIGIN || 'https://bella-luna-crm-bella-luna.vercel.app'
-const FROM_EMAIL = process.env.RESEND_FROM_EMAIL || 'Bella Luna <onboarding@resend.dev>'
 
 function escapeHtml(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -79,9 +84,10 @@ export interface NewsletterSendResult {
 }
 
 /**
- * Sends up to 100 emails in a single Resend batch call (their per-request
- * limit) — one HTTP round-trip instead of N, which matters on a serverless
- * function with a short execution timeout.
+ * Sends each recipient's email through the sender's own Gmail account (SMTP,
+ * pooled connections) instead of a transactional-email provider — no domain
+ * verification needed, works with any Gmail address + an App Password.
+ * Gmail's own daily cap (~500/day for a regular account) is the real ceiling.
  */
 export async function sendNewsletterBatch(items: NewsletterSendItem[]): Promise<NewsletterSendResult> {
   if (items.length === 0) return { sent: 0, failedEmails: [] }
@@ -89,15 +95,32 @@ export async function sendNewsletterBatch(items: NewsletterSendItem[]): Promise<
     return { sent: 0, failedEmails: items.map((i) => i.to), errorMessage: '100 destinataires maximum par envoi.' }
   }
 
-  const resend = getResendClient()
-  const { data, error } = await resend.batch.send(
-    items.map((item) => ({ from: FROM_EMAIL, to: item.to, subject: item.subject, html: item.html })),
-  )
-
-  if (error) {
-    return { sent: 0, failedEmails: items.map((i) => i.to), errorMessage: error.message }
+  const user = process.env.GMAIL_USER
+  let mailer: nodemailer.Transporter
+  try {
+    mailer = getTransporter()
+  } catch (error) {
+    if (error instanceof EmailConfigError) throw error
+    throw error
   }
 
-  const sent = data?.data?.length ?? 0
-  return { sent, failedEmails: [] }
+  const results = await Promise.allSettled(
+    items.map((item) =>
+      mailer.sendMail({
+        from: `Bella Luna <${user}>`,
+        to: item.to,
+        subject: item.subject,
+        html: item.html,
+      }),
+    ),
+  )
+
+  const failedEmails: string[] = []
+  let sent = 0
+  results.forEach((result, i) => {
+    if (result.status === 'fulfilled') sent += 1
+    else failedEmails.push(items[i].to)
+  })
+
+  return { sent, failedEmails }
 }
