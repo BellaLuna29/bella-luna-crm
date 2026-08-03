@@ -8,6 +8,7 @@ export interface Parametres {
   seuilNewsletterJours: number
   seuilAnniversaireJours: number
   seuilInactiviteLongueJours: number
+  rappelsAutoActifs: boolean
 }
 
 type GetToken = () => Promise<string | null>

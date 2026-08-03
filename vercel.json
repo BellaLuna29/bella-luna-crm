@@ -4,5 +4,11 @@
     "api/prestations.ts": {
       "maxDuration": 60
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/prestations?resource=rappels-auto-run",
+      "schedule": "0 7 * * *"
+    }
+  ]
 }

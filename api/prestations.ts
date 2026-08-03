@@ -27,7 +27,9 @@ import {
   parseSmsTemplateInput,
   parseEmailTemplateInput,
 } from './_lib/mappers.js'
-import { buildNewsletterHtml, sendNewsletterBatch, EmailConfigError } from './_lib/email.js'
+import { buildNewsletterHtml, buildTransactionalHtml, sendNewsletterBatch, EmailConfigError } from './_lib/email.js'
+import { renderTemplate, type TemplateContext } from './_lib/templateEngine.js'
+import { formatDateHeureNaturel } from './_lib/formatDate.js'
 
 const TABLE_PRESTATIONS = 'prestations'
 const TABLE_PROMOTIONS = 'promotions'
@@ -721,6 +723,197 @@ async function handleSyncFacturesHonorees(req: VercelRequest, res: VercelRespons
   }
 }
 
+const HOUR_MS = 60 * 60 * 1000
+
+/**
+ * Triggered daily by Vercel Cron. No-ops unless "Rappels automatiques" is
+ * turned on in Paramètres (off by default). When active, sends the same
+ * "Rappel nouveau client" (72h, no history) / "Rappel client" (48h, has
+ * history) reminders that SmsView surfaces for manual sending — but by
+ * e-mail only, automatically, once per rendez-vous (tracked via
+ * rappel_auto_envoye_le so a rendez-vous is never reminded twice).
+ * Public — Vercel Cron doesn't carry a Clerk session — but inert unless the
+ * toggle is on, and dedup means repeated/unauthorized hits can't cause
+ * duplicate sends.
+ */
+async function handleRappelsAutoRun(req: VercelRequest, res: VercelResponse): Promise<void> {
+  if (req.method !== 'GET') {
+    res.status(405).json({ error: 'Méthode non autorisée.' })
+    return
+  }
+  try {
+    const paramRows = await dbList(TABLE_PARAMETRES)
+    const parametres = mapParametres(paramRows[0] ?? null)
+    if (!parametres.rappelsAutoActifs) {
+      res.status(200).json({ actif: false, envoyes: 0 })
+      return
+    }
+
+    const [rdvRows, emailTemplateRows] = await Promise.all([
+      dbList(TABLE_RENDEZVOUS, { select: '*, cliente:clients(nom_complet, email), prestation:prestations(nom, prix)' }),
+      dbList(TABLE_EMAIL_TEMPLATES),
+    ])
+
+    const rappelTemplate = emailTemplateRows.find((r) => r.cle === 'rappel')
+    const nouveauClientTemplate = emailTemplateRows.find((r) => r.cle === 'nouveauClient')
+
+    const rdvCountByClient = new Map<string, number>()
+    for (const r of rdvRows) {
+      const clienteId = r.cliente_id as string | null
+      if (!clienteId) continue
+      rdvCountByClient.set(clienteId, (rdvCountByClient.get(clienteId) ?? 0) + 1)
+    }
+    const hasHistory = (clienteId: string | null) => (clienteId ? (rdvCountByClient.get(clienteId) ?? 0) > 1 : false)
+
+    const now = Date.now()
+    const due: { row: DbRow; templateKey: 'rappel' | 'nouveauClient'; template: DbRow }[] = []
+    for (const r of rdvRows) {
+      if (r.rappel_auto_envoye_le) continue
+      if ((r.statut as string) !== 'Confirmé') continue
+      const dateStr = r.date as string | null
+      if (!dateStr) continue
+      const t = new Date(dateStr).getTime()
+      if (Number.isNaN(t)) continue
+      const diff = t - now
+      if (diff <= 0) continue
+      const clienteId = r.cliente_id as string | null
+      if (hasHistory(clienteId)) {
+        if (diff <= 48 * HOUR_MS && rappelTemplate) due.push({ row: r, templateKey: 'rappel', template: rappelTemplate })
+      } else if (diff <= 72 * HOUR_MS && nouveauClientTemplate) {
+        due.push({ row: r, templateKey: 'nouveauClient', template: nouveauClientTemplate })
+      }
+    }
+
+    let envoyes = 0
+    let echecs = 0
+    for (const { row, template } of due) {
+      const cliente = row.cliente as { nom_complet?: string; email?: string } | null
+      const prestation = row.prestation as { nom?: string; prix?: number } | null
+      const email = cliente?.email
+      if (!email) continue
+
+      const ctx: TemplateContext = {
+        nomComplet: cliente?.nom_complet || 'cliente',
+        date: formatDateHeureNaturel(row.date as string),
+        prestation: prestation?.nom,
+        montant: prestation?.prix ?? undefined,
+      }
+      const objet = renderTemplate((template.objet as string) ?? '', ctx)
+      const corps = renderTemplate((template.corps as string) ?? '', ctx)
+
+      try {
+        const result = await sendNewsletterBatch([{ to: email, subject: objet, html: buildTransactionalHtml(corps) }])
+        if (result.sent > 0) {
+          await dbUpdate(TABLE_RENDEZVOUS, row.id, { rappel_auto_envoye_le: new Date().toISOString() })
+          await dbCreate(TABLE_COMMUNICATIONS_LOG, {
+            contenu: `Rappel automatique — ${ctx.nomComplet}`,
+            type: 'Email',
+            destinataires: 1,
+            date_envoi: new Date().toISOString(),
+          })
+          envoyes += 1
+        } else {
+          echecs += 1
+        }
+      } catch (error) {
+        if (error instanceof EmailConfigError) throw error
+        console.error(error)
+        echecs += 1
+      }
+    }
+
+    res.status(200).json({ actif: true, envoyes, echecs })
+  } catch (error) {
+    if (error instanceof SupabaseConfigError || error instanceof EmailConfigError) {
+      res.status(500).json({ error: error.message })
+      return
+    }
+    console.error(error)
+    res.status(502).json({ error: "Impossible d'exécuter les rappels automatiques." })
+  }
+}
+
+function csvEscape(value: string): string {
+  return `"${value.replace(/"/g, '""')}"`
+}
+
+/**
+ * Liste des factures encaissées (payée = true) sur une période, avec le
+ * total par catégorie — pour préparer la déclaration de chiffre d'affaires
+ * micro-entreprise/URSSAF. Le champ "date de facture" sert d'approximation
+ * de la date d'encaissement, faute d'un champ dédié dans le modèle actuel.
+ */
+async function handleUrssafExport(req: VercelRequest, res: VercelResponse): Promise<void> {
+  if (req.method !== 'GET') {
+    res.status(405).json({ error: 'Méthode non autorisée.' })
+    return
+  }
+  const debut = typeof req.query.debut === 'string' ? req.query.debut : ''
+  const fin = typeof req.query.fin === 'string' ? req.query.fin : ''
+  if (!debut || !fin) {
+    res.status(400).json({ error: 'Les dates de début et de fin sont obligatoires.' })
+    return
+  }
+
+  try {
+    const rows = await dbList(TABLE_FACTURES, { select: '*, cliente:clients(nom_complet)' })
+    const enCaisses = rows
+      .filter((r) => {
+        if (!r.payee) return false
+        const d = (r.date_facture as string) ?? ''
+        return d >= debut && d <= fin
+      })
+      .sort((a, b) => ((a.date_facture as string) ?? '').localeCompare((b.date_facture as string) ?? ''))
+
+    const totaux = new Map<string, number>()
+    for (const r of enCaisses) {
+      const cat = (r.categorie_facture as string) ?? 'Commercial'
+      totaux.set(cat, (totaux.get(cat) ?? 0) + ((r.montant as number) ?? 0))
+    }
+
+    const lignes: string[] = []
+    lignes.push(
+      ['Date facture', 'Cliente', 'Description', 'Catégorie', 'Montant (€)'].map(csvEscape).join(';'),
+    )
+    for (const r of enCaisses) {
+      const cliente = r.cliente as { nom_complet?: string } | null
+      lignes.push(
+        [
+          (r.date_facture as string) ?? '',
+          cliente?.nom_complet ?? '',
+          (r.description as string) ?? '',
+          (r.categorie_facture as string) ?? '',
+          String((r.montant as number) ?? 0).replace('.', ','),
+        ]
+          .map(csvEscape)
+          .join(';'),
+      )
+    }
+    lignes.push('')
+    lignes.push(csvEscape(`Période : du ${debut} au ${fin}`))
+    for (const [cat, total] of totaux) {
+      lignes.push([csvEscape(`Total encaissé — ${cat}`), csvEscape(`${total.toFixed(2)} €`.replace('.', ','))].join(';'))
+    }
+    lignes.push(
+      csvEscape(
+        "Note : le montant encaissé est approximé par la date de facture (aucune date d'encaissement distincte n'est enregistrée).",
+      ),
+    )
+
+    const csv = '﻿' + lignes.join('\r\n')
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8')
+    res.setHeader('Content-Disposition', `attachment; filename="bella-luna-urssaf-${debut}-au-${fin}.csv"`)
+    res.status(200).send(csv)
+  } catch (error) {
+    if (error instanceof SupabaseConfigError) {
+      res.status(500).json({ error: error.message })
+      return
+    }
+    console.error(error)
+    res.status(502).json({ error: "Impossible de générer l'export URSSAF." })
+  }
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
   setCorsHeaders(req, res)
 
@@ -732,6 +925,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
   // Public — a recipient clicking this from an email isn't signed into the CRM.
   if (req.query.resource === 'newsletter-unsubscribe') {
     await handleNewsletterUnsubscribe(req, res)
+    return
+  }
+
+  // Public — triggered by Vercel Cron, which carries no Clerk session. Inert
+  // unless "Rappels automatiques" is switched on in Paramètres.
+  if (req.query.resource === 'rappels-auto-run') {
+    await handleRappelsAutoRun(req, res)
     return
   }
 
@@ -792,6 +992,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
   }
   if (req.query.resource === 'backup-export') {
     await handleBackupExport(req, res)
+    return
+  }
+  if (req.query.resource === 'urssaf-export') {
+    await handleUrssafExport(req, res)
     return
   }
 

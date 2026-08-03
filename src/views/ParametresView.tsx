@@ -47,10 +47,15 @@ function ParametresView({ onSelectClient, onNavigateFacturation, onNavigateNewsl
   const [state, setState] = useState<State>({ status: 'loading' })
   const [objectifCa, setObjectifCa] = useState('')
   const [seuils, setSeuils] = useState<Record<string, string>>({})
+  const [rappelsAutoActifs, setRappelsAutoActifs] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
   const [exporting, setExporting] = useState(false)
+  const [urssafDebut, setUrssafDebut] = useState('')
+  const [urssafFin, setUrssafFin] = useState('')
+  const [urssafExporting, setUrssafExporting] = useState(false)
+  const [urssafError, setUrssafError] = useState<string | null>(null)
 
   const load = useCallback(() => {
     setState({ status: 'loading' })
@@ -58,6 +63,7 @@ function ParametresView({ onSelectClient, onNavigateFacturation, onNavigateNewsl
       .then((data) => {
         setObjectifCa(data.objectifCaMensuel !== null ? String(data.objectifCaMensuel) : '')
         setSeuils(Object.fromEntries(SEUIL_FIELDS.map(({ key }) => [key, String(data[key])])))
+        setRappelsAutoActifs(data.rappelsAutoActifs)
         setState({ status: 'success' })
       })
       .catch((error: unknown) => {
@@ -68,6 +74,14 @@ function ParametresView({ onSelectClient, onNavigateFacturation, onNavigateNewsl
   useEffect(() => {
     load()
   }, [load])
+
+  useEffect(() => {
+    const now = new Date()
+    const quarterStartMonth = Math.floor(now.getMonth() / 3) * 3
+    const debut = new Date(now.getFullYear(), quarterStartMonth, 1)
+    setUrssafDebut(debut.toISOString().slice(0, 10))
+    setUrssafFin(now.toISOString().slice(0, 10))
+  }, [])
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault()
@@ -91,7 +105,7 @@ function ParametresView({ onSelectClient, onNavigateFacturation, onNavigateNewsl
 
     setSaving(true)
     try {
-      await saveParametres(getToken, { objectifCaMensuel: objectifNum, ...seuilUpdates })
+      await saveParametres(getToken, { objectifCaMensuel: objectifNum, rappelsAutoActifs, ...seuilUpdates })
       setSaved(true)
       setTimeout(() => setSaved(false), 3000)
     } catch (err) {
@@ -119,6 +133,40 @@ function ParametresView({ onSelectClient, onNavigateFacturation, onNavigateNewsl
       showToast(err instanceof ApiError ? err.message : "Impossible de générer l'export.", 'error')
     } finally {
       setExporting(false)
+    }
+  }
+
+  async function handleExportUrssaf() {
+    setUrssafError(null)
+    if (!urssafDebut || !urssafFin) {
+      setUrssafError('Choisis une date de début et une date de fin.')
+      return
+    }
+    setUrssafExporting(true)
+    try {
+      const baseUrl = import.meta.env.VITE_API_BASE_URL
+      const token = await getToken()
+      const response = await fetch(
+        `${baseUrl}/api/prestations?resource=urssaf-export&debut=${urssafDebut}&fin=${urssafFin}`,
+        { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+      )
+      if (!response.ok) {
+        throw new ApiError("Impossible de générer l'export.")
+      }
+      const blob = await response.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `bella-luna-urssaf-${urssafDebut}-au-${urssafFin}.csv`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+      showToast('Export URSSAF téléchargé.')
+    } catch (err) {
+      setUrssafError(err instanceof ApiError ? err.message : "Impossible de générer l'export.")
+    } finally {
+      setUrssafExporting(false)
     }
   }
 
@@ -200,6 +248,24 @@ function ParametresView({ onSelectClient, onNavigateFacturation, onNavigateNewsl
                 </div>
               </div>
 
+              <div className="bg-white border border-border rounded-2xl p-5">
+                <h3 className="font-serif text-lg font-semibold text-sage-dark mb-1">Rappels automatiques</h3>
+                <p className="text-xs text-text-muted mb-4">
+                  Quand c'est activé, les rappels « nouveau client » (72h avant) et « client » (48h avant) sont
+                  envoyés automatiquement par e-mail chaque jour, sans que tu aies à cliquer sur Contacter.
+                  Désactivé par défaut — tu gardes la main via l'onglet Communications tant que ce n'est pas activé.
+                </p>
+                <label className="flex items-center gap-2 text-sm font-semibold text-sage-dark">
+                  <input
+                    type="checkbox"
+                    checked={rappelsAutoActifs}
+                    onChange={(e) => setRappelsAutoActifs(e.target.checked)}
+                    className="w-4 h-4"
+                  />
+                  Activer l'envoi automatique des rappels par e-mail
+                </label>
+              </div>
+
               {saveError && <p className="text-sm text-danger">{saveError}</p>}
               {saved && <p className="text-sm text-sage-dark font-semibold">Paramètres enregistrés.</p>}
 
@@ -230,6 +296,40 @@ function ParametresView({ onSelectClient, onNavigateFacturation, onNavigateNewsl
               >
                 {exporting ? 'Export en cours…' : 'Exporter mes données'}
               </button>
+            </div>
+          )}
+
+          {state.status === 'success' && (
+            <div className="bg-white border border-border rounded-2xl p-5 max-w-2xl mt-6">
+              <h3 className="font-serif text-lg font-semibold text-sage-dark mb-1">Export comptable (URSSAF)</h3>
+              <p className="text-xs text-text-muted mb-4">
+                Liste des factures encaissées sur une période, avec le total par catégorie — pour préparer ta
+                déclaration de chiffre d'affaires micro-entreprise.
+              </p>
+              <div className="flex items-end gap-3 flex-wrap mb-3">
+                <label className="block">
+                  <span className="block text-xs font-semibold text-text-muted mb-1">Du</span>
+                  <input
+                    type="date"
+                    value={urssafDebut}
+                    onChange={(e) => setUrssafDebut(e.target.value)}
+                    className="input"
+                  />
+                </label>
+                <label className="block">
+                  <span className="block text-xs font-semibold text-text-muted mb-1">Au</span>
+                  <input type="date" value={urssafFin} onChange={(e) => setUrssafFin(e.target.value)} className="input" />
+                </label>
+                <button
+                  type="button"
+                  onClick={handleExportUrssaf}
+                  disabled={urssafExporting}
+                  className="bg-white border border-border text-sage-dark px-5 py-2.5 rounded-[10px] text-sm font-semibold hover:bg-sage-pale disabled:opacity-50"
+                >
+                  {urssafExporting ? 'Export en cours…' : 'Exporter (CSV)'}
+                </button>
+              </div>
+              {urssafError && <p className="text-sm text-danger">{urssafError}</p>}
             </div>
           )}
         </>

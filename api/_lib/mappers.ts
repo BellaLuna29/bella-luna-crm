@@ -778,6 +778,7 @@ export interface Parametres {
   seuilNewsletterJours: number
   seuilAnniversaireJours: number
   seuilInactiviteLongueJours: number
+  rappelsAutoActifs: boolean
 }
 
 const SEUIL_COLUMNS = {
@@ -806,6 +807,7 @@ export function mapParametres(row: DbRow | null): Parametres {
   return {
     objectifCaMensuel: (row?.objectif_ca_mensuel as number) ?? null,
     ...seuils,
+    rappelsAutoActifs: Boolean(row?.rappels_auto_actifs),
   }
 }
 
@@ -840,6 +842,10 @@ export function parseParametresInput(body: unknown): { fields: Record<string, un
     } else {
       errors.push(`Le seuil "${key}" doit être un nombre entier positif.`)
     }
+  }
+
+  if ('rappelsAutoActifs' in b) {
+    fields.rappels_auto_actifs = Boolean(b.rappelsAutoActifs)
   }
 
   if (errors.length > 0) return { errors }
