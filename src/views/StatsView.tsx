@@ -404,7 +404,7 @@ function StatsView() {
               <table className="w-full border-collapse">
                 <thead>
                   <tr>
-                    {['Prestation', 'Part des RDV', 'Nombre de RDV', 'Chiffre d’affaires'].map((h) => (
+                    {['Prestation', 'Part des RDV', 'Nombre de RDV', "Chiffre d'affaires"].map((h) => (
                       <th
                         key={h}
                         className="text-left text-[11px] text-text-muted font-semibold uppercase tracking-wide pb-2.5 border-b border-border"

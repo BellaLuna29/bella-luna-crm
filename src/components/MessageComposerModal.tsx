@@ -209,7 +209,7 @@ function MessageComposerModal({ context, telephone, email, initialTemplateKey, o
         </div>
 
         {!telephone && !email && (
-          <p className="text-sm text-danger mb-3">Aucun téléphone ni email enregistré pour cette cliente.</p>
+          <p className="text-sm text-danger mb-3">Aucun téléphone ni e-mail enregistré pour cette cliente.</p>
         )}
 
         <div className="flex justify-end gap-3 flex-wrap">

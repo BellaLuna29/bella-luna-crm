@@ -43,6 +43,11 @@ function App() {
     setView(next)
   }
 
+  function selectClient(id: string) {
+    setSelectedClientId(id)
+    setView('client-detail')
+  }
+
   function toggleCollapsed() {
     setCollapsed((prev) => {
       const next = !prev
@@ -79,7 +84,12 @@ function App() {
           </div>
           <div className="flex-1 flex flex-col min-w-0 print:overflow-visible">
             <div className="print:hidden">
-              <Topbar title={title} subtitle={subtitle} onOpenMobileMenu={() => setMobileMenuOpen(true)} />
+              <Topbar
+                title={title}
+                subtitle={subtitle}
+                onOpenMobileMenu={() => setMobileMenuOpen(true)}
+                onSelectClient={selectClient}
+              />
             </div>
             <main className="flex-1 p-4 md:p-8 overflow-y-auto overflow-x-hidden print:p-0 print:overflow-visible">
               <div>
@@ -92,10 +102,7 @@ function App() {
               )}
               {view === 'dashboard' && (
                 <DashboardView
-                  onSelectClient={(id) => {
-                    setSelectedClientId(id)
-                    setView('client-detail')
-                  }}
+                  onSelectClient={selectClient}
                   onNavigateAgenda={() => setView('agenda')}
                   onNavigateFacturation={() => setView('billing')}
                   onNavigateCompta={() => setView('compta')}
@@ -105,22 +112,14 @@ function App() {
               {view === 'stats' && <StatsView />}
               {view === 'agenda' && <AgendaView />}
               {view === 'billing' && (
-                <FacturationView
-                  onSelectClient={(id) => {
-                    setSelectedClientId(id)
-                    setView('client-detail')
-                  }}
-                />
+                <FacturationView onSelectClient={selectClient} />
               )}
               {view === 'prestations' && <PrestationsView />}
               {view === 'compta' && <ComptaView />}
               {view === 'communication' && <CommunicationView />}
               {view === 'parametres' && (
                 <ParametresView
-                  onSelectClient={(id) => {
-                    setSelectedClientId(id)
-                    setView('client-detail')
-                  }}
+                  onSelectClient={selectClient}
                   onNavigateFacturation={() => setView('billing')}
                   onNavigateNewsletter={() => setView('communication')}
                 />

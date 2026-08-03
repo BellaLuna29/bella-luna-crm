@@ -96,7 +96,7 @@ function AgendaDayGrid({ items, onClickItem, onSendReminder }: AgendaDayGridProp
                 <button onClick={() => onClickItem(item.id)} className="absolute inset-0 text-left px-3 py-1.5 hover:brightness-95 transition-[filter]">
                   <div className="text-xs font-semibold truncate pr-16">{item.clienteNom || 'Cliente inconnue'}</div>
                   <div className="text-[11px] opacity-90 truncate pr-16">
-                    {item.prestationNom || 'Prestation'} · {formatHeure(item.start)}–{formatHeure(item.end)}
+                    {item.prestationNom || 'Prestation inconnue'} · {formatHeure(item.start)}–{formatHeure(item.end)}
                     {item.prix !== null ? ` · ${item.prix} €` : ''}
                   </div>
                 </button>

@@ -24,6 +24,7 @@ export type IconName =
   | 'chevron-right'
   | 'x'
   | 'plus'
+  | 'search'
 
 interface IconProps {
   name: IconName
@@ -67,6 +68,7 @@ const PATHS: Record<IconName, string> = {
   'chevron-right': '<path d="m9 18 6-6-6-6"/>',
   x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
   plus: '<path d="M5 12h14"/><path d="M12 5v14"/>',
+  search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
 }
 
 function Icon({ name, size = 18, strokeWidth = 2, className = '' }: IconProps) {
