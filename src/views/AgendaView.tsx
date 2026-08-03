@@ -21,6 +21,7 @@ interface RdvItem {
   prestationNom: string
   prix: number | null
   duree: string
+  serieId: string | null
 }
 
 interface Client {
@@ -115,7 +116,7 @@ function AgendaView() {
   )
   const [modal, setModal] = useState<
     | { mode: 'create'; initialValues?: Partial<RdvFormInitial> }
-    | { mode: 'edit'; rdvId: string; initialValues: Partial<RdvFormInitial> }
+    | { mode: 'edit'; rdvId: string; initialValues: Partial<RdvFormInitial>; seriesSiblingIds: string[] }
     | null
   >(null)
 
@@ -206,6 +207,12 @@ function AgendaView() {
   }
 
   function openEdit(item: RdvItem) {
+    const seriesSiblingIds =
+      state.status === 'success' && item.serieId
+        ? state.items
+            .filter((i) => i.serieId === item.serieId && i.id !== item.id && i.statut === 'Confirmé')
+            .map((i) => i.id)
+        : []
     setModal({
       mode: 'edit',
       rdvId: item.id,
@@ -216,6 +223,7 @@ function AgendaView() {
         statut: item.statut,
         notes: item.notes,
       },
+      seriesSiblingIds,
     })
   }
 
@@ -439,6 +447,7 @@ function AgendaView() {
           mode={modal.mode}
           rdvId={modal.mode === 'edit' ? modal.rdvId : undefined}
           initialValues={modal.initialValues}
+          seriesSiblingIds={modal.mode === 'edit' ? modal.seriesSiblingIds : undefined}
           onClose={() => setModal(null)}
           onSaved={() => {
             setModal(null)

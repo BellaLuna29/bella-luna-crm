@@ -405,6 +405,17 @@ export function parseRendezVousInput(
     else fields.notes = v
   }
 
+  if ('serieId' in b) {
+    const v = b.serieId
+    if (v === null) {
+      fields.serie_id = null
+    } else if (typeof v === 'string' && UUID_RE.test(v)) {
+      fields.serie_id = v
+    } else {
+      errors.push('Identifiant de série invalide.')
+    }
+  }
+
   if (errors.length > 0) return { errors }
   return { fields }
 }

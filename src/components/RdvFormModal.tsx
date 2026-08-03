@@ -25,12 +25,15 @@ export interface RdvFormInitial {
   date: string // yyyy-MM-ddTHH:mm (local, for <input type="datetime-local">)
   statut: string
   notes: string
+  serieId?: string | null
 }
 
 interface RdvFormModalProps {
   mode: 'create' | 'edit'
   rdvId?: string
   initialValues?: Partial<RdvFormInitial>
+  /** IDs of other "Confirmé" rendez-vous sharing this one's série (edit mode only). */
+  seriesSiblingIds?: string[]
   onClose: () => void
   onSaved: () => void
 }
@@ -43,7 +46,7 @@ const EMPTY: RdvFormInitial = {
   notes: '',
 }
 
-function RdvFormModal({ mode, rdvId, initialValues, onClose, onSaved }: RdvFormModalProps) {
+function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, onSaved }: RdvFormModalProps) {
   const { getToken } = useAuth()
   const [values, setValues] = useState<RdvFormInitial>({ ...EMPTY, ...initialValues })
   const [clients, setClients] = useState<ClientOption[] | null>(null)
@@ -56,6 +59,10 @@ function RdvFormModal({ mode, rdvId, initialValues, onClose, onSaved }: RdvFormM
   const [quickTelephone, setQuickTelephone] = useState('')
   const [quickError, setQuickError] = useState<string | null>(null)
   const [quickCreating, setQuickCreating] = useState(false)
+  const [repeatEnabled, setRepeatEnabled] = useState(false)
+  const [repeatIntervalWeeks, setRepeatIntervalWeeks] = useState(1)
+  const [repeatCount, setRepeatCount] = useState(4)
+  const [applyToSeries, setApplyToSeries] = useState(false)
 
   useEffect(() => {
     Promise.all([
@@ -107,23 +114,61 @@ function RdvFormModal({ mode, rdvId, initialValues, onClose, onSaved }: RdvFormM
       setError('Cliente, prestation et date/heure sont obligatoires.')
       return
     }
+    if (mode === 'create' && repeatEnabled && (repeatIntervalWeeks < 1 || repeatCount < 2 || repeatCount > 52)) {
+      setError('Intervalle et nombre de séances de la répétition invalides.')
+      return
+    }
 
     setSaving(true)
+    let hadFailure = false
     try {
+      const baseDate = new Date(values.date)
       const body = {
         clienteId: values.clienteId,
         prestationId: values.prestationId,
-        date: new Date(values.date).toISOString(),
+        date: baseDate.toISOString(),
         statut: values.statut,
         notes: values.notes.trim(),
       }
 
       if (mode === 'create') {
-        await apiFetch(getToken, '/api/rendezvous', { method: 'POST', body })
+        if (repeatEnabled && repeatCount > 1) {
+          const serieId = crypto.randomUUID()
+          const occurrences = Array.from({ length: repeatCount }, (_, i) => {
+            const d = new Date(baseDate)
+            d.setDate(d.getDate() + i * repeatIntervalWeeks * 7)
+            return d.toISOString()
+          })
+          const results = await Promise.allSettled(
+            occurrences.map((date) =>
+              apiFetch(getToken, '/api/rendezvous', { method: 'POST', body: { ...body, date, serieId } }),
+            ),
+          )
+          const failedCount = results.filter((r) => r.status === 'rejected').length
+          if (failedCount > 0) {
+            hadFailure = true
+            setError(`${occurrences.length - failedCount} séance(s) créée(s), ${failedCount} échec(s). Ferme et vérifie l'agenda avant de réessayer.`)
+          }
+        } else {
+          await apiFetch(getToken, '/api/rendezvous', { method: 'POST', body })
+        }
       } else {
         await apiFetch(getToken, `/api/rendezvous/${rdvId}`, { method: 'PATCH', body })
+        if (applyToSeries && seriesSiblingIds && seriesSiblingIds.length > 0) {
+          const seriesBody = { prestationId: values.prestationId, statut: values.statut, notes: values.notes.trim() }
+          const results = await Promise.allSettled(
+            seriesSiblingIds.map((id) =>
+              apiFetch(getToken, `/api/rendezvous/${id}`, { method: 'PATCH', body: seriesBody }),
+            ),
+          )
+          const failedCount = results.filter((r) => r.status === 'rejected').length
+          if (failedCount > 0) {
+            hadFailure = true
+            setError(`${failedCount} séance(s) de la série n'ont pas pu être mises à jour.`)
+          }
+        }
       }
-      onSaved()
+      if (!hadFailure) onSaved()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Erreur inconnue.')
     } finally {
@@ -235,6 +280,67 @@ function RdvFormModal({ mode, rdvId, initialValues, onClose, onSaved }: RdvFormM
                 className="input"
               />
             </Field>
+
+            {mode === 'create' && (
+              <div className="bg-sage-pale rounded-[10px] p-3">
+                <label className="flex items-center gap-2 text-sm font-semibold text-sage-dark">
+                  <input
+                    type="checkbox"
+                    checked={repeatEnabled}
+                    onChange={(e) => setRepeatEnabled(e.target.checked)}
+                    className="w-4 h-4"
+                  />
+                  Répéter ce rendez-vous
+                </label>
+                {repeatEnabled && (
+                  <div className="grid grid-cols-2 gap-3 mt-3">
+                    <label className="block">
+                      <span className="block text-xs font-semibold text-text-muted mb-1">Toutes les</span>
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="number"
+                          min={1}
+                          max={12}
+                          value={repeatIntervalWeeks}
+                          onChange={(e) => setRepeatIntervalWeeks(Number(e.target.value))}
+                          className="input"
+                        />
+                        <span className="text-sm text-text-muted shrink-0">semaine(s)</span>
+                      </div>
+                    </label>
+                    <label className="block">
+                      <span className="block text-xs font-semibold text-text-muted mb-1">Nombre de séances</span>
+                      <input
+                        type="number"
+                        min={2}
+                        max={52}
+                        value={repeatCount}
+                        onChange={(e) => setRepeatCount(Number(e.target.value))}
+                        className="input"
+                      />
+                    </label>
+                    <p className="col-span-2 text-[11px] text-text-muted">
+                      {repeatCount} séances seront créées, la première le {values.date ? new Date(values.date).toLocaleDateString('fr-FR') : '...'}.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {mode === 'edit' && seriesSiblingIds && seriesSiblingIds.length > 0 && (
+              <label className="flex items-start gap-2 text-sm bg-sage-pale rounded-[10px] p-3">
+                <input
+                  type="checkbox"
+                  checked={applyToSeries}
+                  onChange={(e) => setApplyToSeries(e.target.checked)}
+                  className="w-4 h-4 mt-0.5"
+                />
+                <span>
+                  Appliquer la prestation, le statut et les notes aux <strong>{seriesSiblingIds.length}</strong> autres
+                  séances à venir de cette série. (La date/heure de chaque séance reste inchangée.)
+                </span>
+              </label>
+            )}
 
             <Field label="Statut">
               <select
