@@ -7,6 +7,7 @@ import RdvHistoryRow from '../components/RdvHistoryRow'
 import MessageComposerModal from '../components/MessageComposerModal'
 import RdvFormModal from '../components/RdvFormModal'
 import Icon from '../components/Icon'
+import { useToast } from '../components/ToastProvider'
 
 function buildTelLink(telephone: string): string {
   return `tel:${telephone.replace(/[^\d+]/g, '')}`
@@ -96,6 +97,7 @@ interface ClientDetailViewProps {
 
 function ClientDetailView({ clientId, onBack, embedded }: ClientDetailViewProps) {
   const { getToken } = useAuth()
+  const { showToast } = useToast()
   const [state, setState] = useState<State>({ status: 'loading' })
   const [tab, setTab] = useState<'historique' | 'factures'>('historique')
   const [showEdit, setShowEdit] = useState(false)
@@ -126,8 +128,10 @@ function ClientDetailView({ clientId, onBack, embedded }: ClientDetailViewProps)
   async function handleDelete() {
     setDeleting(true)
     setDeleteError(null)
+    const nom = state.status === 'success' ? state.data.client.nomComplet : 'Cliente'
     try {
       await apiFetch(getToken, `/api/clients/${clientId}`, { method: 'DELETE' })
+      showToast(`${nom} supprimée.`)
       onBack()
     } catch (err) {
       setDeleteError(err instanceof ApiError ? err.message : 'Erreur inconnue.')

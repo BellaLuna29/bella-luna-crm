@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useAuth } from '@clerk/react'
 import { apiFetch, ApiError } from '../lib/api'
+import { useToast } from './ToastProvider'
 
 export interface ClientFormValues {
   nomComplet: string
@@ -52,6 +53,7 @@ interface ClientFormModalProps {
 
 function ClientFormModal({ mode, clientId, initialValues, onClose, onSaved }: ClientFormModalProps) {
   const { getToken } = useAuth()
+  const { showToast } = useToast()
   const [values, setValues] = useState<ClientFormValues>({ ...EMPTY_VALUES, ...initialValues })
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -93,8 +95,10 @@ function ClientFormModal({ mode, clientId, initialValues, onClose, onSaved }: Cl
 
       if (mode === 'create') {
         await apiFetch(getToken, '/api/clients', { method: 'POST', body })
+        showToast('Cliente créée.')
       } else {
         await apiFetch(getToken, `/api/clients/${clientId}`, { method: 'PATCH', body })
+        showToast('Fiche mise à jour.')
       }
       onSaved()
     } catch (err) {

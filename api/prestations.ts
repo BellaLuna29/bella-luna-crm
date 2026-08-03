@@ -43,6 +43,8 @@ const TABLE_RENDEZVOUS = 'rendezvous'
 const TABLE_FACTURES = 'factures'
 const TABLE_SMS_TEMPLATES = 'sms_templates'
 const TABLE_EMAIL_TEMPLATES = 'email_templates'
+const TABLE_DEPENSES = 'depenses'
+const TABLE_ABSENCES = 'absences'
 const SITE_URL = process.env.ALLOWED_ORIGIN || 'https://bella-luna-crm-bella-luna.vercel.app'
 
 interface Prestation {
@@ -608,6 +610,71 @@ async function handleNewsletterUnsubscribe(req: VercelRequest, res: VercelRespon
 }
 
 /**
+ * Full data export (raw DB rows, as-is) for the practitioner to download as
+ * a backup — peace of mind independent of the Supabase/Vercel hosting.
+ */
+async function handleBackupExport(req: VercelRequest, res: VercelResponse): Promise<void> {
+  if (req.method !== 'GET') {
+    res.status(405).json({ error: 'Méthode non autorisée.' })
+    return
+  }
+  try {
+    const [
+      clients,
+      rendezvous,
+      factures,
+      prestations,
+      promotions,
+      absences,
+      depenses,
+      stock,
+      questionnaires,
+      smsTemplates,
+      emailTemplates,
+      parametres,
+    ] = await Promise.all([
+      dbList(TABLE_CLIENTS),
+      dbList(TABLE_RENDEZVOUS),
+      dbList(TABLE_FACTURES),
+      dbList(TABLE_PRESTATIONS),
+      dbList(TABLE_PROMOTIONS),
+      dbList(TABLE_ABSENCES),
+      dbList(TABLE_DEPENSES),
+      dbList(TABLE_STOCK),
+      dbList(TABLE_QUESTIONNAIRES),
+      dbList(TABLE_SMS_TEMPLATES),
+      dbList(TABLE_EMAIL_TEMPLATES),
+      dbList(TABLE_PARAMETRES),
+    ])
+    const dateStr = new Date().toISOString().slice(0, 10)
+    res.setHeader('Content-Type', 'application/json')
+    res.setHeader('Content-Disposition', `attachment; filename="bella-luna-export-${dateStr}.json"`)
+    res.status(200).json({
+      exporteLe: new Date().toISOString(),
+      clients,
+      rendezvous,
+      factures,
+      prestations,
+      promotions,
+      absences,
+      depenses,
+      stock,
+      questionnaires,
+      smsTemplates,
+      emailTemplates,
+      parametres,
+    })
+  } catch (error) {
+    if (error instanceof SupabaseConfigError) {
+      res.status(500).json({ error: error.message })
+      return
+    }
+    console.error(error)
+    res.status(502).json({ error: "Impossible de générer l'export depuis la base de données." })
+  }
+}
+
+/**
  * Safety net alongside the automatic "Honoré → facture" hook in
  * api/rendezvous/[id].ts — scans every honoré rendezvous without a linked
  * facture yet and creates one. Useful if the hook was ever bypassed (e.g. a
@@ -721,6 +788,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
   }
   if (req.query.resource === 'sync-factures-honorees') {
     await handleSyncFacturesHonorees(req, res)
+    return
+  }
+  if (req.query.resource === 'backup-export') {
+    await handleBackupExport(req, res)
     return
   }
 

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useAuth } from '@clerk/react'
 import { apiFetch, ApiError } from '../lib/api'
 import SearchableSelect from './SearchableSelect'
+import { useToast } from './ToastProvider'
 
 interface ClientOption {
   id: string
@@ -48,6 +49,7 @@ const EMPTY: RdvFormInitial = {
 
 function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, onSaved }: RdvFormModalProps) {
   const { getToken } = useAuth()
+  const { showToast } = useToast()
   const [values, setValues] = useState<RdvFormInitial>({ ...EMPTY, ...initialValues })
   const [clients, setClients] = useState<ClientOption[] | null>(null)
   const [prestations, setPrestations] = useState<PrestationOption[] | null>(null)
@@ -99,6 +101,7 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
       setShowQuickCreate(false)
       setQuickNom('')
       setQuickTelephone('')
+      showToast('Cliente créée.')
     } catch (err) {
       setQuickError(err instanceof ApiError ? err.message : 'Erreur inconnue.')
     } finally {
@@ -148,9 +151,12 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
           if (failedCount > 0) {
             hadFailure = true
             setError(`${occurrences.length - failedCount} séance(s) créée(s), ${failedCount} échec(s). Ferme et vérifie l'agenda avant de réessayer.`)
+          } else {
+            showToast(`${occurrences.length} séances créées.`)
           }
         } else {
           await apiFetch(getToken, '/api/rendezvous', { method: 'POST', body })
+          showToast('Rendez-vous créé.')
         }
       } else {
         await apiFetch(getToken, `/api/rendezvous/${rdvId}`, { method: 'PATCH', body })
@@ -165,7 +171,11 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
           if (failedCount > 0) {
             hadFailure = true
             setError(`${failedCount} séance(s) de la série n'ont pas pu être mises à jour.`)
+          } else {
+            showToast('Rendez-vous mis à jour.')
           }
+        } else {
+          showToast('Rendez-vous mis à jour.')
         }
       }
       if (!hadFailure) onSaved()

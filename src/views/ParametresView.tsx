@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useAuth } from '@clerk/react'
-import { ApiError } from '../lib/api'
+import { apiFetch, ApiError } from '../lib/api'
 import { fetchParametres, saveParametres, type Parametres } from '../lib/parametres'
+import { useToast } from '../components/ToastProvider'
 import AlertesView from './AlertesView'
 import FormulairesView from './FormulairesView'
 import ModelesView from './ModelesView'
@@ -41,6 +42,7 @@ interface ParametresViewProps {
 
 function ParametresView({ onSelectClient, onNavigateFacturation, onNavigateNewsletter }: ParametresViewProps) {
   const { getToken } = useAuth()
+  const { showToast } = useToast()
   const [subTab, setSubTab] = useState<SubTab>('general')
   const [state, setState] = useState<State>({ status: 'loading' })
   const [objectifCa, setObjectifCa] = useState('')
@@ -48,6 +50,7 @@ function ParametresView({ onSelectClient, onNavigateFacturation, onNavigateNewsl
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
+  const [exporting, setExporting] = useState(false)
 
   const load = useCallback(() => {
     setState({ status: 'loading' })
@@ -95,6 +98,27 @@ function ParametresView({ onSelectClient, onNavigateFacturation, onNavigateNewsl
       setSaveError(err instanceof ApiError ? err.message : 'Erreur inconnue.')
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function handleExport() {
+    setExporting(true)
+    try {
+      const data = await apiFetch<unknown>(getToken, '/api/prestations?resource=backup-export')
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `bella-luna-export-${new Date().toISOString().slice(0, 10)}.json`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+      showToast('Export téléchargé.')
+    } catch (err) {
+      showToast(err instanceof ApiError ? err.message : "Impossible de générer l'export.", 'error')
+    } finally {
+      setExporting(false)
     }
   }
 
@@ -189,6 +213,24 @@ function ParametresView({ onSelectClient, onNavigateFacturation, onNavigateNewsl
                 </button>
               </div>
             </form>
+          )}
+
+          {state.status === 'success' && (
+            <div className="bg-white border border-border rounded-2xl p-5 max-w-2xl mt-6">
+              <h3 className="font-serif text-lg font-semibold text-sage-dark mb-1">Sauvegarde de tes données</h3>
+              <p className="text-xs text-text-muted mb-4">
+                Télécharge une copie complète de tes données (clientes, rendez-vous, factures, prestations...) au
+                format JSON, à garder de ton côté par sécurité.
+              </p>
+              <button
+                type="button"
+                onClick={handleExport}
+                disabled={exporting}
+                className="bg-white border border-border text-sage-dark px-5 py-2.5 rounded-[10px] text-sm font-semibold hover:bg-sage-pale disabled:opacity-50"
+              >
+                {exporting ? 'Export en cours…' : 'Exporter mes données'}
+              </button>
+            </div>
           )}
         </>
       )}

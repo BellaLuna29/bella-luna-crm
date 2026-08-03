@@ -95,7 +95,8 @@ function GlobalClientSearch({ onSelectClient }: GlobalClientSearchProps) {
             setOpen(true)
           }}
           placeholder="Rechercher une cliente..."
-          className="input pl-9"
+          className="input"
+          style={{ paddingLeft: '2.25rem' }}
           autoComplete="off"
         />
       </div>
