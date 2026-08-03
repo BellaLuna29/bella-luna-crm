@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@clerk/react'
 import { apiFetch, ApiError } from '../lib/api'
-import RdvStatusPill from '../components/RdvStatusPill'
 import AgendaDayGrid from '../components/AgendaDayGrid'
+import AgendaWeekGrid, { type WeekGridColumn } from '../components/AgendaWeekGrid'
 import Icon from '../components/Icon'
 import RdvFormModal, { type RdvFormInitial } from '../components/RdvFormModal'
 import AbsenceFormModal from '../components/AbsenceFormModal'
@@ -74,13 +74,6 @@ function dayKey(d: Date): string {
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
 }
 
-function formatHeure(iso: string | null): string {
-  if (!iso) return '—'
-  const date = new Date(iso)
-  if (Number.isNaN(date.getTime())) return ''
-  return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
-}
-
 function formatWeekRange(monday: Date): string {
   const sunday = addDays(monday, 6)
   const sameMonth = monday.getMonth() === sunday.getMonth()
@@ -105,45 +98,6 @@ function toDateTimeLocalFromIso(iso: string | null): string {
 function isoDate(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-}
-
-function RdvCard({
-  item,
-  onClick,
-  onSendReminder,
-}: {
-  item: RdvItem
-  onClick: () => void
-  onSendReminder: () => void
-}) {
-  return (
-    <div className="w-full text-left bg-sage-pale hover:bg-sage-light transition-colors rounded-lg p-2.5 flex flex-col gap-1">
-      <div className="flex items-start justify-between gap-1">
-        <button onClick={onClick} className="flex-1 min-w-0 text-left">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-sage-dark">{formatHeure(item.date)}</span>
-            <RdvStatusPill statut={item.statut} compact />
-          </div>
-          <div className="text-sm font-semibold line-clamp-2 break-words">{item.clienteNom || 'Cliente inconnue'}</div>
-          <div className="text-xs text-text-muted line-clamp-2 break-words">
-            {item.prestationNom || 'Prestation inconnue'}
-            {item.prix !== null ? ` — ${item.prix} €` : ''}
-          </div>
-        </button>
-        <button
-          onClick={(e) => {
-            e.stopPropagation()
-            onSendReminder()
-          }}
-          className="shrink-0 w-6 h-6 flex items-center justify-center rounded-full bg-white hover:bg-sage-light text-sage-dark print:hidden"
-          aria-label={`Envoyer le rappel à ${item.clienteNom || 'la cliente'}`}
-          title="Envoyer le rappel"
-        >
-          <Icon name="send" size={11} />
-        </button>
-      </div>
-    </div>
-  )
 }
 
 function AgendaView() {
@@ -276,6 +230,44 @@ function AgendaView() {
     () => absences.filter((a) => a.dateFin && a.dateFin >= isoDate(today)).slice(0, 6),
     [absences, today],
   )
+
+  const weekColumns: WeekGridColumn[] = useMemo(
+    () =>
+      days.map((day, i) => {
+        const key = isoDate(day)
+        return {
+          key: dayKey(day),
+          label: DAY_LABELS[i].slice(0, 3),
+          dayNumber: day.getDate(),
+          isToday: dayKey(day) === dayKey(today),
+          items: (byDay.get(dayKey(day)) ?? [])
+            .filter((item): item is RdvItem & { date: string } => item.date !== null)
+            .map((item) => ({
+              id: item.id,
+              date: item.date,
+              duree: item.duree,
+              statut: item.statut,
+              clienteNom: item.clienteNom,
+              prestationNom: item.prestationNom,
+            })),
+          absences: absences
+            .filter((a) => a.dateDebut && a.dateFin && a.dateDebut <= key && key <= a.dateFin)
+            .map((a) => ({ id: a.id, libelle: a.libelle, type: a.type })),
+        }
+      }),
+    [days, byDay, today, absences],
+  )
+
+  function handleClickWeekItem(id: string) {
+    if (state.status !== 'success') return
+    const item = state.items.find((i) => i.id === id)
+    if (item) openEdit(item)
+  }
+
+  function handleAddForColumn(key: string) {
+    const day = days.find((d) => dayKey(d) === key)
+    if (day) openCreate(day)
+  }
 
   return (
     <div>
@@ -437,67 +429,8 @@ function AgendaView() {
       )}
 
       {state.status === 'success' && viewMode === 'semaine' && (
-        <div className="overflow-x-auto pb-2 print:overflow-visible">
-          <div className="grid grid-cols-7 gap-3 min-w-[920px] print:min-w-0 print:gap-1.5">
-            {days.map((day, i) => {
-              const isToday = dayKey(day) === dayKey(today)
-              const items = byDay.get(dayKey(day)) ?? []
-              const dayAbsences = absencesForDay(day)
-              return (
-                <div
-                  key={dayKey(day)}
-                  className={`bg-white border rounded-2xl p-2.5 min-h-[220px] flex flex-col gap-2 ${
-                    isToday ? 'border-sage-dark border-2' : 'border-border'
-                  }`}
-                >
-                  <div className="flex items-center justify-between px-0.5">
-                    <div>
-                      <div className={`text-xs font-semibold uppercase tracking-wide ${isToday ? 'text-sage-dark' : 'text-text-muted'}`}>
-                        {DAY_LABELS[i]}
-                      </div>
-                      <div className="font-serif text-lg font-semibold">{day.getDate()}</div>
-                    </div>
-                    <button
-                      onClick={() => openCreate(day)}
-                      className="text-sage-dark hover:bg-sage-pale rounded-full w-6 h-6 flex items-center justify-center text-sm font-bold print:hidden"
-                      aria-label={`Ajouter un rendez-vous le ${day.toLocaleDateString('fr-FR')}`}
-                    >
-                      +
-                    </button>
-                  </div>
-
-                  {dayAbsences.length > 0 && (
-                    <div className="flex flex-col gap-1">
-                      {dayAbsences.map((a) => (
-                        <span
-                          key={a.id}
-                          className={`text-[11px] font-semibold px-2 py-1 rounded-md inline-flex items-center gap-1 ${ABSENCE_STYLES[a.type] ?? 'bg-sage-light text-sage-dark'}`}
-                        >
-                          {a.type === 'Vacances' && <Icon name="sun" size={11} />}
-                          {a.libelle}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-
-                  <div className="flex flex-col gap-1.5 flex-1">
-                    {items.length === 0 ? (
-                      <p className="text-xs text-text-muted px-0.5">Aucun RDV</p>
-                    ) : (
-                      items.map((item) => (
-                        <RdvCard
-                          key={item.id}
-                          item={item}
-                          onClick={() => openEdit(item)}
-                          onSendReminder={() => sendReminder(item)}
-                        />
-                      ))
-                    )}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
+        <div className="print:overflow-visible">
+          <AgendaWeekGrid columns={weekColumns} onClickItem={handleClickWeekItem} onAddForColumn={handleAddForColumn} />
         </div>
       )}
 

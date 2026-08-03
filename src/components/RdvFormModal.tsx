@@ -8,6 +8,10 @@ interface ClientOption {
   nomComplet: string
 }
 
+interface NewClientResponse {
+  client: { id: string; nomComplet: string }
+}
+
 interface PrestationOption {
   id: string
   nom: string
@@ -47,6 +51,11 @@ function RdvFormModal({ mode, rdvId, initialValues, onClose, onSaved }: RdvFormM
   const [loadError, setLoadError] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [showQuickCreate, setShowQuickCreate] = useState(false)
+  const [quickNom, setQuickNom] = useState('')
+  const [quickTelephone, setQuickTelephone] = useState('')
+  const [quickError, setQuickError] = useState<string | null>(null)
+  const [quickCreating, setQuickCreating] = useState(false)
 
   useEffect(() => {
     Promise.all([
@@ -64,6 +73,30 @@ function RdvFormModal({ mode, rdvId, initialValues, onClose, onSaved }: RdvFormM
 
   function set<K extends keyof RdvFormInitial>(key: K, value: RdvFormInitial[K]) {
     setValues((v) => ({ ...v, [key]: value }))
+  }
+
+  async function handleQuickCreate() {
+    setQuickError(null)
+    if (quickNom.trim().length === 0) {
+      setQuickError('Le nom complet est obligatoire.')
+      return
+    }
+    setQuickCreating(true)
+    try {
+      const data = await apiFetch<NewClientResponse>(getToken, '/api/clients', {
+        method: 'POST',
+        body: { nomComplet: quickNom.trim(), telephone: quickTelephone.trim() },
+      })
+      setClients((prev) => [...(prev ?? []), { id: data.client.id, nomComplet: data.client.nomComplet }])
+      set('clienteId', data.client.id)
+      setShowQuickCreate(false)
+      setQuickNom('')
+      setQuickTelephone('')
+    } catch (err) {
+      setQuickError(err instanceof ApiError ? err.message : 'Erreur inconnue.')
+    } finally {
+      setQuickCreating(false)
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -123,6 +156,60 @@ function RdvFormModal({ mode, rdvId, initialValues, onClose, onSaved }: RdvFormM
                 placeholder="Rechercher une cliente..."
                 emptyLabel="Aucune cliente trouvée."
               />
+              {!showQuickCreate ? (
+                <button
+                  type="button"
+                  onClick={() => setShowQuickCreate(true)}
+                  className="mt-1.5 text-xs font-semibold text-sage-dark hover:underline"
+                >
+                  + Nouvelle cliente rapide
+                </button>
+              ) : (
+                <div className="mt-2 bg-sage-pale rounded-[10px] p-3 flex flex-col gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <input
+                      type="text"
+                      value={quickNom}
+                      onChange={(e) => setQuickNom(e.target.value)}
+                      placeholder="Nom complet *"
+                      maxLength={200}
+                      className="input"
+                    />
+                    <input
+                      type="tel"
+                      value={quickTelephone}
+                      onChange={(e) => setQuickTelephone(e.target.value)}
+                      placeholder="Téléphone (optionnel)"
+                      maxLength={30}
+                      className="input"
+                    />
+                  </div>
+                  <p className="text-[11px] text-text-muted">
+                    Tu pourras compléter sa fiche (santé, questionnaire...) plus tard.
+                  </p>
+                  {quickError && <p className="text-xs text-danger">{quickError}</p>}
+                  <div className="flex justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowQuickCreate(false)
+                        setQuickError(null)
+                      }}
+                      className="px-3 py-1.5 rounded-[8px] text-xs font-semibold text-text-muted hover:bg-white"
+                    >
+                      Annuler
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleQuickCreate}
+                      disabled={quickCreating}
+                      className="bg-sage-dark text-white px-3.5 py-1.5 rounded-[8px] text-xs font-semibold disabled:opacity-50"
+                    >
+                      {quickCreating ? 'Création…' : 'Créer'}
+                    </button>
+                  </div>
+                </div>
+              )}
             </Field>
 
             <Field label="Prestation *">
