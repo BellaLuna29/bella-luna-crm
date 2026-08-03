@@ -25,18 +25,23 @@ interface SidebarProps {
 }
 
 function Sidebar({ activeView, onNavigate, collapsed, onToggleCollapsed, mobileOpen, onCloseMobile }: SidebarProps) {
-  const collapsedDesktop = collapsed ? 'md:justify-center md:px-0' : ''
-  const hideOnCollapse = collapsed ? 'md:hidden' : ''
+  // The persistent (always-visible) sidebar only kicks in at `lg` (1024px+,
+  // landscape tablet / small desktop). Portrait tablets (~768-1023px) keep
+  // the same collapsible/overlay behavior as phones, since 768px is exactly
+  // iPad-portrait width and a permanently-reserved 240px sidebar there eats
+  // too much of the content area on the device that's actually in daily use.
+  const collapsedDesktop = collapsed ? 'lg:justify-center lg:px-0' : ''
+  const hideOnCollapse = collapsed ? 'lg:hidden' : ''
 
   return (
     <>
       {mobileOpen && (
-        <div className="fixed inset-0 bg-black/30 z-30 md:hidden" onClick={onCloseMobile} aria-hidden="true" />
+        <div className="fixed inset-0 bg-black/30 z-30 lg:hidden" onClick={onCloseMobile} aria-hidden="true" />
       )}
       <nav
-        className={`bg-sage-dark text-white flex flex-col p-7 px-4.5 shrink-0 fixed inset-y-0 left-0 z-40 transition-transform duration-200 w-60 md:static md:h-full md:translate-x-0 ${
+        className={`bg-sage-dark text-white flex flex-col p-7 px-4.5 shrink-0 fixed inset-y-0 left-0 z-40 transition-transform duration-200 w-60 lg:static lg:h-full lg:translate-x-0 ${
           mobileOpen ? 'translate-x-0' : '-translate-x-full'
-        } ${collapsed ? 'md:w-[72px] md:px-3' : ''}`}
+        } ${collapsed ? 'lg:w-[72px] lg:px-3' : ''}`}
       >
         <div className={`flex items-center gap-2.5 mb-9 px-2 ${collapsedDesktop}`}>
           <div className="w-9 h-9 rounded-full bg-white flex items-center justify-center shrink-0 p-1">
@@ -71,7 +76,7 @@ function Sidebar({ activeView, onNavigate, collapsed, onToggleCollapsed, mobileO
 
         <button
           onClick={onToggleCollapsed}
-          className="hidden md:flex items-center justify-center gap-2 mt-4 px-3 py-2 rounded-[10px] text-xs font-semibold text-white/70 hover:bg-white/10"
+          className="hidden lg:flex items-center justify-center gap-2 mt-4 px-3 py-2 rounded-[10px] text-xs font-semibold text-white/70 hover:bg-white/10"
         >
           <Icon name={collapsed ? 'chevron-right' : 'chevron-left'} size={14} />
           <span className={hideOnCollapse}>Réduire le menu</span>

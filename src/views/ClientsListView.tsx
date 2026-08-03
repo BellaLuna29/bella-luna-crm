@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from '@clerk/react'
 import { apiFetch, ApiError } from '../lib/api'
 import { formatMontant } from '../lib/formatMontant'
@@ -60,6 +60,8 @@ function ClientsListView() {
   const [newsletterOnly, setNewsletterOnly] = useState(false)
   const [showCreate, setShowCreate] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const detailRef = useRef<HTMLDivElement>(null)
+  const isFirstSelection = useRef(true)
 
   const load = useCallback(() => {
     setState({ status: 'loading' })
@@ -105,6 +107,18 @@ function ClientsListView() {
     setSelectedId(filtered[0]?.id ?? null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filtered, state.status])
+
+  useEffect(() => {
+    if (!selectedId) return
+    // On narrow/tablet-portrait layouts the list and the fiche stack
+    // vertically instead of sitting side by side, so tapping a client
+    // otherwise leaves the newly-loaded fiche off-screen below the list.
+    if (isFirstSelection.current) {
+      isFirstSelection.current = false
+      return
+    }
+    detailRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [selectedId])
 
   return (
     <div>
@@ -203,7 +217,7 @@ function ClientsListView() {
             </div>
           </div>
 
-          <div>
+          <div ref={detailRef}>
             {selectedId ? (
               <ClientDetailView clientId={selectedId} onBack={() => setSelectedId(null)} embedded />
             ) : (

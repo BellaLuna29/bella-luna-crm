@@ -27,10 +27,14 @@ function normalize(s: string): string {
   return out
 }
 
+const DROPDOWN_MAX_HEIGHT = 288 // px, matches max-h-72
+
 function SearchableSelect({ options, value, onChange, placeholder, emptyLabel }: SearchableSelectProps) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
+  const [openUpward, setOpenUpward] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
 
   const selected = options.find((o) => o.id === value)
 
@@ -45,6 +49,19 @@ function SearchableSelect({ options, value, onChange, placeholder, emptyLabel }:
     return () => document.removeEventListener('mousedown', onClickOutside)
   }, [])
 
+  function openDropdown() {
+    const rect = inputRef.current?.getBoundingClientRect()
+    if (rect) {
+      const spaceBelow = window.innerHeight - rect.bottom
+      const spaceAbove = rect.top
+      setOpenUpward(spaceBelow < DROPDOWN_MAX_HEIGHT && spaceAbove > spaceBelow)
+    }
+    setOpen(true)
+    // Give the (possibly taller) expanded field room to breathe inside a
+    // scrolling modal, so the dropdown itself doesn't end up clipped.
+    inputRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }
+
   const filtered =
     query.trim().length === 0
       ? options
@@ -53,22 +70,24 @@ function SearchableSelect({ options, value, onChange, placeholder, emptyLabel }:
   return (
     <div ref={rootRef} className="relative">
       <input
+        ref={inputRef}
         type="text"
         value={open ? query : (selected?.label ?? '')}
         onChange={(e) => {
           setQuery(e.target.value)
-          if (!open) setOpen(true)
+          if (!open) openDropdown()
         }}
-        onFocus={() => {
-          setOpen(true)
-          setQuery('')
-        }}
+        onFocus={openDropdown}
         placeholder={placeholder}
         className="input"
         autoComplete="off"
       />
       {open && (
-        <div className="absolute z-10 mt-1 w-full max-h-72 overflow-y-auto bg-white border border-border rounded-[10px] shadow-lg">
+        <div
+          className={`absolute z-10 w-full max-h-72 overflow-y-auto bg-white border border-border rounded-[10px] shadow-lg ${
+            openUpward ? 'bottom-full mb-1' : 'top-full mt-1'
+          }`}
+        >
           {filtered.length === 0 ? (
             <div className="px-3 py-2.5 text-sm text-text-muted">
               {emptyLabel ?? 'Aucun résultat.'}

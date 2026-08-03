@@ -31,7 +31,7 @@ interface AgendaWeekGridProps {
   onAddForColumn: (key: string) => void
 }
 
-const HOUR_HEIGHT = 44
+const HOUR_HEIGHT = 48
 const DEFAULT_START_HOUR = 8
 const DEFAULT_END_HOUR = 20
 
@@ -74,23 +74,23 @@ function AgendaWeekGrid({ columns, onClickItem, onAddForColumn }: AgendaWeekGrid
   return (
     <div className="border border-border rounded-2xl bg-white overflow-hidden">
       <div className="overflow-x-auto">
-        <div className="flex" style={{ minWidth: 480 }}>
-          <div className="w-9 shrink-0 border-r border-border">
-            <div className="h-14 border-b border-border" />
+        <div className="flex min-w-[480px] sm:min-w-[700px] md:min-w-[860px]">
+          <div className="w-9 sm:w-12 shrink-0 border-r border-border">
+            <div className="h-14 sm:h-16 border-b border-border" />
             {hours.map((h) => (
               <div
                 key={h}
                 style={{ height: HOUR_HEIGHT }}
-                className="text-[9px] text-text-muted pl-1 pt-0.5 border-t border-border/50"
+                className="text-[9px] sm:text-xs text-text-muted pl-1 sm:pl-2 pt-0.5 border-t border-border/50"
               >
                 {h}h
               </div>
             ))}
           </div>
           {parsedColumns.map((col) => (
-            <div key={col.key} className="flex-1 min-w-[44px] border-r border-border last:border-r-0">
+            <div key={col.key} className="flex-1 min-w-[44px] sm:min-w-[80px] border-r border-border last:border-r-0">
               <div
-                className={`h-14 border-b border-border flex flex-col items-center justify-center gap-0.5 ${
+                className={`h-14 sm:h-16 border-b border-border flex flex-col items-center justify-center gap-0.5 ${
                   col.isToday ? 'bg-sage-pale' : ''
                 }`}
               >
@@ -99,10 +99,14 @@ function AgendaWeekGrid({ columns, onClickItem, onAddForColumn }: AgendaWeekGrid
                   className="flex flex-col items-center"
                   aria-label={`Ajouter un rendez-vous le ${col.label} ${col.dayNumber}`}
                 >
-                  <span className={`text-[9px] font-semibold uppercase ${col.isToday ? 'text-sage-dark' : 'text-text-muted'}`}>
+                  <span
+                    className={`text-[9px] sm:text-xs font-semibold uppercase ${col.isToday ? 'text-sage-dark' : 'text-text-muted'}`}
+                  >
                     {col.label}
                   </span>
-                  <span className={`font-serif text-sm font-semibold ${col.isToday ? 'text-sage-dark' : 'text-text-dark'}`}>
+                  <span
+                    className={`font-serif text-sm sm:text-base font-semibold ${col.isToday ? 'text-sage-dark' : 'text-text-dark'}`}
+                  >
                     {col.dayNumber}
                   </span>
                 </button>
@@ -129,17 +133,20 @@ function AgendaWeekGrid({ columns, onClickItem, onAddForColumn }: AgendaWeekGrid
                 {col.items.map((item) => {
                   const minutesFromStart = (item.start.getHours() - startHour) * 60 + item.start.getMinutes()
                   const top = (minutesFromStart / 60) * HOUR_HEIGHT
-                  const height = Math.max(16, (item.durationMin / 60) * HOUR_HEIGHT - 2)
+                  const height = Math.max(18, (item.durationMin / 60) * HOUR_HEIGHT - 2)
                   return (
                     <button
                       key={item.id}
                       onClick={() => onClickItem(item.id)}
-                      className={`absolute left-0.5 right-0.5 rounded-md overflow-hidden text-white text-left px-1 hover:brightness-95 transition-[filter] ${avatarColorClass(item.prestationNom)}`}
+                      className={`absolute left-0.5 right-0.5 rounded-md overflow-hidden text-white text-left px-1 sm:px-1.5 hover:brightness-95 transition-[filter] ${avatarColorClass(item.prestationNom)}`}
                       style={{ top, height }}
                       title={`${item.clienteNom || 'Cliente inconnue'} — ${item.prestationNom || 'Prestation inconnue'}`}
                     >
-                      <span className="block text-[9px] font-semibold leading-tight truncate">
+                      <span className="block text-[9px] sm:text-[11px] font-semibold leading-tight truncate">
                         {item.clienteNom || '?'}
+                      </span>
+                      <span className="hidden sm:block text-[9px] opacity-90 leading-tight truncate">
+                        {item.prestationNom}
                       </span>
                       {item.statut === 'Annulé' && (
                         <span className="absolute top-0 right-0.5">

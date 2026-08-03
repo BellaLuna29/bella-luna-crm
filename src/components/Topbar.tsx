@@ -13,7 +13,7 @@ function Topbar({ title, subtitle, onOpenMobileMenu, onSelectClient }: TopbarPro
     <header className="h-18 md:h-20 bg-white border-b border-border flex items-center gap-3.5 px-4 md:px-8 shrink-0 relative">
       <button
         onClick={onOpenMobileMenu}
-        className="md:hidden shrink-0 w-9 h-9 flex items-center justify-center rounded-[10px] border border-border text-sage-dark"
+        className="lg:hidden shrink-0 w-9 h-9 flex items-center justify-center rounded-[10px] border border-border text-sage-dark"
         aria-label="Ouvrir le menu"
       >
         <Icon name="menu" size={18} />
