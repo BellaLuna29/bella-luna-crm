@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useAuth } from '@clerk/react'
 import { apiFetch, ApiError } from '../lib/api'
 import SearchableSelect from './SearchableSelect'
+import Modal from './Modal'
 
 interface ClientOption {
   id: string
@@ -141,145 +142,143 @@ function FactureFormModal({ mode, factureId, initialValues, onClose, onSaved }: 
   const loading = !clients
 
   return (
-    <div className="fixed inset-0 bg-black/30 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto p-6">
-        <h3 className="font-serif text-xl font-semibold text-sage-dark mb-4">
-          {mode === 'create' ? 'Nouvelle facture' : 'Modifier la facture'}
-        </h3>
+    <Modal size="md">
+      <h3 className="font-serif text-xl font-semibold text-sage-dark mb-4">
+        {mode === 'create' ? 'Nouvelle facture' : 'Modifier la facture'}
+      </h3>
 
-        {loadError && <p className="text-sm text-danger mb-4">{loadError}</p>}
-        {loading && !loadError && <p className="text-sm text-text-muted">Chargement…</p>}
+      {loadError && <p className="text-sm text-danger mb-4">{loadError}</p>}
+      {loading && !loadError && <p className="text-sm text-text-muted">Chargement…</p>}
 
-        {!loading && (
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-            <Field label="Cliente *">
-              <SearchableSelect
-                options={clients!.map((c) => ({ id: c.id, label: c.nomComplet }))}
-                value={values.clienteId}
-                onChange={(id) => set('clienteId', id)}
-                placeholder="Rechercher une cliente..."
-                emptyLabel="Aucune cliente trouvée."
-              />
-            </Field>
+      {!loading && (
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <Field label="Cliente *">
+            <SearchableSelect
+              options={clients!.map((c) => ({ id: c.id, label: c.nomComplet }))}
+              value={values.clienteId}
+              onChange={(id) => set('clienteId', id)}
+              placeholder="Rechercher une cliente..."
+              emptyLabel="Aucune cliente trouvée."
+            />
+          </Field>
 
-            <Field label="Prestation du catalogue (optionnel)">
-              <SearchableSelect
-                options={(prestations ?? []).map((p) => ({ id: p.id, label: p.nom, sublabel: `${p.prix} €` }))}
-                value={prestationId}
-                onChange={applyPrestation}
-                placeholder="Pré-remplir depuis le catalogue..."
-                emptyLabel="Aucune prestation trouvée."
-              />
-              <p className="text-[11px] text-text-muted mt-1">
-                Pré-remplit la description et le prix — les deux restent modifiables juste en dessous.
-              </p>
-            </Field>
+          <Field label="Prestation du catalogue (optionnel)">
+            <SearchableSelect
+              options={(prestations ?? []).map((p) => ({ id: p.id, label: p.nom, sublabel: `${p.prix} €` }))}
+              value={prestationId}
+              onChange={applyPrestation}
+              placeholder="Pré-remplir depuis le catalogue..."
+              emptyLabel="Aucune prestation trouvée."
+            />
+            <p className="text-[11px] text-text-muted mt-1">
+              Pré-remplit la description et le prix — les deux restent modifiables juste en dessous.
+            </p>
+          </Field>
 
-            <Field label="Description sur la facture">
+          <Field label="Description sur la facture">
+            <input
+              type="text"
+              value={values.description}
+              onChange={(e) => set('description', e.target.value)}
+              maxLength={200}
+              placeholder="Ex : Massage Signature, ou tout intitulé libre"
+              className="input"
+            />
+          </Field>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Montant (€) *">
               <input
-                type="text"
-                value={values.description}
-                onChange={(e) => set('description', e.target.value)}
-                maxLength={200}
-                placeholder="Ex : Massage Signature, ou tout intitulé libre"
+                type="number"
+                min={0}
+                step="0.01"
+                value={values.montant}
+                onChange={(e) => set('montant', e.target.value)}
+                required
                 className="input"
               />
             </Field>
-
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Montant (€) *">
-                <input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={values.montant}
-                  onChange={(e) => set('montant', e.target.value)}
-                  required
-                  className="input"
-                />
-              </Field>
-              <Field label="Date de facture *">
-                <input
-                  type="date"
-                  value={values.dateFacture}
-                  onChange={(e) => set('dateFacture', e.target.value)}
-                  required
-                  className="input"
-                />
-              </Field>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Catégorie de facture">
-                <select
-                  value={values.categorieFacture}
-                  onChange={(e) => set('categorieFacture', e.target.value as (typeof CATEGORIE_FACTURE_OPTIONS)[number])}
-                  className="input"
-                >
-                  {CATEGORIE_FACTURE_OPTIONS.map((opt) => (
-                    <option key={opt} value={opt}>
-                      {opt}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Promotion">
-                <select value={values.promoId} onChange={(e) => set('promoId', e.target.value)} className="input">
-                  <option value="">Aucune</option>
-                  {(promos ?? []).map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.nom}
-                      {p.reduction ? ` (-${Math.round(p.reduction * 100)}%)` : ''}
-                      {!p.active ? ' (inactive)' : ''}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-            </div>
-
-            <Field label="Notes (visibles uniquement par toi)">
-              <textarea
-                value={values.notes}
-                onChange={(e) => set('notes', e.target.value)}
-                maxLength={2000}
-                rows={3}
-                placeholder="Ex : remise exceptionnelle accordée, paiement en 2 fois..."
-                className="input resize-y"
+            <Field label="Date de facture *">
+              <input
+                type="date"
+                value={values.dateFacture}
+                onChange={(e) => set('dateFacture', e.target.value)}
+                required
+                className="input"
               />
             </Field>
+          </div>
 
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={values.payee}
-                onChange={(e) => set('payee', e.target.checked)}
-                className="w-4 h-4"
-              />
-              Déjà payée
-            </label>
-
-            {error && <p className="text-sm text-danger">{error}</p>}
-
-            <div className="flex justify-end gap-3 mt-2">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-4 py-2.5 rounded-[10px] text-sm font-semibold text-text-muted hover:bg-sage-pale"
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Catégorie de facture">
+              <select
+                value={values.categorieFacture}
+                onChange={(e) => set('categorieFacture', e.target.value as (typeof CATEGORIE_FACTURE_OPTIONS)[number])}
+                className="input"
               >
-                Annuler
-              </button>
-              <button
-                type="submit"
-                disabled={saving}
-                className="bg-sage-dark text-white px-5 py-2.5 rounded-[10px] text-sm font-semibold disabled:opacity-50"
-              >
-                {saving ? 'Enregistrement…' : 'Enregistrer'}
-              </button>
-            </div>
-          </form>
-        )}
-      </div>
-    </div>
+                {CATEGORIE_FACTURE_OPTIONS.map((opt) => (
+                  <option key={opt} value={opt}>
+                    {opt}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Promotion">
+              <select value={values.promoId} onChange={(e) => set('promoId', e.target.value)} className="input">
+                <option value="">Aucune</option>
+                {(promos ?? []).map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.nom}
+                    {p.reduction ? ` (-${Math.round(p.reduction * 100)}%)` : ''}
+                    {!p.active ? ' (inactive)' : ''}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+
+          <Field label="Notes (visibles uniquement par toi)">
+            <textarea
+              value={values.notes}
+              onChange={(e) => set('notes', e.target.value)}
+              maxLength={2000}
+              rows={3}
+              placeholder="Ex : remise exceptionnelle accordée, paiement en 2 fois..."
+              className="input resize-y"
+            />
+          </Field>
+
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={values.payee}
+              onChange={(e) => set('payee', e.target.checked)}
+              className="w-4 h-4"
+            />
+            Déjà payée
+          </label>
+
+          {error && <p className="text-sm text-danger">{error}</p>}
+
+          <div className="flex justify-end gap-3 mt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2.5 rounded-[10px] text-sm font-semibold text-text-muted hover:bg-sage-pale"
+            >
+              Annuler
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="bg-sage-dark text-white px-5 py-2.5 rounded-[10px] text-sm font-semibold disabled:opacity-50"
+            >
+              {saving ? 'Enregistrement…' : 'Enregistrer'}
+            </button>
+          </div>
+        </form>
+      )}
+    </Modal>
   )
 }
 

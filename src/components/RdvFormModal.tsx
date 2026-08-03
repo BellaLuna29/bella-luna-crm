@@ -3,6 +3,7 @@ import { useAuth } from '@clerk/react'
 import { apiFetch, ApiError } from '../lib/api'
 import SearchableSelect from './SearchableSelect'
 import { useToast } from './ToastProvider'
+import Modal from './Modal'
 
 interface ClientOption {
   id: string
@@ -189,213 +190,211 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
   const loading = !clients || !prestations
 
   return (
-    <div className="fixed inset-0 bg-black/30 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6">
-        <h3 className="font-serif text-xl font-semibold text-sage-dark mb-4">
-          {mode === 'create' ? 'Nouveau rendez-vous' : 'Modifier le rendez-vous'}
-        </h3>
+    <Modal>
+      <h3 className="font-serif text-xl font-semibold text-sage-dark mb-4">
+        {mode === 'create' ? 'Nouveau rendez-vous' : 'Modifier le rendez-vous'}
+      </h3>
 
-        {loadError && <p className="text-sm text-danger mb-4">{loadError}</p>}
+      {loadError && <p className="text-sm text-danger mb-4">{loadError}</p>}
 
-        {loading && !loadError && (
-          <p className="text-sm text-text-muted">Chargement…</p>
-        )}
+      {loading && !loadError && (
+        <p className="text-sm text-text-muted">Chargement…</p>
+      )}
 
-        {!loading && (
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-            <Field label="Cliente *">
-              <SearchableSelect
-                options={clients!.map((c) => ({ id: c.id, label: c.nomComplet }))}
-                value={values.clienteId}
-                onChange={(id) => set('clienteId', id)}
-                placeholder="Rechercher une cliente..."
-                emptyLabel="Aucune cliente trouvée."
-              />
-              {!showQuickCreate ? (
-                <button
-                  type="button"
-                  onClick={() => setShowQuickCreate(true)}
-                  className="mt-1.5 text-xs font-semibold text-sage-dark hover:underline"
-                >
-                  + Nouvelle cliente rapide
-                </button>
-              ) : (
-                <div className="mt-2 bg-sage-pale rounded-[10px] p-3 flex flex-col gap-2">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <input
-                      type="text"
-                      value={quickNom}
-                      onChange={(e) => setQuickNom(e.target.value)}
-                      placeholder="Nom complet *"
-                      maxLength={200}
-                      className="input"
-                    />
-                    <input
-                      type="tel"
-                      value={quickTelephone}
-                      onChange={(e) => setQuickTelephone(e.target.value)}
-                      placeholder="Téléphone (optionnel)"
-                      maxLength={30}
-                      className="input"
-                    />
-                  </div>
-                  <p className="text-[11px] text-text-muted">
-                    Tu pourras compléter sa fiche (santé, questionnaire...) plus tard.
-                  </p>
-                  {quickError && <p className="text-xs text-danger">{quickError}</p>}
-                  <div className="flex justify-end gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowQuickCreate(false)
-                        setQuickError(null)
-                      }}
-                      className="px-3 py-1.5 rounded-[8px] text-xs font-semibold text-text-muted hover:bg-white"
-                    >
-                      Annuler
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleQuickCreate}
-                      disabled={quickCreating}
-                      className="bg-sage-dark text-white px-3.5 py-1.5 rounded-[8px] text-xs font-semibold disabled:opacity-50"
-                    >
-                      {quickCreating ? 'Création…' : 'Créer'}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </Field>
-
-            <Field label="Prestation *">
-              <SearchableSelect
-                options={prestations!.map((p) => ({
-                  id: p.id,
-                  label: p.nom,
-                  sublabel: `${p.prix} €`,
-                }))}
-                value={values.prestationId}
-                onChange={(id) => set('prestationId', id)}
-                placeholder="Rechercher une prestation..."
-                emptyLabel="Aucune prestation trouvée."
-              />
-            </Field>
-
-            <Field label="Date et heure *">
-              <input
-                type="datetime-local"
-                value={values.date}
-                onChange={(e) => set('date', e.target.value)}
-                required
-                className="input"
-              />
-            </Field>
-
-            {mode === 'create' && (
-              <div className="bg-sage-pale rounded-[10px] p-3">
-                <label className="flex items-center gap-2 text-sm font-semibold text-sage-dark">
-                  <input
-                    type="checkbox"
-                    checked={repeatEnabled}
-                    onChange={(e) => setRepeatEnabled(e.target.checked)}
-                    className="w-4 h-4"
-                  />
-                  Répéter ce rendez-vous
-                </label>
-                {repeatEnabled && (
-                  <div className="grid grid-cols-2 gap-3 mt-3">
-                    <label className="block">
-                      <span className="block text-xs font-semibold text-text-muted mb-1">Toutes les</span>
-                      <div className="flex items-center gap-1.5">
-                        <input
-                          type="number"
-                          min={1}
-                          max={12}
-                          value={repeatIntervalWeeks}
-                          onChange={(e) => setRepeatIntervalWeeks(Number(e.target.value))}
-                          className="input"
-                        />
-                        <span className="text-sm text-text-muted shrink-0">semaine(s)</span>
-                      </div>
-                    </label>
-                    <label className="block">
-                      <span className="block text-xs font-semibold text-text-muted mb-1">Nombre de séances</span>
-                      <input
-                        type="number"
-                        min={2}
-                        max={52}
-                        value={repeatCount}
-                        onChange={(e) => setRepeatCount(Number(e.target.value))}
-                        className="input"
-                      />
-                    </label>
-                    <p className="col-span-2 text-[11px] text-text-muted">
-                      {repeatCount} séances seront créées, la première le {values.date ? new Date(values.date).toLocaleDateString('fr-FR') : '...'}.
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {mode === 'edit' && seriesSiblingIds && seriesSiblingIds.length > 0 && (
-              <label className="flex items-start gap-2 text-sm bg-sage-pale rounded-[10px] p-3">
-                <input
-                  type="checkbox"
-                  checked={applyToSeries}
-                  onChange={(e) => setApplyToSeries(e.target.checked)}
-                  className="w-4 h-4 mt-0.5"
-                />
-                <span>
-                  Appliquer la prestation, le statut et les notes aux <strong>{seriesSiblingIds.length}</strong> autres
-                  séances à venir de cette série. (La date/heure de chaque séance reste inchangée.)
-                </span>
-              </label>
-            )}
-
-            <Field label="Statut">
-              <select
-                value={values.statut}
-                onChange={(e) => set('statut', e.target.value)}
-                className="input"
-              >
-                <option value="Confirmé">Confirmé</option>
-                <option value="Honoré">Honoré</option>
-                <option value="Annulé">Annulé</option>
-              </select>
-            </Field>
-
-            <Field label="Notes">
-              <textarea
-                value={values.notes}
-                onChange={(e) => set('notes', e.target.value)}
-                maxLength={5000}
-                rows={3}
-                className="input resize-y"
-              />
-            </Field>
-
-            {error && <p className="text-sm text-danger">{error}</p>}
-
-            <div className="flex justify-end gap-3 mt-2">
+      {!loading && (
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <Field label="Cliente *">
+            <SearchableSelect
+              options={clients!.map((c) => ({ id: c.id, label: c.nomComplet }))}
+              value={values.clienteId}
+              onChange={(id) => set('clienteId', id)}
+              placeholder="Rechercher une cliente..."
+              emptyLabel="Aucune cliente trouvée."
+            />
+            {!showQuickCreate ? (
               <button
                 type="button"
-                onClick={onClose}
-                className="px-4 py-2.5 rounded-[10px] text-sm font-semibold text-text-muted hover:bg-sage-pale"
+                onClick={() => setShowQuickCreate(true)}
+                className="mt-1.5 text-xs font-semibold text-sage-dark hover:underline"
               >
-                Annuler
+                + Nouvelle cliente rapide
               </button>
-              <button
-                type="submit"
-                disabled={saving}
-                className="bg-sage-dark text-white px-5 py-2.5 rounded-[10px] text-sm font-semibold disabled:opacity-50"
-              >
-                {saving ? 'Enregistrement…' : 'Enregistrer'}
-              </button>
+            ) : (
+              <div className="mt-2 bg-sage-pale rounded-[10px] p-3 flex flex-col gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <input
+                    type="text"
+                    value={quickNom}
+                    onChange={(e) => setQuickNom(e.target.value)}
+                    placeholder="Nom complet *"
+                    maxLength={200}
+                    className="input"
+                  />
+                  <input
+                    type="tel"
+                    value={quickTelephone}
+                    onChange={(e) => setQuickTelephone(e.target.value)}
+                    placeholder="Téléphone (optionnel)"
+                    maxLength={30}
+                    className="input"
+                  />
+                </div>
+                <p className="text-[11px] text-text-muted">
+                  Tu pourras compléter sa fiche (santé, questionnaire...) plus tard.
+                </p>
+                {quickError && <p className="text-xs text-danger">{quickError}</p>}
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowQuickCreate(false)
+                      setQuickError(null)
+                    }}
+                    className="px-3 py-1.5 rounded-[8px] text-xs font-semibold text-text-muted hover:bg-white"
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleQuickCreate}
+                    disabled={quickCreating}
+                    className="bg-sage-dark text-white px-3.5 py-1.5 rounded-[8px] text-xs font-semibold disabled:opacity-50"
+                  >
+                    {quickCreating ? 'Création…' : 'Créer'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </Field>
+
+          <Field label="Prestation *">
+            <SearchableSelect
+              options={prestations!.map((p) => ({
+                id: p.id,
+                label: p.nom,
+                sublabel: `${p.prix} €`,
+              }))}
+              value={values.prestationId}
+              onChange={(id) => set('prestationId', id)}
+              placeholder="Rechercher une prestation..."
+              emptyLabel="Aucune prestation trouvée."
+            />
+          </Field>
+
+          <Field label="Date et heure *">
+            <input
+              type="datetime-local"
+              value={values.date}
+              onChange={(e) => set('date', e.target.value)}
+              required
+              className="input"
+            />
+          </Field>
+
+          {mode === 'create' && (
+            <div className="bg-sage-pale rounded-[10px] p-3">
+              <label className="flex items-center gap-2 text-sm font-semibold text-sage-dark">
+                <input
+                  type="checkbox"
+                  checked={repeatEnabled}
+                  onChange={(e) => setRepeatEnabled(e.target.checked)}
+                  className="w-4 h-4"
+                />
+                Répéter ce rendez-vous
+              </label>
+              {repeatEnabled && (
+                <div className="grid grid-cols-2 gap-3 mt-3">
+                  <label className="block">
+                    <span className="block text-xs font-semibold text-text-muted mb-1">Toutes les</span>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="number"
+                        min={1}
+                        max={12}
+                        value={repeatIntervalWeeks}
+                        onChange={(e) => setRepeatIntervalWeeks(Number(e.target.value))}
+                        className="input"
+                      />
+                      <span className="text-sm text-text-muted shrink-0">semaine(s)</span>
+                    </div>
+                  </label>
+                  <label className="block">
+                    <span className="block text-xs font-semibold text-text-muted mb-1">Nombre de séances</span>
+                    <input
+                      type="number"
+                      min={2}
+                      max={52}
+                      value={repeatCount}
+                      onChange={(e) => setRepeatCount(Number(e.target.value))}
+                      className="input"
+                    />
+                  </label>
+                  <p className="col-span-2 text-[11px] text-text-muted">
+                    {repeatCount} séances seront créées, la première le {values.date ? new Date(values.date).toLocaleDateString('fr-FR') : '...'}.
+                  </p>
+                </div>
+              )}
             </div>
-          </form>
-        )}
-      </div>
-    </div>
+          )}
+
+          {mode === 'edit' && seriesSiblingIds && seriesSiblingIds.length > 0 && (
+            <label className="flex items-start gap-2 text-sm bg-sage-pale rounded-[10px] p-3">
+              <input
+                type="checkbox"
+                checked={applyToSeries}
+                onChange={(e) => setApplyToSeries(e.target.checked)}
+                className="w-4 h-4 mt-0.5"
+              />
+              <span>
+                Appliquer la prestation, le statut et les notes aux <strong>{seriesSiblingIds.length}</strong> autres
+                séances à venir de cette série. (La date/heure de chaque séance reste inchangée.)
+              </span>
+            </label>
+          )}
+
+          <Field label="Statut">
+            <select
+              value={values.statut}
+              onChange={(e) => set('statut', e.target.value)}
+              className="input"
+            >
+              <option value="Confirmé">Confirmé</option>
+              <option value="Honoré">Honoré</option>
+              <option value="Annulé">Annulé</option>
+            </select>
+          </Field>
+
+          <Field label="Notes">
+            <textarea
+              value={values.notes}
+              onChange={(e) => set('notes', e.target.value)}
+              maxLength={5000}
+              rows={3}
+              className="input resize-y"
+            />
+          </Field>
+
+          {error && <p className="text-sm text-danger">{error}</p>}
+
+          <div className="flex justify-end gap-3 mt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2.5 rounded-[10px] text-sm font-semibold text-text-muted hover:bg-sage-pale"
+            >
+              Annuler
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="bg-sage-dark text-white px-5 py-2.5 rounded-[10px] text-sm font-semibold disabled:opacity-50"
+            >
+              {saving ? 'Enregistrement…' : 'Enregistrer'}
+            </button>
+          </div>
+        </form>
+      )}
+    </Modal>
   )
 }
 

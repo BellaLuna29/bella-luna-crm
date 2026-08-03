@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useAuth } from '@clerk/react'
 import { apiFetch, ApiError } from '../lib/api'
 import { useToast } from './ToastProvider'
+import Modal from './Modal'
 
 export interface ClientFormValues {
   nomComplet: string
@@ -109,229 +110,227 @@ function ClientFormModal({ mode, clientId, initialValues, onClose, onSaved }: Cl
   }
 
   return (
-    <div className="fixed inset-0 bg-black/30 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6">
-        <h3 className="font-serif text-xl font-semibold text-sage-dark mb-4">
-          {mode === 'create' ? 'Nouvelle cliente' : 'Modifier la fiche'}
-        </h3>
+    <Modal>
+      <h3 className="font-serif text-xl font-semibold text-sage-dark mb-4">
+        {mode === 'create' ? 'Nouvelle cliente' : 'Modifier la fiche'}
+      </h3>
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <Field label="Nom complet *">
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <Field label="Nom complet *">
+          <input
+            type="text"
+            value={values.nomComplet}
+            onChange={(e) => set('nomComplet', e.target.value)}
+            maxLength={200}
+            required
+            className="input"
+          />
+        </Field>
+
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Téléphone">
+            <input
+              type="tel"
+              value={values.telephone}
+              onChange={(e) => set('telephone', e.target.value)}
+              maxLength={30}
+              className="input"
+            />
+          </Field>
+          <Field label="E-mail">
+            <input
+              type="email"
+              value={values.email}
+              onChange={(e) => set('email', e.target.value)}
+              maxLength={200}
+              className="input"
+            />
+          </Field>
+        </div>
+
+        <div className="grid grid-cols-3 gap-3">
+          <Field label="Date de naissance">
+            <input
+              type="date"
+              value={values.dateNaissance}
+              onChange={(e) => set('dateNaissance', e.target.value)}
+              className="input"
+            />
+          </Field>
+          <Field label="Genre">
+            <select
+              value={values.genre}
+              onChange={(e) => set('genre', e.target.value)}
+              className="input"
+            >
+              <option value="">Non renseigné</option>
+              <option value="Femme">Femme</option>
+              <option value="Homme">Homme</option>
+            </select>
+          </Field>
+          <Field label="Métier">
             <input
               type="text"
-              value={values.nomComplet}
-              onChange={(e) => set('nomComplet', e.target.value)}
+              value={values.metier}
+              onChange={(e) => set('metier', e.target.value)}
               maxLength={200}
-              required
               className="input"
+            />
+          </Field>
+        </div>
+
+        <Field label="Catégorie de métier">
+          <select
+            value={values.categorieMetier}
+            onChange={(e) => set('categorieMetier', e.target.value)}
+            className="input"
+          >
+            <option value="">Non renseignée</option>
+            <option value="Médecine">Médecine</option>
+            <option value="Sport">Sport</option>
+            <option value="Métier extérieur">Métier extérieur</option>
+            <option value="Métier de bureau">Métier de bureau</option>
+            <option value="Commerce">Commerce</option>
+            <option value="Artisanat">Artisanat</option>
+            <option value="Autre">Autre</option>
+          </select>
+        </Field>
+
+        <Field label="Hobbies / Sport">
+          <input
+            type="text"
+            value={values.hobbies}
+            onChange={(e) => set('hobbies', e.target.value)}
+            maxLength={200}
+            placeholder="Ex : tennis, course à pied, yoga..."
+            className="input"
+          />
+        </Field>
+
+        <div className="border-t border-border pt-4 mt-1">
+          <div className="text-sm font-serif font-semibold text-sage-dark mb-3">
+            Santé &amp; préférences de massage
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 mb-3">
+            <Field label="Déjà massé">
+              <select
+                value={values.dejaMasse === null ? '' : values.dejaMasse ? 'oui' : 'non'}
+                onChange={(e) =>
+                  set('dejaMasse', e.target.value === '' ? null : e.target.value === 'oui')
+                }
+                className="input"
+              >
+                <option value="">Non renseigné</option>
+                <option value="oui">Oui</option>
+                <option value="non">Non</option>
+              </select>
+            </Field>
+            <Field label="Pression souhaitée">
+              <input
+                type="text"
+                value={values.pressionSouhaitee}
+                onChange={(e) => set('pressionSouhaitee', e.target.value)}
+                maxLength={2000}
+                className="input"
+              />
+            </Field>
+          </div>
+
+          <Field label="Antécédents médicaux">
+            <textarea
+              value={values.antecedentsMedicaux}
+              onChange={(e) => set('antecedentsMedicaux', e.target.value)}
+              maxLength={2000}
+              rows={2}
+              className="input resize-y mb-3"
+            />
+          </Field>
+
+          <Field label="Allergies">
+            <textarea
+              value={values.allergies}
+              onChange={(e) => set('allergies', e.target.value)}
+              maxLength={2000}
+              rows={2}
+              className="input resize-y mb-3"
             />
           </Field>
 
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Téléphone">
-              <input
-                type="tel"
-                value={values.telephone}
-                onChange={(e) => set('telephone', e.target.value)}
-                maxLength={30}
-                className="input"
-              />
-            </Field>
-            <Field label="E-mail">
-              <input
-                type="email"
-                value={values.email}
-                onChange={(e) => set('email', e.target.value)}
-                maxLength={200}
-                className="input"
-              />
-            </Field>
-          </div>
-
-          <div className="grid grid-cols-3 gap-3">
-            <Field label="Date de naissance">
-              <input
-                type="date"
-                value={values.dateNaissance}
-                onChange={(e) => set('dateNaissance', e.target.value)}
-                className="input"
-              />
-            </Field>
-            <Field label="Genre">
-              <select
-                value={values.genre}
-                onChange={(e) => set('genre', e.target.value)}
-                className="input"
-              >
-                <option value="">Non renseigné</option>
-                <option value="Femme">Femme</option>
-                <option value="Homme">Homme</option>
-              </select>
-            </Field>
-            <Field label="Métier">
-              <input
-                type="text"
-                value={values.metier}
-                onChange={(e) => set('metier', e.target.value)}
-                maxLength={200}
-                className="input"
-              />
-            </Field>
-          </div>
-
-          <Field label="Catégorie de métier">
-            <select
-              value={values.categorieMetier}
-              onChange={(e) => set('categorieMetier', e.target.value)}
-              className="input"
-            >
-              <option value="">Non renseignée</option>
-              <option value="Médecine">Médecine</option>
-              <option value="Sport">Sport</option>
-              <option value="Métier extérieur">Métier extérieur</option>
-              <option value="Métier de bureau">Métier de bureau</option>
-              <option value="Commerce">Commerce</option>
-              <option value="Artisanat">Artisanat</option>
-              <option value="Autre">Autre</option>
-            </select>
-          </Field>
-
-          <Field label="Hobbies / Sport">
-            <input
-              type="text"
-              value={values.hobbies}
-              onChange={(e) => set('hobbies', e.target.value)}
-              maxLength={200}
-              placeholder="Ex : tennis, course à pied, yoga..."
-              className="input"
-            />
-          </Field>
-
-          <div className="border-t border-border pt-4 mt-1">
-            <div className="text-sm font-serif font-semibold text-sage-dark mb-3">
-              Santé &amp; préférences de massage
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 mb-3">
-              <Field label="Déjà massé">
-                <select
-                  value={values.dejaMasse === null ? '' : values.dejaMasse ? 'oui' : 'non'}
-                  onChange={(e) =>
-                    set('dejaMasse', e.target.value === '' ? null : e.target.value === 'oui')
-                  }
-                  className="input"
-                >
-                  <option value="">Non renseigné</option>
-                  <option value="oui">Oui</option>
-                  <option value="non">Non</option>
-                </select>
-              </Field>
-              <Field label="Pression souhaitée">
-                <input
-                  type="text"
-                  value={values.pressionSouhaitee}
-                  onChange={(e) => set('pressionSouhaitee', e.target.value)}
-                  maxLength={2000}
-                  className="input"
-                />
-              </Field>
-            </div>
-
-            <Field label="Antécédents médicaux">
+            <Field label="Zones à surveiller">
               <textarea
-                value={values.antecedentsMedicaux}
-                onChange={(e) => set('antecedentsMedicaux', e.target.value)}
+                value={values.zonesASurveiller}
+                onChange={(e) => set('zonesASurveiller', e.target.value)}
                 maxLength={2000}
                 rows={2}
-                className="input resize-y mb-3"
+                className="input resize-y"
               />
             </Field>
-
-            <Field label="Allergies">
+            <Field label="Zones à éviter">
               <textarea
-                value={values.allergies}
-                onChange={(e) => set('allergies', e.target.value)}
+                value={values.zonesAEviter}
+                onChange={(e) => set('zonesAEviter', e.target.value)}
                 maxLength={2000}
                 rows={2}
-                className="input resize-y mb-3"
+                className="input resize-y"
               />
             </Field>
-
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Zones à surveiller">
-                <textarea
-                  value={values.zonesASurveiller}
-                  onChange={(e) => set('zonesASurveiller', e.target.value)}
-                  maxLength={2000}
-                  rows={2}
-                  className="input resize-y"
-                />
-              </Field>
-              <Field label="Zones à éviter">
-                <textarea
-                  value={values.zonesAEviter}
-                  onChange={(e) => set('zonesAEviter', e.target.value)}
-                  maxLength={2000}
-                  rows={2}
-                  className="input resize-y"
-                />
-              </Field>
-            </div>
           </div>
+        </div>
 
-          <Field label="Statut">
-            <select
-              value={values.statut}
-              onChange={(e) => set('statut', e.target.value)}
-              className="input"
-            >
-              <option value="Nouvelle">Nouvelle</option>
-              <option value="Régulière">Régulière</option>
-              <option value="Inactive">Inactive</option>
-            </select>
-          </Field>
+        <Field label="Statut">
+          <select
+            value={values.statut}
+            onChange={(e) => set('statut', e.target.value)}
+            className="input"
+          >
+            <option value="Nouvelle">Nouvelle</option>
+            <option value="Régulière">Régulière</option>
+            <option value="Inactive">Inactive</option>
+          </select>
+        </Field>
 
-          <Field label="Note personnelle">
-            <textarea
-              value={values.notes}
-              onChange={(e) => set('notes', e.target.value)}
-              maxLength={5000}
-              rows={4}
-              className="input resize-y"
-            />
-          </Field>
+        <Field label="Note personnelle">
+          <textarea
+            value={values.notes}
+            onChange={(e) => set('notes', e.target.value)}
+            maxLength={5000}
+            rows={4}
+            className="input resize-y"
+          />
+        </Field>
 
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={values.newsletter}
-              onChange={(e) => set('newsletter', e.target.checked)}
-              className="w-4 h-4"
-            />
-            Inscrite à la newsletter
-          </label>
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={values.newsletter}
+            onChange={(e) => set('newsletter', e.target.checked)}
+            className="w-4 h-4"
+          />
+          Inscrite à la newsletter
+        </label>
 
-          {error && <p className="text-sm text-danger">{error}</p>}
+        {error && <p className="text-sm text-danger">{error}</p>}
 
-          <div className="flex justify-end gap-3 mt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2.5 rounded-[10px] text-sm font-semibold text-text-muted hover:bg-sage-pale"
-            >
-              Annuler
-            </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="bg-sage-dark text-white px-5 py-2.5 rounded-[10px] text-sm font-semibold disabled:opacity-50"
-            >
-              {saving ? 'Enregistrement…' : 'Enregistrer'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+        <div className="flex justify-end gap-3 mt-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2.5 rounded-[10px] text-sm font-semibold text-text-muted hover:bg-sage-pale"
+          >
+            Annuler
+          </button>
+          <button
+            type="submit"
+            disabled={saving}
+            className="bg-sage-dark text-white px-5 py-2.5 rounded-[10px] text-sm font-semibold disabled:opacity-50"
+          >
+            {saving ? 'Enregistrement…' : 'Enregistrer'}
+          </button>
+        </div>
+      </form>
+    </Modal>
   )
 }
 

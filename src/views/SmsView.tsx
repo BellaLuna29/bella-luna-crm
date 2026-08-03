@@ -3,6 +3,7 @@ import { useAuth } from '@clerk/react'
 import { apiFetch, ApiError } from '../lib/api'
 import MessageComposerModal from '../components/MessageComposerModal'
 import SearchableSelect from '../components/SearchableSelect'
+import Modal from '../components/Modal'
 import Icon, { type IconName } from '../components/Icon'
 import type { TemplateContext } from '../lib/templateEngine'
 import { formatDateHeureNaturel } from '../lib/formatDate'
@@ -665,33 +666,31 @@ function SmsView() {
       )}
 
       {pickerOpen && state.status === 'success' && (
-        <div className="fixed inset-0 bg-black/30 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl w-full max-w-sm p-6">
-            <h3 className="font-serif text-xl font-semibold text-sage-dark mb-4">Choisir une cliente</h3>
-            <SearchableSelect
-              options={state.clients.map((c) => ({ id: c.id, label: c.nomComplet }))}
-              value={pickedClientId}
-              onChange={setPickedClientId}
-              placeholder="Rechercher une cliente..."
-              emptyLabel="Aucune cliente trouvée."
-            />
-            <div className="flex justify-end gap-3 mt-5">
-              <button
-                onClick={() => setPickerOpen(false)}
-                className="px-4 py-2.5 rounded-[10px] text-sm font-semibold text-text-muted hover:bg-sage-pale"
-              >
-                Annuler
-              </button>
-              <button
-                onClick={confirmPickedClient}
-                disabled={!pickedClientId}
-                className="bg-sage-dark text-white px-5 py-2.5 rounded-[10px] text-sm font-semibold disabled:opacity-50"
-              >
-                Continuer
-              </button>
-            </div>
+        <Modal size="sm">
+          <h3 className="font-serif text-xl font-semibold text-sage-dark mb-4">Choisir une cliente</h3>
+          <SearchableSelect
+            options={state.clients.map((c) => ({ id: c.id, label: c.nomComplet }))}
+            value={pickedClientId}
+            onChange={setPickedClientId}
+            placeholder="Rechercher une cliente..."
+            emptyLabel="Aucune cliente trouvée."
+          />
+          <div className="flex justify-end gap-3 mt-5">
+            <button
+              onClick={() => setPickerOpen(false)}
+              className="px-4 py-2.5 rounded-[10px] text-sm font-semibold text-text-muted hover:bg-sage-pale"
+            >
+              Annuler
+            </button>
+            <button
+              onClick={confirmPickedClient}
+              disabled={!pickedClientId}
+              className="bg-sage-dark text-white px-5 py-2.5 rounded-[10px] text-sm font-semibold disabled:opacity-50"
+            >
+              Continuer
+            </button>
           </div>
-        </div>
+        </Modal>
       )}
 
       {composer && (

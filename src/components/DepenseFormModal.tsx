@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useAuth } from '@clerk/react'
 import { apiFetch, ApiError } from '../lib/api'
+import Modal from './Modal'
 
 const CATEGORIE_SUGGESTIONS = [
   'Loyer-local',
@@ -95,96 +96,94 @@ function DepenseFormModal({ onClose, onSaved }: DepenseFormModalProps) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/30 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto p-6">
-        <h3 className="font-serif text-xl font-semibold text-sage-dark mb-4">Nouvelle dépense</h3>
+    <Modal size="md">
+      <h3 className="font-serif text-xl font-semibold text-sage-dark mb-4">Nouvelle dépense</h3>
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Date *">
-              <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required className="input" />
-            </Field>
-            <Field label="Montant (€) *">
-              <input
-                type="number"
-                min={0}
-                step="0.01"
-                value={montant}
-                onChange={(e) => setMontant(e.target.value)}
-                required
-                className="input"
-              />
-            </Field>
-          </div>
-
-          <Field label="Catégorie">
-            <input
-              type="text"
-              list="categorie-suggestions"
-              value={categorie}
-              onChange={(e) => setCategorie(e.target.value)}
-              placeholder="Ex : Loyer-local, Assurance..."
-              maxLength={100}
-              className="input"
-            />
-            <datalist id="categorie-suggestions">
-              {CATEGORIE_SUGGESTIONS.map((c) => (
-                <option key={c} value={c} />
-              ))}
-            </datalist>
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Date *">
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required className="input" />
           </Field>
-
-          <Field label="Description *">
+          <Field label="Montant (€) *">
             <input
-              type="text"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              maxLength={500}
+              type="number"
+              min={0}
+              step="0.01"
+              value={montant}
+              onChange={(e) => setMontant(e.target.value)}
               required
               className="input"
             />
           </Field>
+        </div>
 
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={recurrente}
-              onChange={(e) => setRecurrente(e.target.checked)}
-              className="w-4 h-4"
-            />
-            Dépense récurrente (mensuelle)
-          </label>
+        <Field label="Catégorie">
+          <input
+            type="text"
+            list="categorie-suggestions"
+            value={categorie}
+            onChange={(e) => setCategorie(e.target.value)}
+            placeholder="Ex : Loyer-local, Assurance..."
+            maxLength={100}
+            className="input"
+          />
+          <datalist id="categorie-suggestions">
+            {CATEGORIE_SUGGESTIONS.map((c) => (
+              <option key={c} value={c} />
+            ))}
+          </datalist>
+        </Field>
 
-          <Field label="Justificatif (PDF)">
-            <input
-              type="file"
-              accept="application/pdf"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-              className="input"
-            />
-          </Field>
+        <Field label="Description *">
+          <input
+            type="text"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            maxLength={500}
+            required
+            className="input"
+          />
+        </Field>
 
-          {error && <p className="text-sm text-danger">{error}</p>}
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={recurrente}
+            onChange={(e) => setRecurrente(e.target.checked)}
+            className="w-4 h-4"
+          />
+          Dépense récurrente (mensuelle)
+        </label>
 
-          <div className="flex justify-end gap-3 mt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2.5 rounded-[10px] text-sm font-semibold text-text-muted hover:bg-sage-pale"
-            >
-              Annuler
-            </button>
-            <button
-              type="submit"
-              disabled={saving}
-              className="bg-sage-dark text-white px-5 py-2.5 rounded-[10px] text-sm font-semibold disabled:opacity-50"
-            >
-              {saving ? 'Enregistrement…' : 'Enregistrer'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+        <Field label="Justificatif (PDF)">
+          <input
+            type="file"
+            accept="application/pdf"
+            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            className="input"
+          />
+        </Field>
+
+        {error && <p className="text-sm text-danger">{error}</p>}
+
+        <div className="flex justify-end gap-3 mt-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2.5 rounded-[10px] text-sm font-semibold text-text-muted hover:bg-sage-pale"
+          >
+            Annuler
+          </button>
+          <button
+            type="submit"
+            disabled={saving}
+            className="bg-sage-dark text-white px-5 py-2.5 rounded-[10px] text-sm font-semibold disabled:opacity-50"
+          >
+            {saving ? 'Enregistrement…' : 'Enregistrer'}
+          </button>
+        </div>
+      </form>
+    </Modal>
   )
 }
 
