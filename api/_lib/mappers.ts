@@ -416,6 +416,15 @@ export function parseRendezVousInput(
     }
   }
 
+  if ('minutesSupplementaires' in b) {
+    const v = b.minutesSupplementaires
+    if (typeof v === 'number' && Number.isFinite(v) && Number.isInteger(v) && v >= 0 && v <= 480) {
+      fields.minutes_supplementaires = v
+    } else {
+      errors.push('Le temps supplémentaire doit être un nombre de minutes entre 0 et 480.')
+    }
+  }
+
   if (errors.length > 0) return { errors }
   return { fields }
 }

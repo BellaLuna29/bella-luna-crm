@@ -30,6 +30,7 @@ import {
 import { buildNewsletterHtml, buildTransactionalHtml, sendNewsletterBatch, EmailConfigError } from './_lib/email.js'
 import { renderTemplate, type TemplateContext } from './_lib/templateEngine.js'
 import { formatDateHeureNaturel } from './_lib/formatDate.js'
+import { cureTotalSeances, cureCyclePosition } from './_lib/cure.js'
 
 const TABLE_PRESTATIONS = 'prestations'
 const TABLE_PROMOTIONS = 'promotions'
@@ -681,6 +682,11 @@ async function handleBackupExport(req: VercelRequest, res: VercelResponse): Prom
  * api/rendezvous/[id].ts — scans every honoré rendezvous without a linked
  * facture yet and creates one. Useful if the hook was ever bypassed (e.g. a
  * bulk update) or for RDVs that were already honoré before this feature shipped.
+ *
+ * Same cure/passeport rule as the hook: only the 1st session of each cycle
+ * is invoiced. Cycle positions are recomputed from the full chronological
+ * history per cliente+prestation (not just the un-invoiced ones), so this
+ * stays correct regardless of which sessions already have a facture.
  */
 async function handleSyncFacturesHonorees(req: VercelRequest, res: VercelResponse): Promise<void> {
   if (req.method !== 'POST') {
@@ -696,21 +702,40 @@ async function handleSyncFacturesHonorees(req: VercelRequest, res: VercelRespons
     const invoicedRdvIds = new Set(factureRows.map((f) => f.rendezvous_id as string | null).filter(Boolean))
     const prestationById = new Map(prestationRows.map((p) => [p.id, p]))
 
-    let created = 0
+    const byPair = new Map<string, DbRow[]>()
     for (const r of rdvRows) {
-      if (invoicedRdvIds.has(r.id)) continue
-      const prestation = r.prestation_id ? prestationById.get(r.prestation_id as string) : undefined
-      const dateStr = typeof r.date === 'string' ? r.date.slice(0, 10) : new Date().toISOString().slice(0, 10)
-      await dbCreate(TABLE_FACTURES, {
-        cliente_id: r.cliente_id ?? null,
-        rendezvous_id: r.id,
-        montant: (prestation?.prix as number) ?? 0,
-        date_facture: dateStr,
-        payee: false,
-        categorie_facture: 'Commercial',
-        description: (prestation?.nom as string) ?? '',
-      })
-      created += 1
+      const key = `${r.cliente_id ?? ''}__${r.prestation_id ?? ''}`
+      const list = byPair.get(key) ?? []
+      list.push(r)
+      byPair.set(key, list)
+    }
+    for (const list of byPair.values()) {
+      list.sort((a, b) => String(a.date ?? '').localeCompare(String(b.date ?? '')))
+    }
+
+    let created = 0
+    for (const [key, list] of byPair) {
+      const prestationId = key.split('__')[1]
+      const prestation = prestationId ? prestationById.get(prestationId) : undefined
+      const total = prestation ? cureTotalSeances((prestation.type as string) ?? '') : null
+
+      for (let i = 0; i < list.length; i++) {
+        const r = list[i]
+        if (invoicedRdvIds.has(r.id)) continue
+        if (total && cureCyclePosition(i, total) > 1) continue
+
+        const dateStr = typeof r.date === 'string' ? r.date.slice(0, 10) : new Date().toISOString().slice(0, 10)
+        await dbCreate(TABLE_FACTURES, {
+          cliente_id: r.cliente_id ?? null,
+          rendezvous_id: r.id,
+          montant: (prestation?.prix as number) ?? 0,
+          date_facture: dateStr,
+          payee: false,
+          categorie_facture: 'Commercial',
+          description: (prestation?.nom as string) ?? '',
+        })
+        created += 1
+      }
     }
     res.status(200).json({ created })
   } catch (error) {

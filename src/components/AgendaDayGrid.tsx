@@ -10,6 +10,7 @@ interface GridItem {
   clienteNom: string
   prestationNom: string
   prix: number | null
+  minutesSupplementaires: number
 }
 
 interface AgendaDayGridProps {
@@ -23,9 +24,17 @@ const DEFAULT_START_HOUR = 8
 const DEFAULT_END_HOUR = 20
 
 function parseDureeMinutes(duree: string): number {
-  const match = /(\d+)/.exec(duree)
-  const minutes = match ? Number(match[1]) : NaN
-  return Number.isFinite(minutes) && minutes > 0 ? minutes : 60
+  const hMatch = /(\d+)\s*h\s*(\d+)?/i.exec(duree)
+  if (hMatch) {
+    const total = Number(hMatch[1]) * 60 + Number(hMatch[2] ?? 0)
+    return total > 0 ? total : 60
+  }
+  const minMatch = /(\d+)\s*min/i.exec(duree)
+  if (minMatch) {
+    const total = Number(minMatch[1])
+    return total > 0 ? total : 60
+  }
+  return 60
 }
 
 function formatHeure(date: Date): string {
@@ -37,7 +46,7 @@ function AgendaDayGrid({ items, onClickItem, onSendReminder }: AgendaDayGridProp
     .map((item) => {
       const start = new Date(item.date)
       if (Number.isNaN(start.getTime())) return null
-      const durationMin = parseDureeMinutes(item.duree)
+      const durationMin = parseDureeMinutes(item.duree) + item.minutesSupplementaires
       const end = new Date(start.getTime() + durationMin * 60000)
       return { ...item, start, end, durationMin }
     })

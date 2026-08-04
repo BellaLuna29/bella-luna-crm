@@ -8,6 +8,7 @@ interface WeekGridItem {
   statut: string
   clienteNom: string
   prestationNom: string
+  minutesSupplementaires: number
 }
 
 interface WeekGridAbsence {
@@ -42,9 +43,17 @@ const ABSENCE_DOT: Record<string, string> = {
 }
 
 function parseDureeMinutes(duree: string): number {
-  const match = /(\d+)/.exec(duree)
-  const minutes = match ? Number(match[1]) : NaN
-  return Number.isFinite(minutes) && minutes > 0 ? minutes : 60
+  const hMatch = /(\d+)\s*h\s*(\d+)?/i.exec(duree)
+  if (hMatch) {
+    const total = Number(hMatch[1]) * 60 + Number(hMatch[2] ?? 0)
+    return total > 0 ? total : 60
+  }
+  const minMatch = /(\d+)\s*min/i.exec(duree)
+  if (minMatch) {
+    const total = Number(minMatch[1])
+    return total > 0 ? total : 60
+  }
+  return 60
 }
 
 function AgendaWeekGrid({ columns, onClickItem, onAddForColumn }: AgendaWeekGridProps) {
@@ -54,7 +63,7 @@ function AgendaWeekGrid({ columns, onClickItem, onAddForColumn }: AgendaWeekGrid
       .map((item) => {
         const start = new Date(item.date)
         if (Number.isNaN(start.getTime())) return null
-        const durationMin = parseDureeMinutes(item.duree)
+        const durationMin = parseDureeMinutes(item.duree) + item.minutesSupplementaires
         return { ...item, start, durationMin }
       })
       .filter((item): item is NonNullable<typeof item> => item !== null),

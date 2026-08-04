@@ -23,6 +23,14 @@ interface PrestationForCure {
 
 const CURE_TYPE_RE = /cure\s+(\d+)\s*s[ée]ances?/i
 
+/** Total séances of a cure/passeport prestation from its "type" field, or null if it isn't one. */
+export function cureTotalSeances(prestationType: string): number | null {
+  const match = CURE_TYPE_RE.exec(prestationType)
+  if (!match) return null
+  const total = Number(match[1])
+  return Number.isFinite(total) && total > 0 ? total : null
+}
+
 /**
  * Détecte les cures (ex. "Cure 8 séances") réservées plusieurs fois par une
  * cliente et calcule où elle en est, à partir de l'historique des

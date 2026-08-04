@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@clerk/react'
 import { apiFetch, ApiError } from '../lib/api'
 import SearchableSelect from './SearchableSelect'
 import { useToast } from './ToastProvider'
 import Modal from './Modal'
+import { computeCureProgress, cureTotalSeances } from '../lib/cureProgress'
 
 interface ClientOption {
   id: string
@@ -19,6 +20,15 @@ interface PrestationOption {
   nom: string
   categorie: string
   prix: number
+  type: string
+}
+
+interface RdvHistoryItem {
+  clienteId: string | null
+  clienteNom: string
+  prestationId: string | null
+  prestationNom: string
+  statut: string
 }
 
 export interface RdvFormInitial {
@@ -28,6 +38,7 @@ export interface RdvFormInitial {
   statut: string
   notes: string
   serieId?: string | null
+  minutesSupplementaires: string
 }
 
 interface RdvFormModalProps {
@@ -46,6 +57,7 @@ const EMPTY: RdvFormInitial = {
   date: '',
   statut: 'Confirmé',
   notes: '',
+  minutesSupplementaires: '0',
 }
 
 function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, onSaved }: RdvFormModalProps) {
@@ -54,6 +66,7 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
   const [values, setValues] = useState<RdvFormInitial>({ ...EMPTY, ...initialValues })
   const [clients, setClients] = useState<ClientOption[] | null>(null)
   const [prestations, setPrestations] = useState<PrestationOption[] | null>(null)
+  const [rdvHistory, setRdvHistory] = useState<RdvHistoryItem[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -71,15 +84,29 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
     Promise.all([
       apiFetch<{ clients: ClientOption[] }>(getToken, '/api/clients'),
       apiFetch<{ prestations: PrestationOption[] }>(getToken, '/api/prestations'),
+      apiFetch<{ rendezvous: RdvHistoryItem[] }>(getToken, '/api/rendezvous').catch(() => ({ rendezvous: [] })),
     ])
-      .then(([clientsData, prestationsData]) => {
+      .then(([clientsData, prestationsData, rdvData]) => {
         setClients(clientsData.clients)
         setPrestations(prestationsData.prestations)
+        setRdvHistory(rdvData.rendezvous)
       })
       .catch((err: unknown) => {
         setLoadError(err instanceof ApiError ? err.message : 'Erreur inconnue.')
       })
   }, [getToken])
+
+  const cureProgress = useMemo(() => computeCureProgress(rdvHistory, prestations ?? []), [rdvHistory, prestations])
+
+  const cureInfo = useMemo(() => {
+    if (!values.clienteId || !values.prestationId) return null
+    const prestation = prestations?.find((p) => p.id === values.prestationId)
+    if (!prestation) return null
+    const total = cureTotalSeances(prestation.type)
+    if (!total) return null
+    const existing = cureProgress.find((c) => c.id === `${values.clienteId}__${values.prestationId}`)
+    return { total, seancesFaites: existing?.seancesFaites ?? 0, label: prestation.nom }
+  }, [values.clienteId, values.prestationId, prestations, cureProgress])
 
   function set<K extends keyof RdvFormInitial>(key: K, value: RdvFormInitial[K]) {
     setValues((v) => ({ ...v, [key]: value }))
@@ -122,6 +149,11 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
       setError('Intervalle et nombre de séances de la répétition invalides.')
       return
     }
+    const minutesSupp = Number(values.minutesSupplementaires)
+    if (!Number.isFinite(minutesSupp) || minutesSupp < 0 || minutesSupp > 480) {
+      setError('Le temps supplémentaire doit être un nombre de minutes entre 0 et 480.')
+      return
+    }
 
     setSaving(true)
     let hadFailure = false
@@ -133,6 +165,7 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
         date: baseDate.toISOString(),
         statut: values.statut,
         notes: values.notes.trim(),
+        minutesSupplementaires: minutesSupp,
       }
 
       if (mode === 'create') {
@@ -279,6 +312,13 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
               placeholder="Rechercher une prestation..."
               emptyLabel="Aucune prestation trouvée."
             />
+            {cureInfo && (
+              <p className="mt-1.5 text-[11px] bg-sage-pale text-sage-dark rounded-[8px] px-2.5 py-2">
+                {cureInfo.seancesFaites === 0
+                  ? `Démarre une nouvelle « ${cureInfo.label} » (1/${cureInfo.total}).`
+                  : `Continue sa « ${cureInfo.label} » déjà en cours — séance ${cureInfo.seancesFaites + 1}/${cureInfo.total}, aucune nouvelle facture ne sera générée.`}
+              </p>
+            )}
           </Field>
 
           <Field label="Date et heure *">
@@ -289,6 +329,25 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
               required
               className="input"
             />
+          </Field>
+
+          <Field label="Temps supplémentaire">
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min={0}
+                max={480}
+                step={5}
+                value={values.minutesSupplementaires}
+                onChange={(e) => set('minutesSupplementaires', e.target.value)}
+                className="input max-w-24"
+              />
+              <span className="text-xs text-text-muted">minutes en plus de la durée habituelle</span>
+            </div>
+            <p className="text-[11px] text-text-muted mt-0.5">
+              Si tu sais qu'il te faudra plus de temps avec cette cliente, ajoute-le ici — l'agenda réservera le
+              créneau en conséquence.
+            </p>
           </Field>
 
           {mode === 'create' && (

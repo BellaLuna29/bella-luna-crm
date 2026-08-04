@@ -3,6 +3,7 @@ import { dbUpdate, dbList, dbCreate, dbGet, SupabaseConfigError, UUID_RE } from 
 import { setCorsHeaders } from '../_lib/cors.js'
 import { requireAuth, AuthError } from '../_lib/auth.js'
 import { parseRendezVousInput } from '../_lib/mappers.js'
+import { cureTotalSeances, cureCyclePosition } from '../_lib/cure.js'
 
 const TABLE_RENDEZVOUS = 'rendezvous'
 const TABLE_FACTURES = 'factures'
@@ -13,6 +14,12 @@ const TABLE_PRESTATIONS = 'prestations'
  * asking her to create one by hand every time. Guards against duplicates via
  * factures.rendezvous_id (one invoice per appointment). Best-effort: a
  * failure here must not fail the status update itself.
+ *
+ * For "Cure X séances"/"Passeport" prestations, the price is for the whole
+ * package, paid once — so only the first session of each cycle gets
+ * invoiced. Sessions 2..X of an already-started cure/passeport are skipped;
+ * once a cycle completes, the next session starts a new cycle and is
+ * invoiced again (a genuine new purchase).
  */
 async function ensureFactureForRendezVous(rdvId: string): Promise<void> {
   const existing = await dbList(TABLE_FACTURES, { eq: ['rendezvous_id', rdvId] })
@@ -22,6 +29,16 @@ async function ensureFactureForRendezVous(rdvId: string): Promise<void> {
   if (!rdv) return
 
   const prestation = rdv.prestation_id ? await dbGet(TABLE_PRESTATIONS, rdv.prestation_id as string) : null
+
+  const total = prestation ? cureTotalSeances((prestation.type as string) ?? '') : null
+  if (total && rdv.cliente_id) {
+    const clientRdvRows = await dbList(TABLE_RENDEZVOUS, { eq: ['cliente_id', rdv.cliente_id as string] })
+    const priorHonoreCount = clientRdvRows.filter(
+      (r) => r.id !== rdvId && r.prestation_id === rdv.prestation_id && r.statut === 'Honoré',
+    ).length
+    if (cureCyclePosition(priorHonoreCount, total) > 1) return
+  }
+
   const dateStr = typeof rdv.date === 'string' ? rdv.date.slice(0, 10) : new Date().toISOString().slice(0, 10)
 
   await dbCreate(TABLE_FACTURES, {
