@@ -5,7 +5,7 @@ import { requireAuth, AuthError } from './_lib/auth.js'
 import { parseRendezVousInput } from './_lib/mappers.js'
 
 const TABLE_RENDEZVOUS = 'rendezvous'
-const SELECT = '*, cliente:clients(nom_complet), prestation:prestations(nom, prix, duree, categorie)'
+const SELECT = '*, cliente:clients(nom_complet), prestation:prestations(nom, prix, duree, categorie, couleur)'
 
 interface RdvItem {
   id: string
@@ -17,6 +17,7 @@ interface RdvItem {
   prestationId: string | null
   prestationNom: string
   prestationCategorie: string
+  prestationCouleur: string | null
   prix: number | null
   duree: string
   serieId: string | null
@@ -25,7 +26,9 @@ interface RdvItem {
 
 function mapRow(r: DbRow): RdvItem {
   const cliente = r.cliente as { nom_complet?: string } | null
-  const prestation = r.prestation as { nom?: string; prix?: number; duree?: string; categorie?: string } | null
+  const prestation = r.prestation as
+    | { nom?: string; prix?: number; duree?: string; categorie?: string; couleur?: string | null }
+    | null
   return {
     id: r.id,
     date: (r.date as string) ?? null,
@@ -36,6 +39,7 @@ function mapRow(r: DbRow): RdvItem {
     prestationId: (r.prestation_id as string) ?? null,
     prestationNom: prestation?.nom ?? '',
     prestationCategorie: prestation?.categorie ?? '',
+    prestationCouleur: prestation?.couleur ?? null,
     prix: prestation?.prix ?? null,
     duree: prestation?.duree ?? '',
     serieId: (r.serie_id as string) ?? null,

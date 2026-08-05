@@ -1,4 +1,5 @@
 import { avatarColorClass } from '../lib/avatarColor'
+import { parseDureeMinutes, formatMinutes } from '../lib/duree'
 import Icon from './Icon'
 
 interface WeekGridItem {
@@ -9,6 +10,7 @@ interface WeekGridItem {
   clienteNom: string
   prestationNom: string
   minutesSupplementaires: number
+  prestationCouleur: string | null
 }
 
 interface WeekGridAbsence {
@@ -40,20 +42,6 @@ const ABSENCE_DOT: Record<string, string> = {
   Vacances: 'bg-gold',
   'Jour off': 'bg-sage-dark',
   Autre: 'bg-danger',
-}
-
-function parseDureeMinutes(duree: string): number {
-  const hMatch = /(\d+)\s*h\s*(\d+)?/i.exec(duree)
-  if (hMatch) {
-    const total = Number(hMatch[1]) * 60 + Number(hMatch[2] ?? 0)
-    return total > 0 ? total : 60
-  }
-  const minMatch = /(\d+)\s*min/i.exec(duree)
-  if (minMatch) {
-    const total = Number(minMatch[1])
-    return total > 0 ? total : 60
-  }
-  return 60
 }
 
 function AgendaWeekGrid({ columns, onClickItem, onAddForColumn }: AgendaWeekGridProps) {
@@ -143,21 +131,29 @@ function AgendaWeekGrid({ columns, onClickItem, onAddForColumn }: AgendaWeekGrid
                   const minutesFromStart = (item.start.getHours() - startHour) * 60 + item.start.getMinutes()
                   const top = (minutesFromStart / 60) * HOUR_HEIGHT
                   const height = Math.max(18, (item.durationMin / 60) * HOUR_HEIGHT - 2)
+                  const isAnnule = item.statut === 'Annulé'
                   return (
                     <button
                       key={item.id}
                       onClick={() => onClickItem(item.id)}
-                      className={`absolute left-0.5 right-0.5 rounded-md overflow-hidden text-white text-left px-1 sm:px-1.5 hover:brightness-95 transition-[filter] ${avatarColorClass(item.prestationNom)}`}
-                      style={{ top, height }}
-                      title={`${item.clienteNom || 'Cliente inconnue'} — ${item.prestationNom || 'Prestation inconnue'}`}
+                      className={`absolute left-0.5 right-0.5 rounded-md overflow-hidden text-left px-1 sm:px-1.5 transition-[filter] ${
+                        isAnnule
+                          ? 'bg-border text-text-muted hover:brightness-95'
+                          : `text-white hover:brightness-95 ${item.prestationCouleur ? '' : avatarColorClass(item.prestationNom)}`
+                      }`}
+                      style={{ top, height, backgroundColor: !isAnnule && item.prestationCouleur ? item.prestationCouleur : undefined }}
+                      title={`${item.clienteNom || 'Cliente inconnue'} — ${item.prestationNom || 'Prestation inconnue'}${isAnnule ? ' (Annulé)' : ''}`}
                     >
-                      <span className="block text-[9px] sm:text-[11px] font-semibold leading-tight truncate">
+                      <span className={`block text-[9px] sm:text-[11px] font-semibold leading-tight truncate ${isAnnule ? 'line-through' : ''}`}>
                         {item.clienteNom || '?'}
                       </span>
                       <span className="hidden sm:block text-[9px] opacity-90 leading-tight truncate">
-                        {item.prestationNom}
+                        {isAnnule ? 'Annulé' : item.prestationNom}
                       </span>
-                      {item.statut === 'Annulé' && (
+                      <span className="hidden sm:block text-[9px] opacity-80 leading-tight truncate">
+                        {formatMinutes(item.durationMin)}
+                      </span>
+                      {isAnnule && (
                         <span className="absolute top-0 right-0.5">
                           <Icon name="x" size={8} />
                         </span>

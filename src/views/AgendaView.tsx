@@ -23,6 +23,7 @@ interface RdvItem {
   duree: string
   serieId: string | null
   minutesSupplementaires: number
+  prestationCouleur: string | null
 }
 
 interface Client {
@@ -260,6 +261,7 @@ function AgendaView() {
               clienteNom: item.clienteNom,
               prestationNom: item.prestationNom,
               minutesSupplementaires: item.minutesSupplementaires,
+              prestationCouleur: item.prestationCouleur,
             })),
           absences: absences
             .filter((a) => a.dateDebut && a.dateFin && a.dateDebut <= key && key <= a.dateFin)
@@ -426,6 +428,7 @@ function AgendaView() {
                   prestationNom: item.prestationNom,
                   prix: item.prix,
                   minutesSupplementaires: item.minutesSupplementaires,
+                  prestationCouleur: item.prestationCouleur,
                 }))}
               onClickItem={(id) => {
                 const item = state.items.find((i) => i.id === id)

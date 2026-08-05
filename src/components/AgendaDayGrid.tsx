@@ -1,4 +1,5 @@
 import { avatarColorClass } from '../lib/avatarColor'
+import { parseDureeMinutes, formatMinutes } from '../lib/duree'
 import RdvStatusPill from './RdvStatusPill'
 import Icon from './Icon'
 
@@ -11,6 +12,7 @@ interface GridItem {
   prestationNom: string
   prix: number | null
   minutesSupplementaires: number
+  prestationCouleur: string | null
 }
 
 interface AgendaDayGridProps {
@@ -22,20 +24,6 @@ interface AgendaDayGridProps {
 const HOUR_HEIGHT = 64
 const DEFAULT_START_HOUR = 8
 const DEFAULT_END_HOUR = 20
-
-function parseDureeMinutes(duree: string): number {
-  const hMatch = /(\d+)\s*h\s*(\d+)?/i.exec(duree)
-  if (hMatch) {
-    const total = Number(hMatch[1]) * 60 + Number(hMatch[2] ?? 0)
-    return total > 0 ? total : 60
-  }
-  const minMatch = /(\d+)\s*min/i.exec(duree)
-  if (minMatch) {
-    const total = Number(minMatch[1])
-    return total > 0 ? total : 60
-  }
-  return 60
-}
 
 function formatHeure(date: Date): string {
   return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
@@ -99,13 +87,19 @@ function AgendaDayGrid({ items, onClickItem, onSendReminder }: AgendaDayGridProp
             return (
               <div
                 key={item.id}
-                className={`absolute left-2 right-2 rounded-lg overflow-hidden text-white ${avatarColorClass(item.prestationNom)}`}
-                style={{ top, height }}
+                className={`absolute left-2 right-2 rounded-lg overflow-hidden ${
+                  item.statut === 'Annulé' ? 'bg-border text-text-muted' : `text-white ${item.prestationCouleur ? '' : avatarColorClass(item.prestationNom)}`
+                }`}
+                style={{ top, height, backgroundColor: item.statut !== 'Annulé' && item.prestationCouleur ? item.prestationCouleur : undefined }}
               >
                 <button onClick={() => onClickItem(item.id)} className="absolute inset-0 text-left px-3 py-1.5 hover:brightness-95 transition-[filter]">
-                  <div className="text-xs font-semibold truncate pr-16">{item.clienteNom || 'Cliente inconnue'}</div>
+                  <div className={`text-xs font-semibold truncate pr-16 ${item.statut === 'Annulé' ? 'line-through' : ''}`}>
+                    {item.clienteNom || 'Cliente inconnue'}
+                  </div>
                   <div className="text-[11px] opacity-90 truncate pr-16">
-                    {item.prestationNom || 'Prestation inconnue'} · {formatHeure(item.start)}–{formatHeure(item.end)}
+                    {item.statut === 'Annulé' ? 'Annulé' : item.prestationNom || 'Prestation inconnue'} · {formatHeure(item.start)}–{formatHeure(item.end)}
+                    {' · '}
+                    {formatMinutes(item.durationMin)}
                     {item.prix !== null ? ` · ${item.prix} €` : ''}
                   </div>
                 </button>

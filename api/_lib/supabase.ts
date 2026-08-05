@@ -91,6 +91,13 @@ export async function dbDelete(table: string, id: string): Promise<void> {
   if (error) throw new Error(`Supabase a répondu une erreur : ${error.message}`)
 }
 
+/** Bulk delete every row matching a single column filter (e.g. all rendezvous for a cliente_id). */
+export async function dbDeleteWhere(table: string, column: string, value: unknown): Promise<void> {
+  const sb = getClient()
+  const { error } = await sb.from(table).delete().eq(column, value)
+  if (error) throw new Error(`Supabase a répondu une erreur : ${error.message}`)
+}
+
 /**
  * Uploads a base64-encoded file to Supabase Storage and returns its public
  * URL. Buckets ("depenses-justificatifs", "factures-pdf") must exist and be

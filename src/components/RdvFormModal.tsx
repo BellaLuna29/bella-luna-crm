@@ -5,6 +5,7 @@ import SearchableSelect from './SearchableSelect'
 import { useToast } from './ToastProvider'
 import Modal from './Modal'
 import { computeCureProgress, cureTotalSeances } from '../lib/cureProgress'
+import { parseDureeMinutes, formatCreneau } from '../lib/duree'
 
 interface ClientOption {
   id: string
@@ -21,6 +22,7 @@ interface PrestationOption {
   categorie: string
   prix: number
   type: string
+  duree: string
 }
 
 interface RdvHistoryItem {
@@ -79,6 +81,9 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
   const [repeatIntervalWeeks, setRepeatIntervalWeeks] = useState(1)
   const [repeatCount, setRepeatCount] = useState(4)
   const [applyToSeries, setApplyToSeries] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   useEffect(() => {
     Promise.all([
@@ -107,6 +112,15 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
     const existing = cureProgress.find((c) => c.id === `${values.clienteId}__${values.prestationId}`)
     return { total, seancesFaites: existing?.seancesFaites ?? 0, label: prestation.nom }
   }, [values.clienteId, values.prestationId, prestations, cureProgress])
+
+  const creneau = useMemo(() => {
+    if (!values.date || !values.prestationId) return null
+    const prestation = prestations?.find((p) => p.id === values.prestationId)
+    if (!prestation) return null
+    const minutesSupp = Number(values.minutesSupplementaires) || 0
+    const totalMinutes = parseDureeMinutes(prestation.duree) + minutesSupp
+    return formatCreneau(values.date, totalMinutes)
+  }, [values.date, values.prestationId, values.minutesSupplementaires, prestations])
 
   function set<K extends keyof RdvFormInitial>(key: K, value: RdvFormInitial[K]) {
     setValues((v) => ({ ...v, [key]: value }))
@@ -217,6 +231,21 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
       setError(err instanceof ApiError ? err.message : 'Erreur inconnue.')
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function handleDelete() {
+    if (!rdvId) return
+    setDeleteError(null)
+    setDeleting(true)
+    try {
+      await apiFetch(getToken, `/api/rendezvous/${rdvId}`, { method: 'DELETE' })
+      showToast('Rendez-vous supprimé.')
+      onSaved()
+    } catch (err) {
+      setDeleteError(err instanceof ApiError ? err.message : 'Erreur inconnue.')
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -348,6 +377,11 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
               Si tu sais qu'il te faudra plus de temps avec cette cliente, ajoute-le ici — l'agenda réservera le
               créneau en conséquence.
             </p>
+            {creneau && (
+              <p className="text-xs font-semibold text-sage-dark bg-sage-pale rounded-[8px] px-2.5 py-1.5 mt-2 inline-block">
+                Créneau : {creneau}
+              </p>
+            )}
           </Field>
 
           {mode === 'create' && (
@@ -434,6 +468,47 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
           </Field>
 
           {error && <p className="text-sm text-danger">{error}</p>}
+
+          {mode === 'edit' && (
+            <div className="border-t border-border pt-3">
+              {!showDeleteConfirm ? (
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="text-xs font-semibold text-danger hover:underline"
+                >
+                  Supprimer définitivement ce rendez-vous
+                </button>
+              ) : (
+                <div className="bg-danger-pale rounded-[10px] p-3 flex flex-col gap-2">
+                  <p className="text-sm text-danger font-semibold">
+                    Supprimer ce rendez-vous ? Cette action est irréversible.
+                  </p>
+                  {deleteError && <p className="text-xs text-danger">{deleteError}</p>}
+                  <div className="flex justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowDeleteConfirm(false)
+                        setDeleteError(null)
+                      }}
+                      className="px-3 py-1.5 rounded-[8px] text-xs font-semibold text-text-muted hover:bg-white"
+                    >
+                      Annuler
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDelete}
+                      disabled={deleting}
+                      className="bg-danger text-white px-3.5 py-1.5 rounded-[8px] text-xs font-semibold disabled:opacity-50"
+                    >
+                      {deleting ? 'Suppression…' : 'Supprimer définitivement'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="flex justify-end gap-3 mt-2">
             <button

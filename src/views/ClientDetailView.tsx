@@ -107,6 +107,7 @@ function ClientDetailView({ clientId, onBack, embedded }: ClientDetailViewProps)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [supprimerTout, setSupprimerTout] = useState(false)
 
   const load = useCallback(() => {
     setState({ status: 'loading' })
@@ -131,7 +132,8 @@ function ClientDetailView({ clientId, onBack, embedded }: ClientDetailViewProps)
     setDeleteError(null)
     const nom = state.status === 'success' ? state.data.client.nomComplet : 'Cliente'
     try {
-      await apiFetch(getToken, `/api/clients/${clientId}`, { method: 'DELETE' })
+      const query = supprimerTout ? '?supprimerTout=1' : ''
+      await apiFetch(getToken, `/api/clients/${clientId}${query}`, { method: 'DELETE' })
       showToast(`${nom} supprimée.`)
       onBack()
     } catch (err) {
@@ -186,6 +188,7 @@ function ClientDetailView({ clientId, onBack, embedded }: ClientDetailViewProps)
             <button
               onClick={() => {
                 setDeleteError(null)
+                setSupprimerTout(false)
                 setShowDeleteConfirm(true)
               }}
               className="bg-white border border-border text-danger px-4 py-2 rounded-[10px] text-sm font-semibold hover:bg-danger-pale"
@@ -418,6 +421,21 @@ function ClientDetailView({ clientId, onBack, embedded }: ClientDetailViewProps)
           <p className="text-sm text-text-muted mb-4">
             {state.data.client.nomComplet} sera définitivement supprimée. Cette action est irréversible.
           </p>
+          {(state.data.historique.length > 0 || state.data.factures.length > 0) && (
+            <label className="flex items-start gap-2 text-sm bg-danger-pale rounded-[10px] p-3 mb-4">
+              <input
+                type="checkbox"
+                checked={supprimerTout}
+                onChange={(e) => setSupprimerTout(e.target.checked)}
+                className="w-4 h-4 mt-0.5"
+              />
+              <span>
+                Tout supprimer : ses <strong>{state.data.historique.length}</strong> rendez-vous et{' '}
+                <strong>{state.data.factures.length}</strong> facture(s) seront aussi supprimés définitivement. Sans
+                cette case, la suppression est bloquée tant qu'il reste des rendez-vous ou factures.
+              </span>
+            </label>
+          )}
           {deleteError && <p className="text-sm text-danger mb-4">{deleteError}</p>}
           <div className="flex justify-end gap-3">
             <button
@@ -431,7 +449,7 @@ function ClientDetailView({ clientId, onBack, embedded }: ClientDetailViewProps)
               disabled={deleting}
               className="bg-danger text-white px-5 py-2.5 rounded-[10px] text-sm font-semibold disabled:opacity-50"
             >
-              {deleting ? 'Suppression…' : 'Supprimer'}
+              {deleting ? 'Suppression…' : supprimerTout ? 'Tout supprimer' : 'Supprimer'}
             </button>
           </div>
         </Modal>

@@ -982,6 +982,17 @@ export function parsePrestationInput(
     else fields.type = v
   }
 
+  if ('couleur' in b) {
+    const v = b.couleur
+    if (v === null || v === '') {
+      fields.couleur = null
+    } else if (typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v)) {
+      fields.couleur = v
+    } else {
+      errors.push('La couleur doit être un code hexadécimal valide (ex : #6F8E72).')
+    }
+  }
+
   if (errors.length > 0) return { errors }
   return { fields }
 }

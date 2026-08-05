@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { dbUpdate, dbList, dbCreate, dbGet, SupabaseConfigError, UUID_RE } from '../_lib/supabase.js'
+import { dbUpdate, dbList, dbCreate, dbGet, dbDelete, SupabaseConfigError, UUID_RE } from '../_lib/supabase.js'
 import { setCorsHeaders } from '../_lib/cors.js'
 import { requireAuth, AuthError } from '../_lib/auth.js'
 import { parseRendezVousInput } from '../_lib/mappers.js'
@@ -59,7 +59,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     res.status(204).end()
     return
   }
-  if (req.method !== 'PATCH') {
+  if (req.method !== 'PATCH' && req.method !== 'DELETE') {
     res.status(405).json({ error: 'Méthode non autorisée.' })
     return
   }
@@ -74,6 +74,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
   const id = req.query.id
   if (typeof id !== 'string' || !UUID_RE.test(id)) {
     res.status(400).json({ error: 'Identifiant de rendez-vous invalide.' })
+    return
+  }
+
+  if (req.method === 'DELETE') {
+    try {
+      await dbDelete(TABLE_RENDEZVOUS, id)
+      res.status(204).end()
+    } catch (error) {
+      if (error instanceof SupabaseConfigError) {
+        res.status(500).json({ error: error.message })
+        return
+      }
+      console.error(error)
+      res.status(502).json({ error: 'Impossible de supprimer le rendez-vous dans la base de données.' })
+    }
     return
   }
 

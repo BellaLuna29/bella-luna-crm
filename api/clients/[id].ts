@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { dbGet, dbUpdate, dbDelete, dbList, dbGetByIds, SupabaseConfigError, UUID_RE } from '../_lib/supabase.js'
+import { dbGet, dbUpdate, dbDelete, dbDeleteWhere, dbList, dbGetByIds, SupabaseConfigError, UUID_RE } from '../_lib/supabase.js'
 import { setCorsHeaders } from '../_lib/cors.js'
 import { requireAuth, AuthError } from '../_lib/auth.js'
 import { mapClient, parseClientInput } from '../_lib/mappers.js'
@@ -80,16 +80,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
   }
 
   if (req.method === 'DELETE') {
+    const supprimerTout = req.query.supprimerTout === '1' || req.query.supprimerTout === 'true'
     try {
       const [rdvRows, factureRows] = await Promise.all([
         dbList(TABLE_RENDEZVOUS, { select: 'id', eq: ['cliente_id', id] }),
         dbList(TABLE_FACTURES, { select: 'id', eq: ['cliente_id', id] }),
       ])
-      if (rdvRows.length > 0 || factureRows.length > 0) {
+      if ((rdvRows.length > 0 || factureRows.length > 0) && !supprimerTout) {
         res.status(409).json({
-          error: `Impossible de supprimer : cette cliente a ${rdvRows.length} rendez-vous et ${factureRows.length} facture(s) enregistrés. Passez plutôt son statut à « Inactive ».`,
+          error: `Impossible de supprimer : cette cliente a ${rdvRows.length} rendez-vous et ${factureRows.length} facture(s) enregistrés. Passez plutôt son statut à « Inactive », ou choisis de tout supprimer.`,
         })
         return
+      }
+      if (supprimerTout) {
+        await Promise.all([
+          dbDeleteWhere(TABLE_FACTURES, 'cliente_id', id),
+          dbDeleteWhere(TABLE_RENDEZVOUS, 'cliente_id', id),
+        ])
       }
       await dbDelete(TABLE_CLIENTS, id)
       res.status(200).json({ ok: true })

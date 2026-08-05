@@ -10,6 +10,7 @@ interface Prestation {
   duree: string
   prix: number
   type: string
+  couleur: string | null
 }
 
 type State =
@@ -22,10 +23,192 @@ interface FormState {
   categorie: string
   duree: string
   prix: string
+  estSerie: boolean
+  nbSeances: string
   type: string
+  couleurActive: boolean
+  couleur: string
 }
 
-const EMPTY_FORM: FormState = { nom: '', categorie: '', duree: '', prix: '', type: '' }
+const DEFAULT_COULEUR = '#6F8E72'
+const CURE_RE = /^cure\s+(\d+)\s*s[ée]ances?$/i
+
+const EMPTY_FORM: FormState = {
+  nom: '',
+  categorie: '',
+  duree: '',
+  prix: '',
+  estSerie: false,
+  nbSeances: '',
+  type: '',
+  couleurActive: false,
+  couleur: DEFAULT_COULEUR,
+}
+
+function formStateFromPrestation(p: Prestation): FormState {
+  const match = CURE_RE.exec(p.type.trim())
+  return {
+    nom: p.nom,
+    categorie: p.categorie,
+    duree: p.duree,
+    prix: String(p.prix),
+    estSerie: Boolean(match),
+    nbSeances: match ? match[1] : '',
+    type: match ? '' : p.type,
+    couleurActive: Boolean(p.couleur),
+    couleur: p.couleur ?? DEFAULT_COULEUR,
+  }
+}
+
+interface PrestationFieldsProps {
+  f: FormState
+  setF: (updater: (prev: FormState) => FormState) => void
+  categories: string[]
+  types: string[]
+}
+
+function PrestationFields({ f, setF, categories, types }: PrestationFieldsProps) {
+  return (
+    <>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <label className="block">
+          <span className="block text-xs font-semibold text-text-muted mb-1">Nom de la prestation *</span>
+          <input
+            type="text"
+            value={f.nom}
+            onChange={(e) => setF((v) => ({ ...v, nom: e.target.value }))}
+            className="input"
+            placeholder="Ex : Massage Signature"
+          />
+        </label>
+        <label className="block">
+          <span className="block text-xs font-semibold text-text-muted mb-1">Catégorie</span>
+          <input
+            type="text"
+            list="prestation-categories"
+            value={f.categorie}
+            onChange={(e) => setF((v) => ({ ...v, categorie: e.target.value }))}
+            className="input"
+            placeholder="Ex : Massages Relaxants"
+          />
+        </label>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <label className="block">
+          <span className="block text-xs font-semibold text-text-muted mb-1">Durée d'une séance</span>
+          <input
+            type="text"
+            value={f.duree}
+            onChange={(e) => setF((v) => ({ ...v, duree: e.target.value }))}
+            className="input"
+            placeholder="Ex : 1h15, 45min"
+          />
+          <p className="text-[11px] text-text-muted mt-0.5">
+            Durée d'UNE séance, même pour une série. Laisse vide si tu ne sais pas — tu pourras le remplir plus tard.
+          </p>
+        </label>
+        <label className="block">
+          <span className="block text-xs font-semibold text-text-muted mb-1">Prix (€) *</span>
+          <input
+            type="number"
+            min={0}
+            step="0.01"
+            value={f.prix}
+            onChange={(e) => setF((v) => ({ ...v, prix: e.target.value }))}
+            className="input"
+          />
+          {f.estSerie && (
+            <p className="text-[11px] text-text-muted mt-0.5">Prix du forfait complet, pas d'une seule séance.</p>
+          )}
+        </label>
+      </div>
+
+      <div className="bg-sage-pale rounded-[10px] p-3">
+        <span className="block text-xs font-semibold text-text-muted mb-2">
+          Séance unique ou série (cure/passeport) ?
+        </span>
+        <div className="flex items-center gap-4 flex-wrap">
+          <label className="flex items-center gap-1.5 text-sm">
+            <input
+              type="radio"
+              checked={!f.estSerie}
+              onChange={() => setF((v) => ({ ...v, estSerie: false }))}
+              className="w-4 h-4"
+            />
+            Séance unique
+          </label>
+          <label className="flex items-center gap-1.5 text-sm">
+            <input
+              type="radio"
+              checked={f.estSerie}
+              onChange={() => setF((v) => ({ ...v, estSerie: true }))}
+              className="w-4 h-4"
+            />
+            Série (cure / passeport)
+          </label>
+          {f.estSerie && (
+            <label className="flex items-center gap-1.5 text-sm">
+              <span className="text-xs text-text-muted">Nombre de séances</span>
+              <input
+                type="number"
+                min={2}
+                value={f.nbSeances}
+                onChange={(e) => setF((v) => ({ ...v, nbSeances: e.target.value }))}
+                className="input max-w-20"
+              />
+            </label>
+          )}
+        </div>
+        {!f.estSerie && (
+          <label className="block mt-2">
+            <span className="block text-xs font-semibold text-text-muted mb-1">Type (optionnel)</span>
+            <input
+              type="text"
+              list="prestation-types"
+              value={f.type}
+              onChange={(e) => setF((v) => ({ ...v, type: e.target.value }))}
+              className="input max-w-xs"
+              placeholder="Ex : Consultation, Dépose, Remplissage..."
+            />
+            <datalist id="prestation-types">
+              {types.map((t) => (
+                <option key={t} value={t} />
+              ))}
+            </datalist>
+          </label>
+        )}
+      </div>
+
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={f.couleurActive}
+          onChange={(e) => setF((v) => ({ ...v, couleurActive: e.target.checked }))}
+          className="w-4 h-4"
+        />
+        Couleur personnalisée dans l'agenda
+      </label>
+      {f.couleurActive && (
+        <label className="flex items-center gap-2">
+          <input
+            type="color"
+            value={f.couleur}
+            onChange={(e) => setF((v) => ({ ...v, couleur: e.target.value }))}
+            className="w-10 h-8 rounded border border-border cursor-pointer"
+          />
+          <span className="text-xs text-text-muted">Couleur des rendez-vous de cette prestation dans l'agenda</span>
+        </label>
+      )}
+
+      <datalist id="prestation-categories">
+        {categories.map((c) => (
+          <option key={c} value={c} />
+        ))}
+      </datalist>
+    </>
+  )
+}
 
 function PrestationsView() {
   const { getToken } = useAuth()
@@ -56,7 +239,7 @@ function PrestationsView() {
     if (state.status !== 'success') return { categories: [], types: [] }
     return {
       categories: Array.from(new Set(state.prestations.map((p) => p.categorie).filter(Boolean))).sort(),
-      types: Array.from(new Set(state.prestations.map((p) => p.type).filter(Boolean))).sort(),
+      types: Array.from(new Set(state.prestations.map((p) => p.type).filter((t) => t && !CURE_RE.test(t)))).sort(),
     }
   }, [state])
 
@@ -75,7 +258,8 @@ function PrestationsView() {
       categorie: f.categorie.trim(),
       duree: f.duree.trim(),
       prix: Number(f.prix),
-      type: f.type.trim(),
+      type: f.estSerie ? `Cure ${f.nbSeances.trim()} séances` : f.type.trim(),
+      couleur: f.couleurActive && f.couleur ? f.couleur : null,
     }
   }
 
@@ -83,6 +267,10 @@ function PrestationsView() {
     if (!f.nom.trim()) return 'Le nom de la prestation est obligatoire.'
     const prix = Number(f.prix)
     if (!Number.isFinite(prix) || prix < 0) return 'Le prix doit être un nombre positif.'
+    if (f.estSerie) {
+      const n = Number(f.nbSeances)
+      if (!Number.isInteger(n) || n < 2) return 'Le nombre de séances de la série doit être un entier d\'au moins 2.'
+    }
     return null
   }
 
@@ -109,7 +297,7 @@ function PrestationsView() {
 
   function startEdit(p: Prestation) {
     setEditingId(p.id)
-    setEditForm({ nom: p.nom, categorie: p.categorie, duree: p.duree, prix: String(p.prix), type: p.type })
+    setEditForm(formStateFromPrestation(p))
     setFormError(null)
   }
 
@@ -167,77 +355,7 @@ function PrestationsView() {
 
       {showCreate && (
         <form onSubmit={handleCreate} className="bg-white border border-border rounded-2xl p-5 mb-5 flex flex-col gap-3">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <label className="block">
-              <span className="block text-xs font-semibold text-text-muted mb-1">Nom de la prestation *</span>
-              <input
-                type="text"
-                value={form.nom}
-                onChange={(e) => setForm((f) => ({ ...f, nom: e.target.value }))}
-                className="input"
-                placeholder="Ex : Massage Signature"
-              />
-            </label>
-            <label className="block">
-              <span className="block text-xs font-semibold text-text-muted mb-1">Catégorie</span>
-              <input
-                type="text"
-                list="prestation-categories"
-                value={form.categorie}
-                onChange={(e) => setForm((f) => ({ ...f, categorie: e.target.value }))}
-                className="input"
-                placeholder="Ex : Massages Relaxants"
-              />
-              <datalist id="prestation-categories">
-                {categories.map((c) => (
-                  <option key={c} value={c} />
-                ))}
-              </datalist>
-            </label>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <label className="block">
-              <span className="block text-xs font-semibold text-text-muted mb-1">Durée</span>
-              <input
-                type="text"
-                value={form.duree}
-                onChange={(e) => setForm((f) => ({ ...f, duree: e.target.value }))}
-                className="input"
-                placeholder="Ex : 60 min, 1h30"
-              />
-            </label>
-            <label className="block">
-              <span className="block text-xs font-semibold text-text-muted mb-1">Prix (€) *</span>
-              <input
-                type="number"
-                min={0}
-                step="0.01"
-                value={form.prix}
-                onChange={(e) => setForm((f) => ({ ...f, prix: e.target.value }))}
-                className="input"
-              />
-            </label>
-            <label className="block">
-              <span className="block text-xs font-semibold text-text-muted mb-1">Type</span>
-              <input
-                type="text"
-                list="prestation-types"
-                value={form.type}
-                onChange={(e) => setForm((f) => ({ ...f, type: e.target.value }))}
-                className="input"
-                placeholder="Ex : Séance unique, Cure 8 séances"
-              />
-              <datalist id="prestation-types">
-                {types.map((t) => (
-                  <option key={t} value={t} />
-                ))}
-              </datalist>
-            </label>
-          </div>
-          <p className="text-xs text-text-muted">
-            Astuce : pour qu'une prestation soit suivie automatiquement comme une cure (progression des séances), donne
-            au Type le format « Cure X séances » (ex : « Cure 8 séances »).
-          </p>
+          <PrestationFields f={form} setF={setForm} categories={categories} types={types} />
           {formError && <p className="text-sm text-danger">{formError}</p>}
           <div className="flex justify-end gap-3">
             <button
@@ -269,9 +387,9 @@ function PrestationsView() {
           <table className="w-full border-collapse">
             <thead>
               <tr>
-                {['Prestation', 'Catégorie', 'Durée', 'Prix', 'Type', ''].map((h) => (
+                {['', 'Prestation', 'Catégorie', 'Durée', 'Prix', 'Type', ''].map((h, i) => (
                   <th
-                    key={h}
+                    key={i}
                     className="text-left text-[11px] text-text-muted font-semibold uppercase tracking-wide px-4 pb-2.5 pt-4 border-b border-border"
                   >
                     {h}
@@ -283,69 +401,38 @@ function PrestationsView() {
               {filtered.map((p) =>
                 editingId === p.id ? (
                   <tr key={p.id} className="bg-sage-pale">
-                    <td className="px-4 py-3">
-                      <input
-                        type="text"
-                        value={editForm.nom}
-                        onChange={(e) => setEditForm((f) => ({ ...f, nom: e.target.value }))}
-                        className="input"
-                      />
-                    </td>
-                    <td className="px-4 py-3">
-                      <input
-                        type="text"
-                        list="prestation-categories"
-                        value={editForm.categorie}
-                        onChange={(e) => setEditForm((f) => ({ ...f, categorie: e.target.value }))}
-                        className="input"
-                      />
-                    </td>
-                    <td className="px-4 py-3">
-                      <input
-                        type="text"
-                        value={editForm.duree}
-                        onChange={(e) => setEditForm((f) => ({ ...f, duree: e.target.value }))}
-                        className="input"
-                      />
-                    </td>
-                    <td className="px-4 py-3">
-                      <input
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        value={editForm.prix}
-                        onChange={(e) => setEditForm((f) => ({ ...f, prix: e.target.value }))}
-                        className="input"
-                      />
-                    </td>
-                    <td className="px-4 py-3" colSpan={2}>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <input
-                          type="text"
-                          list="prestation-types"
-                          value={editForm.type}
-                          onChange={(e) => setEditForm((f) => ({ ...f, type: e.target.value }))}
-                          className="input max-w-40"
-                        />
-                        {formError && <p className="text-xs text-danger w-full">{formError}</p>}
-                        <button
-                          onClick={() => saveEdit(p.id)}
-                          disabled={saving}
-                          className="text-xs font-semibold text-sage-dark hover:underline"
-                        >
-                          Enregistrer
-                        </button>
-                        <button
-                          onClick={() => setEditingId(null)}
-                          className="text-xs font-semibold text-text-muted hover:underline"
-                        >
-                          Annuler
-                        </button>
+                    <td colSpan={7} className="px-4 py-4">
+                      <div className="flex flex-col gap-3 max-w-2xl">
+                        <PrestationFields f={editForm} setF={setEditForm} categories={categories} types={types} />
+                        {formError && <p className="text-xs text-danger">{formError}</p>}
+                        <div className="flex justify-end gap-3">
+                          <button
+                            type="button"
+                            onClick={() => setEditingId(null)}
+                            className="px-3 py-1.5 rounded-[8px] text-xs font-semibold text-text-muted hover:bg-white"
+                          >
+                            Annuler
+                          </button>
+                          <button
+                            onClick={() => saveEdit(p.id)}
+                            disabled={saving}
+                            className="bg-sage-dark text-white px-3.5 py-1.5 rounded-[8px] text-xs font-semibold disabled:opacity-50"
+                          >
+                            {saving ? 'Enregistrement…' : 'Enregistrer'}
+                          </button>
+                        </div>
                       </div>
                     </td>
                   </tr>
                 ) : (
                   <tr key={p.id} className="hover:bg-sage-pale transition-colors">
+                    <td className="pl-4 py-3.5 border-b border-sage-light">
+                      <span
+                        className="block w-3 h-3 rounded-full border border-border/50"
+                        style={{ backgroundColor: p.couleur ?? '#D9D2C4' }}
+                        title={p.couleur ? 'Couleur personnalisée' : 'Couleur automatique'}
+                      />
+                    </td>
                     <td className="px-4 py-3.5 border-b border-sage-light text-sm font-semibold">{p.nom}</td>
                     <td className="px-4 py-3.5 border-b border-sage-light text-sm text-text-muted">
                       {p.categorie || '—'}
@@ -384,7 +471,7 @@ function PrestationsView() {
               )}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-sm text-text-muted">
+                  <td colSpan={7} className="px-4 py-8 text-center text-sm text-text-muted">
                     Aucune prestation ne correspond à la recherche.
                   </td>
                 </tr>

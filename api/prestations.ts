@@ -57,6 +57,7 @@ interface Prestation {
   duree: string
   prix: number
   type: string
+  couleur: string | null
 }
 
 interface PromotionItem {
@@ -1035,6 +1036,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
           duree: (r.duree as string) ?? '',
           prix: (r.prix as number) ?? 0,
           type: (r.type as string) ?? '',
+          couleur: (r.couleur as string) ?? null,
         }))
         .sort((a, b) => a.categorie.localeCompare(b.categorie) || a.nom.localeCompare(b.nom))
       res.status(200).json({ prestations })
