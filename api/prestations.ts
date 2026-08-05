@@ -64,6 +64,8 @@ interface PromotionItem {
   id: string
   nom: string
   reduction: number | null
+  reductionMontant: number | null
+  typeReduction: string
   active: boolean
   dateExpiration: string | null
 }
@@ -267,6 +269,8 @@ async function handlePromotions(req: VercelRequest, res: VercelResponse): Promis
           id: r.id,
           nom: (r.nom as string) ?? '',
           reduction: (r.reduction as number) ?? null,
+          reductionMontant: (r.reduction_montant as number) ?? null,
+          typeReduction: (r.type_reduction as string) || 'pourcentage',
           active: Boolean(r.active),
           dateExpiration: (r.date_expiration as string) ?? null,
         }))

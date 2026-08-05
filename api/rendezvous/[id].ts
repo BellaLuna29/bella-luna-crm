@@ -80,7 +80,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
   if (req.method === 'DELETE') {
     try {
       await dbDelete(TABLE_RENDEZVOUS, id)
-      res.status(204).end()
+      res.status(200).json({ ok: true })
     } catch (error) {
       if (error instanceof SupabaseConfigError) {
         res.status(500).json({ error: error.message })

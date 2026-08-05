@@ -13,6 +13,8 @@ interface PromoOption {
   id: string
   nom: string
   reduction: number | null
+  reductionMontant: number | null
+  typeReduction: string
   active: boolean
 }
 
@@ -229,7 +231,13 @@ function FactureFormModal({ mode, factureId, initialValues, onClose, onSaved }: 
                 {(promos ?? []).map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.nom}
-                    {p.reduction ? ` (-${Math.round(p.reduction * 100)}%)` : ''}
+                    {p.typeReduction === 'montant'
+                      ? p.reductionMontant
+                        ? ` (-${p.reductionMontant} €)`
+                        : ''
+                      : p.reduction
+                        ? ` (-${Math.round(p.reduction * 100)}%)`
+                        : ''}
                     {!p.active ? ' (inactive)' : ''}
                   </option>
                 ))}

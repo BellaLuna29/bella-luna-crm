@@ -6,6 +6,8 @@ interface Promotion {
   id: string
   nom: string
   reduction: number | null
+  reductionMontant: number | null
+  typeReduction: string
   active: boolean
   dateExpiration: string | null
 }
@@ -22,14 +24,90 @@ function formatDate(iso: string | null): string {
   return date.toLocaleDateString('fr-FR')
 }
 
+function formatReduction(p: Promotion): string {
+  if (p.typeReduction === 'montant') {
+    return p.reductionMontant !== null ? `-${p.reductionMontant} €` : '—'
+  }
+  return p.reduction !== null ? `-${Math.round(p.reduction * 100)} %` : '—'
+}
+
 interface FormState {
   nom: string
+  typeReduction: 'pourcentage' | 'montant'
   reductionPct: string
+  reductionMontant: string
   dateExpiration: string
   active: boolean
 }
 
-const EMPTY_FORM: FormState = { nom: '', reductionPct: '', dateExpiration: '', active: true }
+const EMPTY_FORM: FormState = {
+  nom: '',
+  typeReduction: 'pourcentage',
+  reductionPct: '',
+  reductionMontant: '',
+  dateExpiration: '',
+  active: true,
+}
+
+function promotionToForm(p: Promotion): FormState {
+  const typeReduction = p.typeReduction === 'montant' ? 'montant' : 'pourcentage'
+  return {
+    nom: p.nom,
+    typeReduction,
+    reductionPct: p.reduction !== null ? String(Math.round(p.reduction * 100)) : '',
+    reductionMontant: p.reductionMontant !== null ? String(p.reductionMontant) : '',
+    dateExpiration: p.dateExpiration ?? '',
+    active: p.active,
+  }
+}
+
+interface ReductionFieldsProps {
+  f: FormState
+  setF: (updater: (prev: FormState) => FormState) => void
+}
+
+function ReductionFields({ f, setF }: ReductionFieldsProps) {
+  return (
+    <>
+      <label className="block">
+        <span className="block text-xs font-semibold text-text-muted mb-1">Type de réduction</span>
+        <select
+          value={f.typeReduction}
+          onChange={(e) => setF((v) => ({ ...v, typeReduction: e.target.value as FormState['typeReduction'] }))}
+          className="input"
+        >
+          <option value="pourcentage">Pourcentage</option>
+          <option value="montant">Montant fixe (€)</option>
+        </select>
+      </label>
+      {f.typeReduction === 'pourcentage' ? (
+        <label className="block">
+          <span className="block text-xs font-semibold text-text-muted mb-1">Réduction (%) *</span>
+          <input
+            type="number"
+            min={1}
+            max={100}
+            value={f.reductionPct}
+            onChange={(e) => setF((v) => ({ ...v, reductionPct: e.target.value }))}
+            className="input"
+          />
+        </label>
+      ) : (
+        <label className="block">
+          <span className="block text-xs font-semibold text-text-muted mb-1">Réduction (€) *</span>
+          <input
+            type="number"
+            min={0.01}
+            step="0.01"
+            value={f.reductionMontant}
+            onChange={(e) => setF((v) => ({ ...v, reductionMontant: e.target.value }))}
+            className="input"
+          />
+        </label>
+      )}
+    </>
+  )
+}
 
 function PromotionsManager() {
   const { getToken } = useAuth()
@@ -56,35 +134,44 @@ function PromotionsManager() {
   }, [load])
 
   function toBody(f: FormState) {
-    const pct = Number(f.reductionPct)
     return {
       nom: f.nom.trim(),
-      reduction: Number.isFinite(pct) ? pct / 100 : undefined,
+      typeReduction: f.typeReduction,
+      reduction: f.typeReduction === 'pourcentage' ? Number(f.reductionPct) / 100 : undefined,
+      reductionMontant: f.typeReduction === 'montant' ? Number(f.reductionMontant) : undefined,
       dateExpiration: f.dateExpiration || null,
       active: f.active,
     }
   }
 
+  function validate(f: FormState): string | null {
+    if (!f.nom.trim()) return 'Le nom est obligatoire.'
+    if (f.typeReduction === 'pourcentage') {
+      const pct = Number(f.reductionPct)
+      if (!Number.isFinite(pct) || pct <= 0 || pct > 100) return 'La réduction doit être un pourcentage entre 1 et 100.'
+    } else {
+      const montant = Number(f.reductionMontant)
+      if (!Number.isFinite(montant) || montant <= 0) return 'Le montant de la réduction doit être un nombre positif.'
+    }
+    return null
+  }
+
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
+    const err = validate(form)
+    if (err) {
+      setFormError(err)
+      return
+    }
     setFormError(null)
-    if (!form.nom.trim()) {
-      setFormError('Le nom est obligatoire.')
-      return
-    }
-    const pct = Number(form.reductionPct)
-    if (!Number.isFinite(pct) || pct <= 0 || pct > 100) {
-      setFormError('La réduction doit être un pourcentage entre 1 et 100.')
-      return
-    }
     setSaving(true)
     try {
       await apiFetch(getToken, '/api/prestations?resource=promotions', { method: 'POST', body: toBody(form) })
       setForm(EMPTY_FORM)
       setShowCreate(false)
       load()
-    } catch (err) {
-      setFormError(err instanceof ApiError ? err.message : 'Erreur inconnue.')
+    } catch (err2) {
+      setFormError(err2 instanceof ApiError ? err2.message : 'Erreur inconnue.')
     } finally {
       setSaving(false)
     }
@@ -92,22 +179,17 @@ function PromotionsManager() {
 
   function startEdit(p: Promotion) {
     setEditingId(p.id)
-    setEditForm({
-      nom: p.nom,
-      reductionPct: p.reduction !== null ? String(Math.round(p.reduction * 100)) : '',
-      dateExpiration: p.dateExpiration ?? '',
-      active: p.active,
-    })
+    setEditForm(promotionToForm(p))
     setFormError(null)
   }
 
   async function saveEdit(id: string) {
-    setFormError(null)
-    const pct = Number(editForm.reductionPct)
-    if (!editForm.nom.trim() || !Number.isFinite(pct) || pct <= 0 || pct > 100) {
-      setFormError('Nom et réduction (1-100%) sont obligatoires.')
+    const err = validate(editForm)
+    if (err) {
+      setFormError(err)
       return
     }
+    setFormError(null)
     setSaving(true)
     try {
       await apiFetch(getToken, `/api/prestations?resource=promotions&id=${id}`, {
@@ -116,8 +198,8 @@ function PromotionsManager() {
       })
       setEditingId(null)
       load()
-    } catch (err) {
-      setFormError(err instanceof ApiError ? err.message : 'Erreur inconnue.')
+    } catch (err2) {
+      setFormError(err2 instanceof ApiError ? err2.message : 'Erreur inconnue.')
     } finally {
       setSaving(false)
     }
@@ -163,7 +245,7 @@ function PromotionsManager() {
 
       {showCreate && (
         <form onSubmit={handleCreate} className="bg-white border border-border rounded-2xl p-5 mb-5 flex flex-col gap-3">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
             <label className="block">
               <span className="block text-xs font-semibold text-text-muted mb-1">Nom du code *</span>
               <input
@@ -174,17 +256,7 @@ function PromotionsManager() {
                 placeholder="Ex : ETE2026"
               />
             </label>
-            <label className="block">
-              <span className="block text-xs font-semibold text-text-muted mb-1">Réduction (%) *</span>
-              <input
-                type="number"
-                min={1}
-                max={100}
-                value={form.reductionPct}
-                onChange={(e) => setForm((f) => ({ ...f, reductionPct: e.target.value }))}
-                className="input"
-              />
-            </label>
+            <ReductionFields f={form} setF={setForm} />
             <label className="block">
               <span className="block text-xs font-semibold text-text-muted mb-1">Date d'expiration</span>
               <input
@@ -248,23 +320,10 @@ function PromotionsManager() {
                         className="input"
                       />
                     </td>
-                    <td className="px-4 py-3">
-                      <input
-                        type="number"
-                        min={1}
-                        max={100}
-                        value={editForm.reductionPct}
-                        onChange={(e) => setEditForm((f) => ({ ...f, reductionPct: e.target.value }))}
-                        className="input"
-                      />
-                    </td>
-                    <td className="px-4 py-3">
-                      <input
-                        type="date"
-                        value={editForm.dateExpiration}
-                        onChange={(e) => setEditForm((f) => ({ ...f, dateExpiration: e.target.value }))}
-                        className="input"
-                      />
+                    <td className="px-4 py-3" colSpan={2}>
+                      <div className="grid grid-cols-2 gap-2 max-w-sm">
+                        <ReductionFields f={editForm} setF={setEditForm} />
+                      </div>
                     </td>
                     <td className="px-4 py-3" colSpan={2}>
                       <div className="flex items-center gap-3 flex-wrap">
@@ -288,9 +347,7 @@ function PromotionsManager() {
                 ) : (
                   <tr key={p.id} className="hover:bg-sage-pale transition-colors">
                     <td className="px-4 py-3.5 border-b border-sage-light text-sm font-semibold">{p.nom}</td>
-                    <td className="px-4 py-3.5 border-b border-sage-light text-sm">
-                      {p.reduction !== null ? `${Math.round(p.reduction * 100)} %` : '—'}
-                    </td>
+                    <td className="px-4 py-3.5 border-b border-sage-light text-sm">{formatReduction(p)}</td>
                     <td className="px-4 py-3.5 border-b border-sage-light text-sm text-text-muted">
                       {formatDate(p.dateExpiration)}
                     </td>

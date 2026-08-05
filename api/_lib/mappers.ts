@@ -451,14 +451,32 @@ export function parsePromotionInput(
     if (v.length > 0) fields.nom = v
   }
 
-  if ('reduction' in b || requireCore) {
-    const v = b.reduction
-    const num = typeof v === 'number' ? v : Number(v)
-    if (typeof v === 'number' || (requireCore && v !== undefined)) {
-      if (Number.isFinite(num) && num > 0 && num <= 1) fields.reduction = num
-      else errors.push('La réduction doit être comprise entre 0 et 1 (ex. 0.1 pour 10%).')
-    } else if (requireCore) {
-      errors.push('La réduction est obligatoire.')
+  const PROMO_TYPE_REDUCTION_VALUES = ['pourcentage', 'montant'] as const
+  if ('typeReduction' in b || requireCore) {
+    const v = 'typeReduction' in b ? b.typeReduction : 'pourcentage'
+    if (typeof v === 'string' && (PROMO_TYPE_REDUCTION_VALUES as readonly string[]).includes(v)) {
+      fields.type_reduction = v
+      if (v === 'montant') {
+        const mv = b.reductionMontant
+        const num = typeof mv === 'number' ? mv : Number(mv)
+        if (Number.isFinite(num) && num > 0) {
+          fields.reduction_montant = num
+          fields.reduction = null
+        } else {
+          errors.push('Le montant de la réduction doit être un nombre positif.')
+        }
+      } else {
+        const rv = b.reduction
+        const num = typeof rv === 'number' ? rv : Number(rv)
+        if (Number.isFinite(num) && num > 0 && num <= 1) {
+          fields.reduction = num
+          fields.reduction_montant = null
+        } else {
+          errors.push('La réduction doit être comprise entre 0 et 1 (ex. 0.1 pour 10%).')
+        }
+      }
+    } else {
+      errors.push('Type de réduction invalide.')
     }
   }
 
