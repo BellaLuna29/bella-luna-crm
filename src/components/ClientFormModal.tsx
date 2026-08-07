@@ -13,6 +13,7 @@ export interface ClientFormValues {
   metier: string
   categorieMetier: string
   hobbies: string
+  reseauxSociaux: string
   notes: string
   statut: string
   newsletter: boolean
@@ -33,6 +34,7 @@ const EMPTY_VALUES: ClientFormValues = {
   metier: '',
   categorieMetier: '',
   hobbies: '',
+  reseauxSociaux: '',
   notes: '',
   statut: 'Nouvelle',
   newsletter: false,
@@ -83,6 +85,7 @@ function ClientFormModal({ mode, clientId, initialValues, onClose, onSaved }: Cl
         metier: values.metier.trim(),
         categorieMetier: values.categorieMetier,
         hobbies: values.hobbies.trim(),
+        reseauxSociaux: values.reseauxSociaux.trim(),
         notes: values.notes.trim(),
         statut: values.statut,
         newsletter: values.newsletter,
@@ -203,6 +206,17 @@ function ClientFormModal({ mode, clientId, initialValues, onClose, onSaved }: Cl
             onChange={(e) => set('hobbies', e.target.value)}
             maxLength={200}
             placeholder="Ex : tennis, course à pied, yoga..."
+            className="input"
+          />
+        </Field>
+
+        <Field label="Réseaux sociaux">
+          <input
+            type="text"
+            value={values.reseauxSociaux}
+            onChange={(e) => set('reseauxSociaux', e.target.value)}
+            maxLength={200}
+            placeholder="Ex : @prenom.nom (Instagram)"
             className="input"
           />
         </Field>

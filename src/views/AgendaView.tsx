@@ -38,6 +38,7 @@ interface AbsenceItem {
   dateDebut: string | null
   dateFin: string | null
   type: string
+  demiJournee: string | null
 }
 
 type State =
@@ -113,6 +114,8 @@ function AgendaView() {
   const [absenceModal, setAbsenceModal] = useState<{ initialDate?: string } | null>(null)
   const [absenceError, setAbsenceError] = useState<string | null>(null)
   const [clients, setClients] = useState<Client[]>([])
+  const [prestationsLegend, setPrestationsLegend] = useState<{ id: string; nom: string; couleur: string | null }[]>([])
+  const [showLegend, setShowLegend] = useState(false)
   const [composer, setComposer] = useState<{ context: TemplateContext; telephone: string; email: string } | null>(
     null,
   )
@@ -141,11 +144,19 @@ function AgendaView() {
   }, [getToken])
 
   useEffect(() => {
+    if (window.matchMedia('(max-width: 640px)').matches) setViewMode('jour')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
     load()
     loadAbsences()
     apiFetch<{ clients: Client[] }>(getToken, '/api/clients')
       .then((data) => setClients(data.clients))
       .catch(() => setClients([]))
+    apiFetch<{ prestations: { id: string; nom: string; couleur: string | null }[] }>(getToken, '/api/prestations')
+      .then((data) => setPrestationsLegend(data.prestations.filter((p) => p.couleur)))
+      .catch(() => setPrestationsLegend([]))
   }, [load, loadAbsences, getToken])
 
   const clientById = useMemo(() => new Map(clients.map((c) => [c.id, c])), [clients])
@@ -265,7 +276,7 @@ function AgendaView() {
             })),
           absences: absences
             .filter((a) => a.dateDebut && a.dateFin && a.dateDebut <= key && key <= a.dateFin)
-            .map((a) => ({ id: a.id, libelle: a.libelle, type: a.type })),
+            .map((a) => ({ id: a.id, libelle: a.libelle, type: a.type, demiJournee: a.demiJournee })),
         }
       }),
     [days, byDay, today, absences],
@@ -350,6 +361,14 @@ function AgendaView() {
           >
             Exporter en PDF
           </button>
+          {prestationsLegend.length > 0 && (
+            <button
+              onClick={() => setShowLegend((v) => !v)}
+              className="bg-white border border-border text-sage-dark px-4 py-2.5 rounded-[10px] text-sm font-semibold hover:bg-sage-pale"
+            >
+              Légende des couleurs
+            </button>
+          )}
           <button
             onClick={() => openCreate()}
             className="bg-sage-dark text-white px-4.5 py-2.5 rounded-[10px] text-sm font-semibold hover:bg-sage-dark/90"
@@ -358,6 +377,17 @@ function AgendaView() {
           </button>
         </div>
       </div>
+
+      {showLegend && prestationsLegend.length > 0 && (
+        <div className="flex flex-wrap gap-x-4 gap-y-1.5 mb-4 print:hidden">
+          {prestationsLegend.map((p) => (
+            <span key={p.id} className="inline-flex items-center gap-1.5 text-xs text-text-muted">
+              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: p.couleur ?? undefined }} />
+              {p.nom}
+            </span>
+          ))}
+        </div>
+      )}
 
       {absenceError && <p className="text-sm text-danger mb-3 print:hidden">{absenceError}</p>}
 
@@ -368,7 +398,9 @@ function AgendaView() {
               key={a.id}
               className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold ${ABSENCE_STYLES[a.type] ?? 'bg-sage-light text-sage-dark'}`}
             >
-              {a.libelle} ({a.dateDebut} → {a.dateFin})
+              {a.libelle}
+              {a.demiJournee === 'matin' ? ' — Matin' : a.demiJournee === 'apres-midi' ? ' — Après-midi' : ''} (
+              {a.dateDebut} → {a.dateFin})
               <button
                 onClick={() => handleDeleteAbsence(a.id)}
                 className="hover:opacity-70"
@@ -408,12 +440,13 @@ function AgendaView() {
                 >
                   {a.type === 'Vacances' && <Icon name="sun" size={14} />}
                   {a.libelle}
+                  {a.demiJournee === 'matin' ? ' — Matin' : a.demiJournee === 'apres-midi' ? ' — Après-midi' : ''}
                 </span>
               ))}
             </div>
           )}
 
-          {(byDay.get(dayKey(focusDate)) ?? []).length === 0 ? (
+          {(byDay.get(dayKey(focusDate)) ?? []).length === 0 && absencesForDay(focusDate).length === 0 ? (
             <p className="text-sm text-text-muted">Aucun rendez-vous ce jour-là.</p>
           ) : (
             <AgendaDayGrid
@@ -430,6 +463,7 @@ function AgendaView() {
                   minutesSupplementaires: item.minutesSupplementaires,
                   prestationCouleur: item.prestationCouleur,
                 }))}
+              absences={absencesForDay(focusDate).map((a) => ({ id: a.id, libelle: a.libelle, demiJournee: a.demiJournee }))}
               onClickItem={(id) => {
                 const item = state.items.find((i) => i.id === id)
                 if (item) openEdit(item)

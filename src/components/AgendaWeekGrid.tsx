@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react'
 import { avatarColorClass } from '../lib/avatarColor'
 import { parseDureeMinutes, formatMinutes } from '../lib/duree'
 import Icon from './Icon'
@@ -17,7 +18,14 @@ interface WeekGridAbsence {
   id: string
   libelle: string
   type: string
+  demiJournee: string | null
 }
+
+const HATCH_STYLE: CSSProperties = {
+  backgroundImage:
+    'repeating-linear-gradient(45deg, rgba(35,51,45,0.06), rgba(35,51,45,0.06) 6px, transparent 6px, transparent 12px)',
+}
+const MIDI_HOUR = 13
 
 export interface WeekGridColumn {
   key: string
@@ -120,6 +128,19 @@ function AgendaWeekGrid({ columns, onClickItem, onAddForColumn }: AgendaWeekGrid
                 )}
               </div>
               <div className="relative" style={{ height: totalHeight }}>
+                {col.absences.map((a) => {
+                  const midiTop = Math.max(0, (MIDI_HOUR - startHour) * HOUR_HEIGHT)
+                  const top = a.demiJournee === 'apres-midi' ? midiTop : 0
+                  const height = a.demiJournee === 'matin' ? midiTop : a.demiJournee === 'apres-midi' ? totalHeight - midiTop : totalHeight
+                  return (
+                    <div
+                      key={a.id}
+                      className="absolute left-0 right-0 pointer-events-none"
+                      style={{ top, height, ...HATCH_STYLE }}
+                      title={a.libelle}
+                    />
+                  )
+                })}
                 {hours.map((h, i) => (
                   <div
                     key={h}

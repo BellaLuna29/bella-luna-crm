@@ -3,6 +3,7 @@ import { useAuth } from '@clerk/react'
 import { apiFetch, ApiError } from '../lib/api'
 import { fetchParametres, saveParametres, type Parametres } from '../lib/parametres'
 import { useToast } from '../components/ToastProvider'
+import DisponibilitesManager from '../components/DisponibilitesManager'
 import AlertesView from './AlertesView'
 import FormulairesView from './FormulairesView'
 import ModelesView from './ModelesView'
@@ -330,6 +331,13 @@ function ParametresView({ onSelectClient, onNavigateFacturation, onNavigateNewsl
                 </button>
               </div>
               {urssafError && <p className="text-sm text-danger">{urssafError}</p>}
+            </div>
+          )}
+
+          {state.status === 'success' && (
+            <div className="bg-white border border-border rounded-2xl p-5 max-w-2xl mt-6">
+              <h3 className="font-serif text-lg font-semibold text-sage-dark mb-1">Disponibilités hebdomadaires</h3>
+              <DisponibilitesManager />
             </div>
           )}
         </>

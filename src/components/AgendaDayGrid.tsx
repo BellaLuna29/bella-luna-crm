@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react'
 import { avatarColorClass } from '../lib/avatarColor'
 import { parseDureeMinutes, formatMinutes } from '../lib/duree'
 import RdvStatusPill from './RdvStatusPill'
@@ -15,8 +16,15 @@ interface GridItem {
   prestationCouleur: string | null
 }
 
+interface DayGridAbsence {
+  id: string
+  libelle: string
+  demiJournee: string | null
+}
+
 interface AgendaDayGridProps {
   items: GridItem[]
+  absences?: DayGridAbsence[]
   onClickItem: (id: string) => void
   onSendReminder: (id: string) => void
 }
@@ -24,12 +32,17 @@ interface AgendaDayGridProps {
 const HOUR_HEIGHT = 64
 const DEFAULT_START_HOUR = 8
 const DEFAULT_END_HOUR = 20
+const MIDI_HOUR = 12
+const HATCH_STYLE: CSSProperties = {
+  backgroundImage:
+    'repeating-linear-gradient(45deg, rgba(35,51,45,0.06), rgba(35,51,45,0.06) 6px, transparent 6px, transparent 12px)',
+}
 
 function formatHeure(date: Date): string {
   return date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
 }
 
-function AgendaDayGrid({ items, onClickItem, onSendReminder }: AgendaDayGridProps) {
+function AgendaDayGrid({ items, absences = [], onClickItem, onSendReminder }: AgendaDayGridProps) {
   const parsed = items
     .map((item) => {
       const start = new Date(item.date)
@@ -73,6 +86,19 @@ function AgendaDayGrid({ items, onClickItem, onSendReminder }: AgendaDayGridProp
           })}
         </div>
         <div className="flex-1 relative" style={{ height: totalHeight }}>
+          {absences.map((a) => {
+            const midiTop = Math.max(0, (MIDI_HOUR - startHour) * HOUR_HEIGHT)
+            const top = a.demiJournee === 'apres-midi' ? midiTop : 0
+            const height = a.demiJournee === 'matin' ? midiTop : a.demiJournee === 'apres-midi' ? totalHeight - midiTop : totalHeight
+            return (
+              <div
+                key={a.id}
+                className="absolute left-0 right-0 pointer-events-none"
+                style={{ top, height, ...HATCH_STYLE }}
+                title={a.libelle}
+              />
+            )
+          })}
           {hours.map((h, i) => (
             <div
               key={h}

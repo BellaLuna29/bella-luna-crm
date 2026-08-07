@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAuth } from '@clerk/react'
 import { apiFetch, ApiError } from '../lib/api'
+import MonthlyBarChart from '../components/MonthlyBarChart'
 
 interface Client {
   id: string
   statut: string
   dateCreation: string | null
 }
+
+const MONTH_LABELS = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc']
 
 const WEEKDAY_LABELS: Record<number, string> = {
   1: 'Lundi',
@@ -35,6 +38,7 @@ interface FactureItem {
   categorieFacture: string
   promoId: string | null
   promoNom: string
+  payee: boolean
 }
 
 interface DepenseItem {
@@ -142,6 +146,7 @@ function StatsView() {
   const [periodBDebut, setPeriodBDebut] = useState(defaultLastMonthStart)
   const [periodBFin, setPeriodBFin] = useState(defaultLastMonthEnd)
   const [prestationsMonth, setPrestationsMonth] = useState(monthInputValue(now))
+  const [selectedYear, setSelectedYear] = useState(now.getFullYear())
 
   const load = useCallback(() => {
     setState({ status: 'loading' })
@@ -266,6 +271,18 @@ function StatsView() {
       pct: totalRdvSemaine > 0 ? Math.round((byWeekday[day] / totalRdvSemaine) * 100) : 0,
     }))
 
+    const rdvPeriodeA = state.rendezvous.filter((r) => inRange(r.date, periodADebut, periodAFin))
+    const annulesA = rdvPeriodeA.filter((r) => r.statut === 'Annulé').length
+    const tauxAnnulation = rdvPeriodeA.length > 0 ? Math.round((annulesA / rdvPeriodeA.length) * 100) : 0
+
+    const rdvPeriodeB = state.rendezvous.filter((r) => inRange(r.date, periodBDebut, periodBFin))
+    const annulesB = rdvPeriodeB.filter((r) => r.statut === 'Annulé').length
+    const tauxAnnulationB = rdvPeriodeB.length > 0 ? Math.round((annulesB / rdvPeriodeB.length) * 100) : 0
+
+    const facturesImpayees = state.factures.filter((f) => !f.payee)
+    const facturesImpayeesCount = facturesImpayees.length
+    const facturesImpayeesMontant = facturesImpayees.reduce((sum, f) => sum + (f.montant ?? 0), 0)
+
     return {
       caA,
       caB,
@@ -289,8 +306,53 @@ function StatsView() {
       pctFideles,
       totalActifs,
       repartitionSemaine,
+      tauxAnnulation,
+      tauxAnnulationB,
+      annulesA,
+      totalRdvA: rdvPeriodeA.length,
+      facturesImpayeesCount,
+      facturesImpayeesMontant,
     }
   }, [state, periodADebut, periodAFin, periodBDebut, periodBFin, prestationsMonth])
+
+  const yearlyData = useMemo(() => {
+    if (state.status !== 'success') return null
+    const commerciales = state.factures.filter((f) => f.categorieFacture !== 'Associatif ou formation')
+
+    const monthlyCA = MONTH_LABELS.map((label, i) => {
+      const start = `${selectedYear}-${String(i + 1).padStart(2, '0')}-01`
+      const endDay = new Date(selectedYear, i + 1, 0).getDate()
+      const end = `${selectedYear}-${String(i + 1).padStart(2, '0')}-${String(endDay).padStart(2, '0')}`
+      return {
+        label,
+        value: commerciales.filter((f) => inRange(f.date, start, end)).reduce((sum, f) => sum + (f.montant ?? 0), 0),
+      }
+    })
+
+    const monthlyRdv = MONTH_LABELS.map((label, i) => {
+      const start = `${selectedYear}-${String(i + 1).padStart(2, '0')}-01`
+      const endDay = new Date(selectedYear, i + 1, 0).getDate()
+      const end = `${selectedYear}-${String(i + 1).padStart(2, '0')}-${String(endDay).padStart(2, '0')}`
+      return { label, value: state.rendezvous.filter((r) => inRange(r.date, start, end)).length }
+    })
+
+    const totalCaAnnee = monthlyCA.reduce((sum, m) => sum + m.value, 0)
+    const totalRdvAnnee = monthlyRdv.reduce((sum, m) => sum + m.value, 0)
+
+    return { monthlyCA, monthlyRdv, totalCaAnnee, totalRdvAnnee }
+  }, [state, selectedYear])
+
+  const availableYears = useMemo(() => {
+    if (state.status !== 'success') return [now.getFullYear()]
+    const years = new Set<number>([now.getFullYear()])
+    for (const f of state.factures) {
+      if (f.date) years.add(Number(f.date.slice(0, 4)))
+    }
+    for (const r of state.rendezvous) {
+      if (r.date) years.add(Number(r.date.slice(0, 4)))
+    }
+    return Array.from(years).sort((a, b) => b - a)
+  }, [state, now])
 
   return (
     <div>
@@ -328,6 +390,39 @@ function StatsView() {
             </p>
           </div>
 
+          {yearlyData && (
+            <div className="bg-white border border-border rounded-2xl p-5">
+              <div className="flex items-center justify-between flex-wrap gap-3 mb-1">
+                <h3 className="font-serif text-lg font-semibold text-sage-dark">Vue sur l'année</h3>
+                <select
+                  value={selectedYear}
+                  onChange={(e) => setSelectedYear(Number(e.target.value))}
+                  className="input max-w-28"
+                >
+                  {availableYears.map((y) => (
+                    <option key={y} value={y}>
+                      {y}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-3">
+                <div>
+                  <p className="text-xs text-text-muted mb-2">
+                    Chiffre d'affaires par mois — {formatEuros(yearlyData.totalCaAnnee)} sur l'année
+                  </p>
+                  <MonthlyBarChart data={yearlyData.monthlyCA} color="#3A5A50" formatValue={formatEuros} />
+                </div>
+                <div>
+                  <p className="text-xs text-text-muted mb-2">
+                    Rendez-vous par mois — {yearlyData.totalRdvAnnee} sur l'année
+                  </p>
+                  <MonthlyBarChart data={yearlyData.monthlyRdv} color="#C9A86A" formatValue={(n) => `${n} RDV`} />
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
             <ComparisonCard label="Chiffre d'affaires facturé" current={data.caA} previous={data.caB} formatValue={formatEuros} />
             <ComparisonCard
@@ -341,6 +436,22 @@ function StatsView() {
             <ComparisonCard label="Rendez-vous" current={data.rdvA} previous={data.rdvB} />
             <ComparisonCard label="Nouvelles clientes" current={data.nouvellesA} previous={data.nouvellesB} />
             <ComparisonCard label="Panier moyen" current={data.panierMoyenA} previous={data.panierMoyenB} formatValue={formatEuros} />
+            <ComparisonCard
+              label="Taux d'annulation"
+              current={data.tauxAnnulation}
+              previous={data.tauxAnnulationB}
+              formatValue={(n) => `${n} %`}
+              positiveIsGood={false}
+            />
+            <div className="bg-white border border-border rounded-2xl p-5">
+              <div className="text-xs font-semibold text-text-muted uppercase tracking-wide">Factures impayées</div>
+              <div className="font-serif text-3xl font-semibold text-sage-dark mt-1.5">
+                {formatEuros(data.facturesImpayeesMontant)}
+              </div>
+              <div className="text-xs font-semibold mt-1.5 text-text-muted">
+                {data.facturesImpayeesCount} facture{data.facturesImpayeesCount > 1 ? 's' : ''} en attente (toutes dates)
+              </div>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

@@ -10,6 +10,11 @@ interface AbsenceFormModalProps {
 }
 
 const TYPE_OPTIONS = ['Vacances', 'Jour off', 'Autre'] as const
+const DEMI_JOURNEE_OPTIONS = [
+  { value: '', label: 'Journée entière' },
+  { value: 'matin', label: 'Matin' },
+  { value: 'apres-midi', label: 'Après-midi' },
+] as const
 
 function AbsenceFormModal({ initialDate, onClose, onSaved }: AbsenceFormModalProps) {
   const { getToken } = useAuth()
@@ -17,8 +22,11 @@ function AbsenceFormModal({ initialDate, onClose, onSaved }: AbsenceFormModalPro
   const [dateDebut, setDateDebut] = useState(initialDate ?? '')
   const [dateFin, setDateFin] = useState(initialDate ?? '')
   const [type, setType] = useState<(typeof TYPE_OPTIONS)[number]>('Vacances')
+  const [demiJournee, setDemiJournee] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+
+  const isSingleDay = dateDebut !== '' && dateDebut === dateFin
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -37,7 +45,7 @@ function AbsenceFormModal({ initialDate, onClose, onSaved }: AbsenceFormModalPro
     try {
       await apiFetch(getToken, '/api/absences', {
         method: 'POST',
-        body: { libelle: libelle.trim(), dateDebut, dateFin, type },
+        body: { libelle: libelle.trim(), dateDebut, dateFin, type, demiJournee: isSingleDay ? demiJournee || null : null },
       })
       onSaved()
     } catch (err) {
@@ -86,6 +94,19 @@ function AbsenceFormModal({ initialDate, onClose, onSaved }: AbsenceFormModalPro
             />
           </label>
         </div>
+
+        {isSingleDay && (
+          <label className="block">
+            <span className="block text-xs font-semibold text-text-muted mb-1">Durée</span>
+            <select value={demiJournee} onChange={(e) => setDemiJournee(e.target.value)} className="input">
+              {DEMI_JOURNEE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
 
         <label className="block">
           <span className="block text-xs font-semibold text-text-muted mb-1">Type</span>

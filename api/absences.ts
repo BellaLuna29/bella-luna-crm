@@ -12,6 +12,7 @@ interface AbsenceItem {
   dateDebut: string | null
   dateFin: string | null
   type: string
+  demiJournee: string | null
 }
 
 function mapRow(r: DbRow): AbsenceItem {
@@ -21,6 +22,7 @@ function mapRow(r: DbRow): AbsenceItem {
     dateDebut: (r.date_debut as string) ?? null,
     dateFin: (r.date_fin as string) ?? null,
     type: (r.type as string) ?? 'Vacances',
+    demiJournee: (r.demi_journee as string) ?? null,
   }
 }
 

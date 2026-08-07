@@ -24,6 +24,7 @@ import {
   mapParametres,
   parseParametresInput,
   parsePrestationInput,
+  parseDisponibiliteInput,
   parseSmsTemplateInput,
   parseEmailTemplateInput,
 } from './_lib/mappers.js'
@@ -48,6 +49,7 @@ const TABLE_SMS_TEMPLATES = 'sms_templates'
 const TABLE_EMAIL_TEMPLATES = 'email_templates'
 const TABLE_DEPENSES = 'depenses'
 const TABLE_ABSENCES = 'absences'
+const TABLE_DISPONIBILITES = 'disponibilites'
 const SITE_URL = process.env.ALLOWED_ORIGIN || 'https://bella-luna-crm-bella-luna.vercel.app'
 
 interface Prestation {
@@ -360,6 +362,80 @@ async function handleStock(req: VercelRequest, res: VercelResponse): Promise<voi
     return
   }
   await handleCrud(req, res, { table: TABLE_STOCK, parse: parseStockInput, notFoundLabel: 'le produit' })
+}
+
+interface DisponibiliteItem {
+  id: string
+  jourSemaine: number
+  actif: boolean
+  heureDebut: string
+  heureFin: string
+}
+
+function mapDisponibilite(r: DbRow): DisponibiliteItem {
+  return {
+    id: r.id,
+    jourSemaine: r.jour_semaine as number,
+    actif: Boolean(r.actif),
+    heureDebut: (r.heure_debut as string) ?? '09:00',
+    heureFin: (r.heure_fin as string) ?? '18:00',
+  }
+}
+
+/**
+ * Weekly availability template (which days/hours she generally works) —
+ * groundwork for a future online-booking page. Not consumed by anything
+ * public yet; just the data model + admin UI to define it.
+ */
+async function handleDisponibilites(req: VercelRequest, res: VercelResponse): Promise<void> {
+  if (req.method === 'GET') {
+    try {
+      const rows = await dbList(TABLE_DISPONIBILITES, { order: { column: 'jour_semaine' } })
+      res.status(200).json({ disponibilites: rows.map(mapDisponibilite) })
+    } catch (error) {
+      if (error instanceof SupabaseConfigError) {
+        res.status(500).json({ error: error.message })
+        return
+      }
+      console.error(error)
+      res.status(502).json({ error: 'Impossible de récupérer les disponibilités depuis la base de données.' })
+    }
+    return
+  }
+
+  if (req.method === 'PATCH') {
+    const jourRaw = req.query.jour
+    const jour = typeof jourRaw === 'string' ? Number(jourRaw) : NaN
+    if (!Number.isInteger(jour) || jour < 0 || jour > 6) {
+      res.status(400).json({ error: 'Jour de la semaine invalide.' })
+      return
+    }
+    const parsed = parseDisponibiliteInput(req.body)
+    if ('errors' in parsed) {
+      res.status(400).json({ error: parsed.errors.join(' ') })
+      return
+    }
+    try {
+      const rows = await dbList(TABLE_DISPONIBILITES, { eq: ['jour_semaine', jour] })
+      const existing = rows[0]
+      if (!existing) {
+        res.status(404).json({ error: 'Jour introuvable.' })
+        return
+      }
+      const row = await dbUpdate(TABLE_DISPONIBILITES, existing.id, parsed.fields)
+      res.status(200).json({ disponibilite: mapDisponibilite(row) })
+    } catch (error) {
+      if (error instanceof SupabaseConfigError) {
+        res.status(500).json({ error: error.message })
+        return
+      }
+      console.error(error)
+      res.status(502).json({ error: "Impossible de mettre à jour la disponibilité dans la base de données." })
+    }
+    return
+  }
+
+  res.status(405).json({ error: 'Méthode non autorisée.' })
 }
 
 async function handleCommunicationsLog(req: VercelRequest, res: VercelResponse): Promise<void> {
@@ -998,6 +1074,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
   }
   if (req.query.resource === 'stock') {
     await handleStock(req, res)
+    return
+  }
+  if (req.query.resource === 'disponibilites') {
+    await handleDisponibilites(req, res)
     return
   }
   if (req.query.resource === 'communications-log') {

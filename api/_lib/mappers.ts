@@ -11,6 +11,7 @@ export interface Client {
   metier: string
   categorieMetier: string
   hobbies: string
+  reseauxSociaux: string
   notes: string
   statut: string
   newsletter: boolean
@@ -34,6 +35,7 @@ export function mapClient(row: DbRow): Client {
     metier: (row.metier as string) ?? '',
     categorieMetier: (row.categorie_metier as string) ?? '',
     hobbies: (row.hobbies as string) ?? '',
+    reseauxSociaux: (row.reseaux_sociaux as string) ?? '',
     notes: (row.notes as string) ?? '',
     statut: (row.statut as string) ?? 'Nouvelle',
     newsletter: Boolean(row.newsletter_ok),
@@ -147,6 +149,12 @@ export function parseClientInput(
     const v = typeof b.hobbies === 'string' ? b.hobbies.trim() : ''
     if (v.length > 200) errors.push('Le champ hobbies/sport est trop long (200 caractères max).')
     else fields.hobbies = v
+  }
+
+  if ('reseauxSociaux' in b) {
+    const v = typeof b.reseauxSociaux === 'string' ? b.reseauxSociaux.trim() : ''
+    if (v.length > 200) errors.push('Le champ réseaux sociaux est trop long (200 caractères max).')
+    else fields.reseaux_sociaux = v
   }
 
   if ('notes' in b) {
@@ -590,6 +598,7 @@ export function parseQuestionnaireInput(
 }
 
 export const ABSENCE_TYPE_VALUES = ['Vacances', 'Jour off', 'Autre'] as const
+export const ABSENCE_DEMI_JOURNEE_VALUES = ['matin', 'apres-midi'] as const
 
 /**
  * Validates and maps a raw request body into Postgres column names for the
@@ -644,6 +653,17 @@ export function parseAbsenceInput(
     }
   } else if (requireCore) {
     fields.type = 'Vacances'
+  }
+
+  if ('demiJournee' in b) {
+    const v = b.demiJournee
+    if (v === null || v === '') {
+      fields.demi_journee = null
+    } else if (typeof v === 'string' && (ABSENCE_DEMI_JOURNEE_VALUES as readonly string[]).includes(v)) {
+      fields.demi_journee = v
+    } else {
+      errors.push('Demi-journée invalide.')
+    }
   }
 
   if (errors.length > 0) return { errors }
@@ -1009,6 +1029,49 @@ export function parsePrestationInput(
     } else {
       errors.push('La couleur doit être un code hexadécimal valide (ex : #6F8E72).')
     }
+  }
+
+  if (errors.length > 0) return { errors }
+  return { fields }
+}
+
+const HEURE_RE = /^([01]\d|2[0-3]):([0-5]\d)$/
+
+/**
+ * Validates and maps a raw request body into Postgres column names for the
+ * disponibilites table (weekly availability template — groundwork for a
+ * future online-booking page, not yet consumed by anything public).
+ */
+export function parseDisponibiliteInput(body: unknown): { fields: Record<string, unknown> } | ClientInputErrors {
+  if (typeof body !== 'object' || body === null) {
+    return { errors: ['Corps de requête invalide.'] }
+  }
+  const b = body as Record<string, unknown>
+  const errors: string[] = []
+  const fields: Record<string, unknown> = {}
+
+  if ('actif' in b) {
+    fields.actif = Boolean(b.actif)
+  }
+
+  if ('heureDebut' in b) {
+    const v = b.heureDebut
+    if (typeof v === 'string' && HEURE_RE.test(v)) fields.heure_debut = v
+    else errors.push('Heure de début invalide (format HH:MM).')
+  }
+
+  if ('heureFin' in b) {
+    const v = b.heureFin
+    if (typeof v === 'string' && HEURE_RE.test(v)) fields.heure_fin = v
+    else errors.push('Heure de fin invalide (format HH:MM).')
+  }
+
+  if (
+    typeof fields.heure_debut === 'string' &&
+    typeof fields.heure_fin === 'string' &&
+    fields.heure_fin <= fields.heure_debut
+  ) {
+    errors.push("L'heure de fin doit être après l'heure de début.")
   }
 
   if (errors.length > 0) return { errors }

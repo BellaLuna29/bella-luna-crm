@@ -24,6 +24,7 @@ interface Client {
   metier: string
   categorieMetier: string
   hobbies: string
+  reseauxSociaux: string
   notes: string
   statut: string
   dejaMasse: boolean | null
@@ -245,6 +246,10 @@ function ClientDetailView({ clientId, onBack, embedded }: ClientDetailViewProps)
                 <div className="text-[11px] text-text-muted font-medium">Hobbies / Sport</div>
                 <div>{state.data.client.hobbies || '—'}</div>
               </div>
+              <div>
+                <div className="text-[11px] text-text-muted font-medium">Réseaux sociaux</div>
+                <div>{state.data.client.reseauxSociaux || '—'}</div>
+              </div>
             </div>
 
             {state.data.client.notes && (
@@ -377,6 +382,7 @@ function ClientDetailView({ clientId, onBack, embedded }: ClientDetailViewProps)
             metier: state.data.client.metier,
             categorieMetier: state.data.client.categorieMetier,
             hobbies: state.data.client.hobbies,
+            reseauxSociaux: state.data.client.reseauxSociaux,
             notes: state.data.client.notes,
             statut: state.data.client.statut,
             dejaMasse: state.data.client.dejaMasse,
