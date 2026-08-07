@@ -9,6 +9,12 @@ interface PublicPrestation {
   duree: string
 }
 
+const RAISON_MESSAGES: Record<string, string> = {
+  jour_inactif: "Bella Luna ne propose pas de rendez-vous ce jour de la semaine — essaie un autre jour.",
+  absence: 'Bella Luna est absente à cette date — essaie un autre jour.',
+  complet: 'Complet ce jour-là — essaie une autre date.',
+}
+
 const BASE_URL = import.meta.env.VITE_API_BASE_URL as string | undefined
 
 function todayIso(): string {
@@ -30,6 +36,7 @@ function ReservationPublique() {
   const [prestationId, setPrestationId] = useState('')
   const [date, setDate] = useState('')
   const [creneaux, setCreneaux] = useState<string[] | null>(null)
+  const [raisonVide, setRaisonVide] = useState<string | null>(null)
   const [loadingCreneaux, setLoadingCreneaux] = useState(false)
   const [heure, setHeure] = useState('')
   const [nom, setNom] = useState('')
@@ -54,12 +61,19 @@ function ReservationPublique() {
   useEffect(() => {
     setHeure('')
     setCreneaux(null)
+    setRaisonVide(null)
     if (!prestationId || !date || !BASE_URL) return
     setLoadingCreneaux(true)
     fetch(`${BASE_URL}/api/prestations?resource=public-disponibilites&date=${date}&prestationId=${prestationId}`)
       .then((r) => r.json())
-      .then((data) => setCreneaux(data.creneaux ?? []))
-      .catch(() => setCreneaux([]))
+      .then((data) => {
+        setCreneaux(data.creneaux ?? [])
+        setRaisonVide(data.raison ?? null)
+      })
+      .catch(() => {
+        setCreneaux([])
+        setRaisonVide(null)
+      })
       .finally(() => setLoadingCreneaux(false))
   }, [prestationId, date])
 
@@ -155,7 +169,7 @@ function ReservationPublique() {
                     <optgroup key={categorie || 'Autre'} label={categorie || 'Autre'}>
                       {items.map((p) => (
                         <option key={p.id} value={p.id}>
-                          {p.nom} — {p.prix} € ({p.duree})
+                          {p.nom} ({p.duree})
                         </option>
                       ))}
                     </optgroup>
@@ -182,7 +196,9 @@ function ReservationPublique() {
                   <span className="block text-xs font-semibold text-text-muted mb-1">Horaire *</span>
                   {loadingCreneaux && <p className="text-sm text-text-muted">Recherche des créneaux…</p>}
                   {!loadingCreneaux && creneaux && creneaux.length === 0 && (
-                    <p className="text-sm text-text-muted">Aucun créneau disponible ce jour-là.</p>
+                    <p className="text-sm text-text-muted">
+                      {(raisonVide && RAISON_MESSAGES[raisonVide]) || 'Aucun créneau disponible ce jour-là.'}
+                    </p>
                   )}
                   {!loadingCreneaux && creneaux && creneaux.length > 0 && (
                     <div className="grid grid-cols-4 gap-2">

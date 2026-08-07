@@ -748,13 +748,22 @@ function parisWallClockToUtcIso(dateStr: string, heureStr: string): string {
   return new Date(guessUtc.getTime() + driftMs).toISOString()
 }
 
+type RaisonIndisponible = 'jour_inactif' | 'absence' | 'complet'
+
+interface CreneauxResult {
+  creneaux: string[]
+  raison: RaisonIndisponible | null
+}
+
 /**
  * Computes free start times (HH:MM, every 30min) for a given calendar date
  * and prestation duration, from the weekly disponibilites template minus
  * absences minus existing rendez-vous (any non-Annulé statut, including
  * "En attente" — two people must never both "grab" the same open slot).
+ * Also reports WHY there's nothing, so the public page can say something
+ * more useful than a blank list (not a working day vs. absente vs. complet).
  */
-async function computeCreneauxPourDate(dateStr: string, dureeMin: number): Promise<string[]> {
+async function computeCreneauxPourDate(dateStr: string, dureeMin: number): Promise<CreneauxResult> {
   const dow = new Date(`${dateStr}T12:00:00`).getDay()
 
   const [dispoRows, absenceRows, rdvRows] = await Promise.all([
@@ -764,7 +773,7 @@ async function computeCreneauxPourDate(dateStr: string, dureeMin: number): Promi
   ])
 
   const dispo = dispoRows[0]
-  if (!dispo || !dispo.actif) return []
+  if (!dispo || !dispo.actif) return { creneaux: [], raison: 'jour_inactif' }
 
   let fenetreDebut = minutesFromMidnight((dispo.heure_debut as string) ?? '09:00')
   let fenetreFin = minutesFromMidnight((dispo.heure_fin as string) ?? '18:00')
@@ -775,11 +784,11 @@ async function computeCreneauxPourDate(dateStr: string, dureeMin: number): Promi
     const fin = a.date_fin as string | null
     if (!debut || !fin || dateStr < debut || dateStr > fin) continue
     const demi = a.demi_journee as string | null
-    if (!demi) return []
+    if (!demi) return { creneaux: [], raison: 'absence' }
     if (demi === 'matin') fenetreDebut = Math.max(fenetreDebut, MIDI)
     else if (demi === 'apres-midi') fenetreFin = Math.min(fenetreFin, MIDI)
   }
-  if (fenetreDebut >= fenetreFin) return []
+  if (fenetreDebut >= fenetreFin) return { creneaux: [], raison: 'absence' }
 
   const occupations: { debut: number; fin: number }[] = []
   for (const r of rdvRows) {
@@ -803,7 +812,7 @@ async function computeCreneauxPourDate(dateStr: string, dureeMin: number): Promi
     const chevauche = occupations.some((o) => t < o.fin && t + dureeMin > o.debut)
     if (!chevauche) creneaux.push(hhmmFromMinutes(t))
   }
-  return creneaux
+  return { creneaux, raison: creneaux.length === 0 ? 'complet' : null }
 }
 
 interface PublicPrestationItem {
@@ -864,7 +873,7 @@ async function handlePublicDisponibilites(req: VercelRequest, res: VercelRespons
   maxDate.setDate(maxDate.getDate() + RESERVATION_MAX_JOURS)
   const maxDateStr = new Intl.DateTimeFormat('fr-CA', { timeZone: 'Europe/Paris' }).format(maxDate)
   if (dateStr < todayStr || dateStr > maxDateStr) {
-    res.status(200).json({ creneaux: [] })
+    res.status(200).json({ creneaux: [], raison: 'jour_inactif' })
     return
   }
 
@@ -876,8 +885,8 @@ async function handlePublicDisponibilites(req: VercelRequest, res: VercelRespons
       return
     }
     const dureeMin = parseDureeMinutes(duree)
-    const creneaux = await computeCreneauxPourDate(dateStr, dureeMin)
-    res.status(200).json({ creneaux })
+    const result = await computeCreneauxPourDate(dateStr, dureeMin)
+    res.status(200).json(result)
   } catch (error) {
     if (error instanceof SupabaseConfigError) {
       res.status(500).json({ error: error.message })
@@ -933,7 +942,7 @@ async function handlePublicBooking(req: VercelRequest, res: VercelResponse): Pro
     const dureeMin = parseDureeMinutes(dureeStr)
 
     // Re-check server-side — never trust the slot the client says is free.
-    const creneaux = await computeCreneauxPourDate(dateStr, dureeMin)
+    const { creneaux } = await computeCreneauxPourDate(dateStr, dureeMin)
     if (!creneaux.includes(heureStr)) {
       res.status(409).json({ error: "Ce créneau n'est plus disponible. Choisis-en un autre." })
       return
