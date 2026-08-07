@@ -2,12 +2,14 @@ const STYLES: Record<string, string> = {
   Confirmé: 'bg-sage-light text-sage-dark',
   Honoré: 'bg-gold-pale text-gold-text',
   Annulé: 'bg-danger-pale text-danger',
+  'En attente': 'bg-gold text-white',
 }
 
 const SHORT: Record<string, string> = {
   Confirmé: 'C',
   Honoré: 'H',
   Annulé: 'A',
+  'En attente': '?',
 }
 
 function RdvStatusPill({ statut, compact }: { statut: string; compact?: boolean }) {

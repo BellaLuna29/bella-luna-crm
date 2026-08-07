@@ -10,6 +10,7 @@ interface WeekGridItem {
   statut: string
   clienteNom: string
   prestationNom: string
+  notes: string
   minutesSupplementaires: number
   prestationCouleur: string | null
 }
@@ -26,6 +27,7 @@ const HATCH_STYLE: CSSProperties = {
     'repeating-linear-gradient(45deg, rgba(35,51,45,0.06), rgba(35,51,45,0.06) 6px, transparent 6px, transparent 12px)',
 }
 const MIDI_HOUR = 13
+const EN_ATTENTE_COULEUR = '#C9A86A'
 
 export interface WeekGridColumn {
   key: string
@@ -153,6 +155,9 @@ function AgendaWeekGrid({ columns, onClickItem, onAddForColumn }: AgendaWeekGrid
                   const top = (minutesFromStart / 60) * HOUR_HEIGHT
                   const height = Math.max(18, (item.durationMin / 60) * HOUR_HEIGHT - 2)
                   const isAnnule = item.statut === 'Annulé'
+                  const isEnAttente = item.statut === 'En attente'
+                  const displayNom = item.clienteNom || item.notes || '?'
+                  const blockColor = isEnAttente ? EN_ATTENTE_COULEUR : item.prestationCouleur
                   return (
                     <button
                       key={item.id}
@@ -160,13 +165,14 @@ function AgendaWeekGrid({ columns, onClickItem, onAddForColumn }: AgendaWeekGrid
                       className={`absolute left-0.5 right-0.5 rounded-md overflow-hidden text-left px-1 sm:px-1.5 transition-[filter] ${
                         isAnnule
                           ? 'bg-border text-text-muted hover:brightness-95'
-                          : `text-white hover:brightness-95 ${item.prestationCouleur ? '' : avatarColorClass(item.prestationNom)}`
+                          : `text-white hover:brightness-95 ${blockColor ? '' : avatarColorClass(item.prestationNom)}`
                       }`}
-                      style={{ top, height, backgroundColor: !isAnnule && item.prestationCouleur ? item.prestationCouleur : undefined }}
-                      title={`${item.clienteNom || 'Cliente inconnue'} — ${item.prestationNom || 'Prestation inconnue'}${isAnnule ? ' (Annulé)' : ''}`}
+                      style={{ top, height, backgroundColor: !isAnnule && blockColor ? blockColor : undefined }}
+                      title={`${displayNom} — ${item.prestationNom || 'Prestation inconnue'}${isAnnule ? ' (Annulé)' : isEnAttente ? ' (En attente)' : ''}`}
                     >
                       <span className={`block text-[9px] sm:text-[11px] font-semibold leading-tight truncate ${isAnnule ? 'line-through' : ''}`}>
-                        {item.clienteNom || '?'}
+                        {isEnAttente ? '? ' : ''}
+                        {displayNom}
                       </span>
                       <span className="hidden sm:block text-[9px] opacity-90 leading-tight truncate">
                         {isAnnule ? 'Annulé' : item.prestationNom}

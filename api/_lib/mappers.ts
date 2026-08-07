@@ -349,7 +349,7 @@ export function parseDepenseInput(
   return { fields }
 }
 
-export const RDV_STATUT_VALUES = ['Confirmé', 'Honoré', 'Annulé'] as const
+export const RDV_STATUT_VALUES = ['Confirmé', 'Honoré', 'Annulé', 'En attente'] as const
 const MAX_NOTES = 5000
 
 /**

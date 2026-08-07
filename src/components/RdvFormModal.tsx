@@ -451,6 +451,7 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
               onChange={(e) => set('statut', e.target.value)}
               className="input"
             >
+              <option value="En attente">En attente (demande en ligne)</option>
               <option value="Confirmé">Confirmé</option>
               <option value="Honoré">Honoré</option>
               <option value="Annulé">Annulé</option>

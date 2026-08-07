@@ -32,6 +32,8 @@ import { buildNewsletterHtml, buildTransactionalHtml, sendNewsletterBatch, Email
 import { renderTemplate, type TemplateContext } from './_lib/templateEngine.js'
 import { formatDateHeureNaturel } from './_lib/formatDate.js'
 import { cureTotalSeances, cureCyclePosition } from './_lib/cure.js'
+import { parseDureeMinutes } from './_lib/duree.js'
+import { parisHeureMinute } from './_lib/timezone.js'
 
 const TABLE_PRESTATIONS = 'prestations'
 const TABLE_PROMOTIONS = 'promotions'
@@ -693,6 +695,275 @@ async function handleNewsletterUnsubscribe(req: VercelRequest, res: VercelRespon
   }
 }
 
+const CRENEAU_PAS_MINUTES = 30
+const RESERVATION_MAX_JOURS = 60
+const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/
+const HEURE_ONLY_RE = /^([01]\d|2[0-3]):([0-5]\d)$/
+
+function minutesFromMidnight(hhmm: string): number {
+  const [h, m] = hhmm.split(':').map(Number)
+  return h * 60 + m
+}
+
+function hhmmFromMinutes(mins: number): string {
+  const h = Math.floor(mins / 60)
+  const m = mins % 60
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+}
+
+/**
+ * Converts a "this is what the clock reads in Paris" date+time into the
+ * correct UTC instant, regardless of the server's own timezone (Vercel runs
+ * in UTC). Guesses UTC first, reads what that instant looks like in Paris,
+ * then corrects by the drift — works across the CET/CEST switch since the
+ * drift is computed for the actual date, not a hardcoded offset.
+ */
+function parisWallClockToUtcIso(dateStr: string, heureStr: string): string {
+  const guessUtc = new Date(`${dateStr}T${heureStr}:00Z`)
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Europe/Paris',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(guessUtc)
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '0'
+  const readAsUtcMs = Date.UTC(
+    Number(get('year')),
+    Number(get('month')) - 1,
+    Number(get('day')),
+    Number(get('hour')) % 24,
+    Number(get('minute')),
+  )
+  const desiredAsUtcMs = Date.UTC(
+    Number(dateStr.slice(0, 4)),
+    Number(dateStr.slice(5, 7)) - 1,
+    Number(dateStr.slice(8, 10)),
+    Number(heureStr.slice(0, 2)),
+    Number(heureStr.slice(3, 5)),
+  )
+  const driftMs = desiredAsUtcMs - readAsUtcMs
+  return new Date(guessUtc.getTime() + driftMs).toISOString()
+}
+
+/**
+ * Computes free start times (HH:MM, every 30min) for a given calendar date
+ * and prestation duration, from the weekly disponibilites template minus
+ * absences minus existing rendez-vous (any non-Annulé statut, including
+ * "En attente" — two people must never both "grab" the same open slot).
+ */
+async function computeCreneauxPourDate(dateStr: string, dureeMin: number): Promise<string[]> {
+  const dow = new Date(`${dateStr}T12:00:00`).getDay()
+
+  const [dispoRows, absenceRows, rdvRows] = await Promise.all([
+    dbList(TABLE_DISPONIBILITES, { eq: ['jour_semaine', dow] }),
+    dbList(TABLE_ABSENCES),
+    dbList(TABLE_RENDEZVOUS, { select: '*, prestation:prestations(duree)' }),
+  ])
+
+  const dispo = dispoRows[0]
+  if (!dispo || !dispo.actif) return []
+
+  let fenetreDebut = minutesFromMidnight((dispo.heure_debut as string) ?? '09:00')
+  let fenetreFin = minutesFromMidnight((dispo.heure_fin as string) ?? '18:00')
+
+  const MIDI = 13 * 60
+  for (const a of absenceRows) {
+    const debut = a.date_debut as string | null
+    const fin = a.date_fin as string | null
+    if (!debut || !fin || dateStr < debut || dateStr > fin) continue
+    const demi = a.demi_journee as string | null
+    if (!demi) return []
+    if (demi === 'matin') fenetreDebut = Math.max(fenetreDebut, MIDI)
+    else if (demi === 'apres-midi') fenetreFin = Math.min(fenetreFin, MIDI)
+  }
+  if (fenetreDebut >= fenetreFin) return []
+
+  const occupations: { debut: number; fin: number }[] = []
+  for (const r of rdvRows) {
+    const rDateStr = r.date as string | null
+    if (!rDateStr || r.statut === 'Annulé') continue
+    const start = new Date(rDateStr)
+    if (Number.isNaN(start.getTime())) continue
+    const { heure, minute } = parisHeureMinute(start)
+    const startDateStr = new Intl.DateTimeFormat('fr-CA', { timeZone: 'Europe/Paris' }).format(start)
+    if (startDateStr !== dateStr) continue
+    const prestation = r.prestation as { duree?: string } | null
+    const dur =
+      parseDureeMinutes(prestation?.duree ?? '') +
+      (typeof r.minutes_supplementaires === 'number' ? r.minutes_supplementaires : 0)
+    const startMin = heure * 60 + minute
+    occupations.push({ debut: startMin, fin: startMin + dur })
+  }
+
+  const creneaux: string[] = []
+  for (let t = fenetreDebut; t + dureeMin <= fenetreFin; t += CRENEAU_PAS_MINUTES) {
+    const chevauche = occupations.some((o) => t < o.fin && t + dureeMin > o.debut)
+    if (!chevauche) creneaux.push(hhmmFromMinutes(t))
+  }
+  return creneaux
+}
+
+interface PublicPrestationItem {
+  id: string
+  nom: string
+  categorie: string
+  prix: number
+  duree: string
+}
+
+/** Public — only "séance unique" prestations with a real durée are bookable online. */
+async function handlePublicPrestations(req: VercelRequest, res: VercelResponse): Promise<void> {
+  if (req.method !== 'GET') {
+    res.status(405).json({ error: 'Méthode non autorisée.' })
+    return
+  }
+  try {
+    const rows = await dbList(TABLE_PRESTATIONS)
+    const prestations: PublicPrestationItem[] = rows
+      .filter((r) => {
+        const duree = (r.duree as string) ?? ''
+        if (!duree.trim()) return false
+        return !cureTotalSeances((r.type as string) ?? '')
+      })
+      .map((r) => ({
+        id: r.id,
+        nom: (r.nom as string) ?? '',
+        categorie: (r.categorie as string) ?? '',
+        prix: (r.prix as number) ?? 0,
+        duree: (r.duree as string) ?? '',
+      }))
+      .sort((a, b) => a.categorie.localeCompare(b.categorie) || a.nom.localeCompare(b.nom))
+    res.status(200).json({ prestations })
+  } catch (error) {
+    if (error instanceof SupabaseConfigError) {
+      res.status(500).json({ error: error.message })
+      return
+    }
+    console.error(error)
+    res.status(502).json({ error: 'Impossible de récupérer les prestations depuis la base de données.' })
+  }
+}
+
+/** Public — available créneaux for a date + prestation. */
+async function handlePublicDisponibilites(req: VercelRequest, res: VercelResponse): Promise<void> {
+  if (req.method !== 'GET') {
+    res.status(405).json({ error: 'Méthode non autorisée.' })
+    return
+  }
+  const dateStr = req.query.date
+  const prestationId = req.query.prestationId
+  if (typeof dateStr !== 'string' || !DATE_ONLY_RE.test(dateStr) || typeof prestationId !== 'string' || !UUID_RE.test(prestationId)) {
+    res.status(400).json({ error: 'Date ou prestation invalide.' })
+    return
+  }
+  const todayStr = new Intl.DateTimeFormat('fr-CA', { timeZone: 'Europe/Paris' }).format(new Date())
+  const maxDate = new Date()
+  maxDate.setDate(maxDate.getDate() + RESERVATION_MAX_JOURS)
+  const maxDateStr = new Intl.DateTimeFormat('fr-CA', { timeZone: 'Europe/Paris' }).format(maxDate)
+  if (dateStr < todayStr || dateStr > maxDateStr) {
+    res.status(200).json({ creneaux: [] })
+    return
+  }
+
+  try {
+    const prestation = await dbGet(TABLE_PRESTATIONS, prestationId)
+    const duree = (prestation?.duree as string) ?? ''
+    if (!prestation || !duree.trim() || cureTotalSeances((prestation.type as string) ?? '')) {
+      res.status(404).json({ error: 'Prestation introuvable.' })
+      return
+    }
+    const dureeMin = parseDureeMinutes(duree)
+    const creneaux = await computeCreneauxPourDate(dateStr, dureeMin)
+    res.status(200).json({ creneaux })
+  } catch (error) {
+    if (error instanceof SupabaseConfigError) {
+      res.status(500).json({ error: error.message })
+      return
+    }
+    console.error(error)
+    res.status(502).json({ error: 'Impossible de calculer les disponibilités.' })
+  }
+}
+
+/** Public — creates a "En attente" rendez-vous request. Never touches an existing cliente record. */
+async function handlePublicBooking(req: VercelRequest, res: VercelResponse): Promise<void> {
+  if (req.method !== 'POST') {
+    res.status(405).json({ error: 'Méthode non autorisée.' })
+    return
+  }
+  const b = (typeof req.body === 'object' && req.body !== null ? req.body : {}) as Record<string, unknown>
+
+  // Honeypot: real visitors never fill this hidden field. Pretend success
+  // without writing anything, so bots don't learn it was rejected.
+  if (typeof b.site === 'string' && b.site.trim().length > 0) {
+    res.status(201).json({ ok: true })
+    return
+  }
+
+  const dateStr = typeof b.date === 'string' ? b.date : ''
+  const heureStr = typeof b.heure === 'string' ? b.heure : ''
+  const prestationId = typeof b.prestationId === 'string' ? b.prestationId : ''
+  const nom = typeof b.nom === 'string' ? b.nom.trim() : ''
+  const telephone = typeof b.telephone === 'string' ? b.telephone.trim() : ''
+  const email = typeof b.email === 'string' ? b.email.trim() : ''
+
+  if (!DATE_ONLY_RE.test(dateStr) || !HEURE_ONLY_RE.test(heureStr) || !UUID_RE.test(prestationId)) {
+    res.status(400).json({ error: 'Créneau invalide.' })
+    return
+  }
+  if (!nom || nom.length > 200) {
+    res.status(400).json({ error: 'Le nom est obligatoire (200 caractères max).' })
+    return
+  }
+  if (!telephone && !email) {
+    res.status(400).json({ error: 'Indique un téléphone ou un e-mail pour être recontactée.' })
+    return
+  }
+
+  try {
+    const prestation = await dbGet(TABLE_PRESTATIONS, prestationId)
+    const dureeStr = (prestation?.duree as string) ?? ''
+    if (!prestation || !dureeStr.trim() || cureTotalSeances((prestation.type as string) ?? '')) {
+      res.status(404).json({ error: 'Prestation introuvable.' })
+      return
+    }
+    const dureeMin = parseDureeMinutes(dureeStr)
+
+    // Re-check server-side — never trust the slot the client says is free.
+    const creneaux = await computeCreneauxPourDate(dateStr, dureeMin)
+    if (!creneaux.includes(heureStr)) {
+      res.status(409).json({ error: "Ce créneau n'est plus disponible. Choisis-en un autre." })
+      return
+    }
+
+    const trueIso = parisWallClockToUtcIso(dateStr, heureStr)
+
+    const notesParts = [`Réservation en ligne — ${nom}`]
+    if (telephone) notesParts.push(`Tél : ${telephone}`)
+    if (email) notesParts.push(`E-mail : ${email}`)
+
+    await dbCreate(TABLE_RENDEZVOUS, {
+      cliente_id: null,
+      prestation_id: prestationId,
+      date: trueIso,
+      statut: 'En attente',
+      notes: notesParts.join(' — '),
+    })
+
+    res.status(201).json({ ok: true })
+  } catch (error) {
+    if (error instanceof SupabaseConfigError) {
+      res.status(500).json({ error: error.message })
+      return
+    }
+    console.error(error)
+    res.status(502).json({ error: "Impossible d'enregistrer la demande." })
+  }
+}
+
 /**
  * Full data export (raw DB rows, as-is) for the practitioner to download as
  * a backup — peace of mind independent of the Supabase/Vercel hosting.
@@ -1038,6 +1309,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
   // unless "Rappels automatiques" is switched on in Paramètres.
   if (req.query.resource === 'rappels-auto-run') {
     await handleRappelsAutoRun(req, res)
+    return
+  }
+
+  // Public — the /reserver page a cliente uses isn't signed into the CRM.
+  if (req.query.resource === 'public-prestations') {
+    await handlePublicPrestations(req, res)
+    return
+  }
+  if (req.query.resource === 'public-disponibilites') {
+    await handlePublicDisponibilites(req, res)
+    return
+  }
+  if (req.query.resource === 'public-booking') {
+    await handlePublicBooking(req, res)
     return
   }
 

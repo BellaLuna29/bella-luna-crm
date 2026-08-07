@@ -354,249 +354,300 @@ function StatsView() {
     return Array.from(years).sort((a, b) => b - a)
   }, [state, now])
 
+  const landingStats = useMemo(() => {
+    if (state.status !== 'success') return null
+    const yearStart = `${selectedYear}-01-01`
+    const yearEnd = `${selectedYear}-12-31`
+    const rdvAnnee = state.rendezvous.filter((r) => inRange(r.date, yearStart, yearEnd))
+    const annulesAnnee = rdvAnnee.filter((r) => r.statut === 'Annulé').length
+    const tauxAnnulationAnnee = rdvAnnee.length > 0 ? Math.round((annulesAnnee / rdvAnnee.length) * 100) : 0
+    const nouvellesAnnee = state.clients.filter((c) => inRange(c.dateCreation, yearStart, yearEnd)).length
+    return { tauxAnnulationAnnee, nouvellesAnnee }
+  }, [state, selectedYear])
+
+  const [subTab, setSubTab] = useState<'apercu' | 'comparaison' | 'prestations'>('apercu')
+  const TABS: { key: typeof subTab; label: string }[] = [
+    { key: 'apercu', label: "Vue d'ensemble" },
+    { key: 'comparaison', label: 'Comparaison de périodes' },
+    { key: 'prestations', label: 'Prestations & promotions' },
+  ]
+
   return (
     <div>
+      <div className="flex items-center gap-2 mb-5 flex-wrap">
+        {TABS.map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setSubTab(tab.key)}
+            className={`px-3.5 py-2 rounded-[10px] text-sm font-semibold transition-colors ${
+              subTab === tab.key ? 'bg-sage-dark text-white' : 'bg-white border border-border text-text-muted hover:bg-sage-pale'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
       {state.status === 'loading' && <p className="text-sm text-text-muted">Chargement…</p>}
       {state.status === 'error' && <p className="text-sm text-danger">{state.message}</p>}
 
-      {state.status === 'success' && data && (
+      {state.status === 'success' && data && landingStats && (
         <div className="flex flex-col gap-6">
-          <div className="bg-white border border-border rounded-2xl p-5">
-            <h3 className="font-serif text-lg font-semibold text-sage-dark mb-3">Comparer deux périodes</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <div className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-1.5">
-                  Période A
+          {subTab === 'apercu' && yearlyData && (
+            <>
+              <div className="bg-white border border-border rounded-2xl p-5">
+                <div className="flex items-center justify-between flex-wrap gap-3 mb-1">
+                  <h3 className="font-serif text-lg font-semibold text-sage-dark">Vue sur l'année</h3>
+                  <select
+                    value={selectedYear}
+                    onChange={(e) => setSelectedYear(Number(e.target.value))}
+                    className="input max-w-28"
+                  >
+                    {availableYears.map((y) => (
+                      <option key={y} value={y}>
+                        {y}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-                <div className="flex items-center gap-2">
-                  <input type="date" value={periodADebut} onChange={(e) => setPeriodADebut(e.target.value)} className="input" />
-                  <span className="text-text-muted text-sm">→</span>
-                  <input type="date" value={periodAFin} onChange={(e) => setPeriodAFin(e.target.value)} className="input" />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-3">
+                  <div>
+                    <p className="text-xs text-text-muted mb-2">
+                      Chiffre d'affaires par mois — {formatEuros(yearlyData.totalCaAnnee)} sur l'année
+                    </p>
+                    <MonthlyBarChart data={yearlyData.monthlyCA} color="#3A5A50" formatValue={formatEuros} />
+                  </div>
+                  <div>
+                    <p className="text-xs text-text-muted mb-2">
+                      Rendez-vous par mois — {yearlyData.totalRdvAnnee} sur l'année
+                    </p>
+                    <MonthlyBarChart data={yearlyData.monthlyRdv} color="#C9A86A" formatValue={(n) => `${n} RDV`} />
+                  </div>
                 </div>
               </div>
-              <div>
-                <div className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-1.5">
-                  Période B
-                </div>
-                <div className="flex items-center gap-2">
-                  <input type="date" value={periodBDebut} onChange={(e) => setPeriodBDebut(e.target.value)} className="input" />
-                  <span className="text-text-muted text-sm">→</span>
-                  <input type="date" value={periodBFin} onChange={(e) => setPeriodBFin(e.target.value)} className="input" />
-                </div>
-              </div>
-            </div>
-            <p className="text-xs text-text-muted mt-3">
-              Le chiffre d'affaires et le résultat net excluent les factures « Associatif ou formation ».
-            </p>
-          </div>
 
-          {yearlyData && (
-            <div className="bg-white border border-border rounded-2xl p-5">
-              <div className="flex items-center justify-between flex-wrap gap-3 mb-1">
-                <h3 className="font-serif text-lg font-semibold text-sage-dark">Vue sur l'année</h3>
-                <select
-                  value={selectedYear}
-                  onChange={(e) => setSelectedYear(Number(e.target.value))}
-                  className="input max-w-28"
-                >
-                  {availableYears.map((y) => (
-                    <option key={y} value={y}>
-                      {y}
-                    </option>
-                  ))}
-                </select>
+              <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
+                <StatTile label="Chiffre d'affaires (année)" value={formatEuros(yearlyData.totalCaAnnee)} />
+                <StatTile label="Rendez-vous (année)" value={String(yearlyData.totalRdvAnnee)} />
+                <StatTile label="Nouvelles clientes (année)" value={String(landingStats.nouvellesAnnee)} />
+                <StatTile label="Taux de fidélisation" value={`${data.tauxFidelisation} %`} />
+                <StatTile label="Taux d'annulation (année)" value={`${landingStats.tauxAnnulationAnnee} %`} />
+                <StatTile label="Factures impayées" value={formatEuros(data.facturesImpayeesMontant)} />
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-3">
-                <div>
-                  <p className="text-xs text-text-muted mb-2">
-                    Chiffre d'affaires par mois — {formatEuros(yearlyData.totalCaAnnee)} sur l'année
-                  </p>
-                  <MonthlyBarChart data={yearlyData.monthlyCA} color="#3A5A50" formatValue={formatEuros} />
-                </div>
-                <div>
-                  <p className="text-xs text-text-muted mb-2">
-                    Rendez-vous par mois — {yearlyData.totalRdvAnnee} sur l'année
-                  </p>
-                  <MonthlyBarChart data={yearlyData.monthlyRdv} color="#C9A86A" formatValue={(n) => `${n} RDV`} />
-                </div>
-              </div>
-            </div>
+            </>
           )}
 
-          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
-            <ComparisonCard label="Chiffre d'affaires facturé" current={data.caA} previous={data.caB} formatValue={formatEuros} />
-            <ComparisonCard
-              label="Dépenses"
-              current={data.depensesA}
-              previous={data.depensesB}
-              formatValue={formatEuros}
-              positiveIsGood={false}
-            />
-            <ComparisonCard label="Résultat net" current={data.resultatA} previous={data.resultatB} formatValue={formatEuros} />
-            <ComparisonCard label="Rendez-vous" current={data.rdvA} previous={data.rdvB} />
-            <ComparisonCard label="Nouvelles clientes" current={data.nouvellesA} previous={data.nouvellesB} />
-            <ComparisonCard label="Panier moyen" current={data.panierMoyenA} previous={data.panierMoyenB} formatValue={formatEuros} />
-            <ComparisonCard
-              label="Taux d'annulation"
-              current={data.tauxAnnulation}
-              previous={data.tauxAnnulationB}
-              formatValue={(n) => `${n} %`}
-              positiveIsGood={false}
-            />
-            <div className="bg-white border border-border rounded-2xl p-5">
-              <div className="text-xs font-semibold text-text-muted uppercase tracking-wide">Factures impayées</div>
-              <div className="font-serif text-3xl font-semibold text-sage-dark mt-1.5">
-                {formatEuros(data.facturesImpayeesMontant)}
-              </div>
-              <div className="text-xs font-semibold mt-1.5 text-text-muted">
-                {data.facturesImpayeesCount} facture{data.facturesImpayeesCount > 1 ? 's' : ''} en attente (toutes dates)
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="bg-white border border-border rounded-2xl p-5">
-              <h3 className="font-serif text-lg font-semibold text-sage-dark mb-1">Taux de fidélisation</h3>
-              <p className="text-xs text-text-muted mb-3">Part des clientes au statut « Régulière » dans ta base.</p>
-              <div className="font-serif text-4xl font-semibold text-sage-dark">{data.tauxFidelisation} %</div>
-            </div>
-            <div className="bg-white border border-border rounded-2xl p-5">
-              <h3 className="font-serif text-lg font-semibold text-sage-dark mb-1">Clientes actives : nouvelles vs fidèles</h3>
-              <p className="text-xs text-text-muted mb-3">Sur la période A ({data.totalActifs} cliente{data.totalActifs > 1 ? 's' : ''} vue{data.totalActifs > 1 ? 's' : ''}).</p>
-              <div className="flex items-center gap-8">
-                <div>
-                  <div className="font-serif text-3xl font-semibold text-sage-dark">{data.pctNouveaux} %</div>
-                  <div className="text-xs text-text-muted">Nouvelles clientes</div>
-                </div>
-                <div>
-                  <div className="font-serif text-3xl font-semibold text-sage-dark">{data.pctFideles} %</div>
-                  <div className="text-xs text-text-muted">Clientes fidèles</div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white border border-border rounded-2xl p-5">
-            <h3 className="font-serif text-lg font-semibold text-sage-dark mb-1">Rendez-vous par jour de la semaine</h3>
-            <p className="text-xs text-text-muted mb-4">Répartition sur la période A.</p>
-            {data.repartitionSemaine.every((d) => d.count === 0) ? (
-              <p className="text-sm text-text-muted">Aucun rendez-vous sur cette période.</p>
-            ) : (
-              <div className="flex flex-col gap-2.5">
-                {data.repartitionSemaine.map((d) => (
-                  <div key={d.label} className="flex items-center gap-3">
-                    <span className="w-24 shrink-0 text-sm text-text-muted">{d.label}</span>
-                    <div className="flex-1 h-2.5 bg-sage-pale rounded-full overflow-hidden">
-                      <div className="h-full bg-sage-dark rounded-full" style={{ width: `${d.pct}%` }} />
+          {subTab === 'comparaison' && (
+            <>
+              <div className="bg-white border border-border rounded-2xl p-5">
+                <h3 className="font-serif text-lg font-semibold text-sage-dark mb-3">Comparer deux périodes</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <div className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-1.5">
+                      Période A
                     </div>
-                    <span className="w-16 shrink-0 text-sm font-semibold text-sage-dark text-right">{d.count} RDV</span>
+                    <div className="flex items-center gap-2">
+                      <input type="date" value={periodADebut} onChange={(e) => setPeriodADebut(e.target.value)} className="input" />
+                      <span className="text-text-muted text-sm">→</span>
+                      <input type="date" value={periodAFin} onChange={(e) => setPeriodAFin(e.target.value)} className="input" />
+                    </div>
                   </div>
-                ))}
+                  <div>
+                    <div className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-1.5">
+                      Période B
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input type="date" value={periodBDebut} onChange={(e) => setPeriodBDebut(e.target.value)} className="input" />
+                      <span className="text-text-muted text-sm">→</span>
+                      <input type="date" value={periodBFin} onChange={(e) => setPeriodBFin(e.target.value)} className="input" />
+                    </div>
+                  </div>
+                </div>
+                <p className="text-xs text-text-muted mt-3">
+                  Le chiffre d'affaires et le résultat net excluent les factures « Associatif ou formation ».
+                </p>
               </div>
-            )}
-          </div>
 
-          <div className="bg-white border border-border rounded-2xl p-5">
-            <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
-              <h3 className="font-serif text-lg font-semibold text-sage-dark">Prestations les plus demandées</h3>
-              <input
-                type="month"
-                value={prestationsMonth}
-                onChange={(e) => setPrestationsMonth(e.target.value)}
-                className="input max-w-48"
-              />
-            </div>
-            {data.topPrestations.length === 0 ? (
-              <p className="text-sm text-text-muted">
-                Aucun rendez-vous en {formatMonthLabel(prestationsMonth)}.
-              </p>
-            ) : (
-              <div className="overflow-x-auto">
-              <table className="w-full border-collapse">
-                <thead>
-                  <tr>
-                    {['Prestation', 'Part des RDV', 'Nombre de RDV', "Chiffre d'affaires"].map((h) => (
-                      <th
-                        key={h}
-                        className="text-left text-[11px] text-text-muted font-semibold uppercase tracking-wide pb-2.5 border-b border-border"
-                      >
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.topPrestations.map((p, i) => {
-                    const maxCount = data.topPrestations[0]?.count ?? 1
-                    const pct = maxCount > 0 ? Math.round((p.count / maxCount) * 100) : 0
-                    return (
-                    <tr key={p.nom}>
-                      <td className="py-2.5 border-b border-sage-light text-sm">{p.nom}</td>
-                      <td className="py-2.5 border-b border-sage-light text-sm w-40">
-                        <div className="h-2 bg-sage-pale rounded-full overflow-hidden">
-                          <div
-                            className={`h-full rounded-full ${i === 0 ? 'bg-sage-dark' : 'bg-sage-light'}`}
-                            style={{ width: `${pct}%` }}
-                          />
+              <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
+                <ComparisonCard label="Chiffre d'affaires facturé" current={data.caA} previous={data.caB} formatValue={formatEuros} />
+                <ComparisonCard
+                  label="Dépenses"
+                  current={data.depensesA}
+                  previous={data.depensesB}
+                  formatValue={formatEuros}
+                  positiveIsGood={false}
+                />
+                <ComparisonCard label="Résultat net" current={data.resultatA} previous={data.resultatB} formatValue={formatEuros} />
+                <ComparisonCard label="Rendez-vous" current={data.rdvA} previous={data.rdvB} />
+                <ComparisonCard label="Nouvelles clientes" current={data.nouvellesA} previous={data.nouvellesB} />
+                <ComparisonCard label="Panier moyen" current={data.panierMoyenA} previous={data.panierMoyenB} formatValue={formatEuros} />
+                <ComparisonCard
+                  label="Taux d'annulation"
+                  current={data.tauxAnnulation}
+                  previous={data.tauxAnnulationB}
+                  formatValue={(n) => `${n} %`}
+                  positiveIsGood={false}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="bg-white border border-border rounded-2xl p-5">
+                  <h3 className="font-serif text-lg font-semibold text-sage-dark mb-1">Taux de fidélisation</h3>
+                  <p className="text-xs text-text-muted mb-3">Part des clientes au statut « Régulière » dans ta base.</p>
+                  <div className="font-serif text-4xl font-semibold text-sage-dark">{data.tauxFidelisation} %</div>
+                </div>
+                <div className="bg-white border border-border rounded-2xl p-5">
+                  <h3 className="font-serif text-lg font-semibold text-sage-dark mb-1">Clientes actives : nouvelles vs fidèles</h3>
+                  <p className="text-xs text-text-muted mb-3">Sur la période A ({data.totalActifs} cliente{data.totalActifs > 1 ? 's' : ''} vue{data.totalActifs > 1 ? 's' : ''}).</p>
+                  <div className="flex items-center gap-8">
+                    <div>
+                      <div className="font-serif text-3xl font-semibold text-sage-dark">{data.pctNouveaux} %</div>
+                      <div className="text-xs text-text-muted">Nouvelles clientes</div>
+                    </div>
+                    <div>
+                      <div className="font-serif text-3xl font-semibold text-sage-dark">{data.pctFideles} %</div>
+                      <div className="text-xs text-text-muted">Clientes fidèles</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-white border border-border rounded-2xl p-5">
+                <h3 className="font-serif text-lg font-semibold text-sage-dark mb-1">Rendez-vous par jour de la semaine</h3>
+                <p className="text-xs text-text-muted mb-4">Répartition sur la période A.</p>
+                {data.repartitionSemaine.every((d) => d.count === 0) ? (
+                  <p className="text-sm text-text-muted">Aucun rendez-vous sur cette période.</p>
+                ) : (
+                  <div className="flex flex-col gap-2.5">
+                    {data.repartitionSemaine.map((d) => (
+                      <div key={d.label} className="flex items-center gap-3">
+                        <span className="w-24 shrink-0 text-sm text-text-muted">{d.label}</span>
+                        <div className="flex-1 h-2.5 bg-sage-pale rounded-full overflow-hidden">
+                          <div className="h-full bg-sage-dark rounded-full" style={{ width: `${d.pct}%` }} />
                         </div>
-                      </td>
-                      <td className="py-2.5 border-b border-sage-light text-sm">{p.count}</td>
-                      <td className="py-2.5 border-b border-sage-light text-sm font-semibold text-sage-dark">
-                        {formatEuros(p.ca)}
-                      </td>
-                    </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-              </div>
-            )}
-          </div>
-
-          <div className="bg-white border border-border rounded-2xl p-5">
-            <h3 className="font-serif text-lg font-semibold text-sage-dark mb-1">Rentabilité des promotions</h3>
-            <p className="text-xs text-text-muted mb-4">Sur la période A, comparé au panier moyen sans promotion.</p>
-            {data.promoRows.length === 0 && data.sansPromoCount === 0 ? (
-              <p className="text-sm text-text-muted">Aucune facture sur cette période.</p>
-            ) : (
-              <div className="overflow-x-auto">
-              <table className="w-full border-collapse">
-                <thead>
-                  <tr>
-                    {['Promotion', 'Factures', 'CA généré', 'Panier moyen'].map((h) => (
-                      <th
-                        key={h}
-                        className="text-left text-[11px] text-text-muted font-semibold uppercase tracking-wide pb-2.5 border-b border-border"
-                      >
-                        {h}
-                      </th>
+                        <span className="w-16 shrink-0 text-sm font-semibold text-sage-dark text-right">{d.count} RDV</span>
+                      </div>
                     ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.promoRows.map((p) => (
-                    <tr key={p.nom}>
-                      <td className="py-2.5 border-b border-sage-light text-sm">{p.nom}</td>
-                      <td className="py-2.5 border-b border-sage-light text-sm">{p.count}</td>
-                      <td className="py-2.5 border-b border-sage-light text-sm font-semibold text-sage-dark">
-                        {formatEuros(p.ca)}
-                      </td>
-                      <td className="py-2.5 border-b border-sage-light text-sm">{formatEuros(p.panierMoyen)}</td>
-                    </tr>
-                  ))}
-                  <tr>
-                    <td className="py-2.5 text-sm text-text-muted italic">Sans promotion</td>
-                    <td className="py-2.5 text-sm text-text-muted">{data.sansPromoCount}</td>
-                    <td className="py-2.5 text-sm font-semibold text-sage-dark">{formatEuros(data.sansPromoCa)}</td>
-                    <td className="py-2.5 text-sm text-text-muted">{formatEuros(data.sansPromoPanierMoyen)}</td>
-                  </tr>
-                </tbody>
-              </table>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            </>
+          )}
+
+          {subTab === 'prestations' && (
+            <>
+              <div className="bg-white border border-border rounded-2xl p-5">
+                <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
+                  <h3 className="font-serif text-lg font-semibold text-sage-dark">Prestations les plus demandées</h3>
+                  <input
+                    type="month"
+                    value={prestationsMonth}
+                    onChange={(e) => setPrestationsMonth(e.target.value)}
+                    className="input max-w-48"
+                  />
+                </div>
+                {data.topPrestations.length === 0 ? (
+                  <p className="text-sm text-text-muted">
+                    Aucun rendez-vous en {formatMonthLabel(prestationsMonth)}.
+                  </p>
+                ) : (
+                  <div className="overflow-x-auto">
+                  <table className="w-full border-collapse">
+                    <thead>
+                      <tr>
+                        {['Prestation', 'Part des RDV', 'Nombre de RDV', "Chiffre d'affaires"].map((h) => (
+                          <th
+                            key={h}
+                            className="text-left text-[11px] text-text-muted font-semibold uppercase tracking-wide pb-2.5 border-b border-border"
+                          >
+                            {h}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.topPrestations.map((p, i) => {
+                        const maxCount = data.topPrestations[0]?.count ?? 1
+                        const pct = maxCount > 0 ? Math.round((p.count / maxCount) * 100) : 0
+                        return (
+                        <tr key={p.nom}>
+                          <td className="py-2.5 border-b border-sage-light text-sm">{p.nom}</td>
+                          <td className="py-2.5 border-b border-sage-light text-sm w-40">
+                            <div className="h-2 bg-sage-pale rounded-full overflow-hidden">
+                              <div
+                                className={`h-full rounded-full ${i === 0 ? 'bg-sage-dark' : 'bg-sage-light'}`}
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
+                          </td>
+                          <td className="py-2.5 border-b border-sage-light text-sm">{p.count}</td>
+                          <td className="py-2.5 border-b border-sage-light text-sm font-semibold text-sage-dark">
+                            {formatEuros(p.ca)}
+                          </td>
+                        </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-white border border-border rounded-2xl p-5">
+                <h3 className="font-serif text-lg font-semibold text-sage-dark mb-1">Rentabilité des promotions</h3>
+                <p className="text-xs text-text-muted mb-4">Sur la période A, comparé au panier moyen sans promotion.</p>
+                {data.promoRows.length === 0 && data.sansPromoCount === 0 ? (
+                  <p className="text-sm text-text-muted">Aucune facture sur cette période.</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                  <table className="w-full border-collapse">
+                    <thead>
+                      <tr>
+                        {['Promotion', 'Factures', 'CA généré', 'Panier moyen'].map((h) => (
+                          <th
+                            key={h}
+                            className="text-left text-[11px] text-text-muted font-semibold uppercase tracking-wide pb-2.5 border-b border-border"
+                          >
+                            {h}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.promoRows.map((p) => (
+                        <tr key={p.nom}>
+                          <td className="py-2.5 border-b border-sage-light text-sm">{p.nom}</td>
+                          <td className="py-2.5 border-b border-sage-light text-sm">{p.count}</td>
+                          <td className="py-2.5 border-b border-sage-light text-sm font-semibold text-sage-dark">
+                            {formatEuros(p.ca)}
+                          </td>
+                          <td className="py-2.5 border-b border-sage-light text-sm">{formatEuros(p.panierMoyen)}</td>
+                        </tr>
+                      ))}
+                      <tr>
+                        <td className="py-2.5 text-sm text-text-muted italic">Sans promotion</td>
+                        <td className="py-2.5 text-sm text-text-muted">{data.sansPromoCount}</td>
+                        <td className="py-2.5 text-sm font-semibold text-sage-dark">{formatEuros(data.sansPromoCa)}</td>
+                        <td className="py-2.5 text-sm text-text-muted">{formatEuros(data.sansPromoPanierMoyen)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </div>
       )}
+    </div>
+  )
+}
+
+function StatTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="bg-white border border-border rounded-2xl p-5">
+      <div className="text-xs font-semibold text-text-muted uppercase tracking-wide">{label}</div>
+      <div className="font-serif text-2xl font-semibold text-sage-dark mt-1.5">{value}</div>
     </div>
   )
 }

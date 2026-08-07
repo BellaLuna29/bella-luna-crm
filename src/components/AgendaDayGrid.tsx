@@ -11,6 +11,7 @@ interface GridItem {
   statut: string
   clienteNom: string
   prestationNom: string
+  notes: string
   prix: number | null
   minutesSupplementaires: number
   prestationCouleur: string | null
@@ -33,6 +34,7 @@ const HOUR_HEIGHT = 64
 const DEFAULT_START_HOUR = 8
 const DEFAULT_END_HOUR = 20
 const MIDI_HOUR = 12
+const EN_ATTENTE_COULEUR = '#C9A86A'
 const HATCH_STYLE: CSSProperties = {
   backgroundImage:
     'repeating-linear-gradient(45deg, rgba(35,51,45,0.06), rgba(35,51,45,0.06) 6px, transparent 6px, transparent 12px)',
@@ -110,20 +112,25 @@ function AgendaDayGrid({ items, absences = [], onClickItem, onSendReminder }: Ag
             const minutesFromStart = (item.start.getHours() - startHour) * 60 + item.start.getMinutes()
             const top = (minutesFromStart / 60) * HOUR_HEIGHT
             const height = Math.max(30, (item.durationMin / 60) * HOUR_HEIGHT - 4)
+            const isAnnule = item.statut === 'Annulé'
+            const isEnAttente = item.statut === 'En attente'
+            const displayNom = item.clienteNom || item.notes || 'Cliente inconnue'
+            const blockColor = isEnAttente ? EN_ATTENTE_COULEUR : item.prestationCouleur
             return (
               <div
                 key={item.id}
                 className={`absolute left-2 right-2 rounded-lg overflow-hidden ${
-                  item.statut === 'Annulé' ? 'bg-border text-text-muted' : `text-white ${item.prestationCouleur ? '' : avatarColorClass(item.prestationNom)}`
+                  isAnnule ? 'bg-border text-text-muted' : `text-white ${blockColor ? '' : avatarColorClass(item.prestationNom)}`
                 }`}
-                style={{ top, height, backgroundColor: item.statut !== 'Annulé' && item.prestationCouleur ? item.prestationCouleur : undefined }}
+                style={{ top, height, backgroundColor: !isAnnule && blockColor ? blockColor : undefined }}
               >
                 <button onClick={() => onClickItem(item.id)} className="absolute inset-0 text-left px-3 py-1.5 hover:brightness-95 transition-[filter]">
-                  <div className={`text-xs font-semibold truncate pr-16 ${item.statut === 'Annulé' ? 'line-through' : ''}`}>
-                    {item.clienteNom || 'Cliente inconnue'}
+                  <div className={`text-xs font-semibold truncate pr-16 ${isAnnule ? 'line-through' : ''}`}>
+                    {isEnAttente ? '? ' : ''}
+                    {displayNom}
                   </div>
                   <div className="text-[11px] opacity-90 truncate pr-16">
-                    {item.statut === 'Annulé' ? 'Annulé' : item.prestationNom || 'Prestation inconnue'} · {formatHeure(item.start)}–{formatHeure(item.end)}
+                    {isAnnule ? 'Annulé' : item.prestationNom || 'Prestation inconnue'} · {formatHeure(item.start)}–{formatHeure(item.end)}
                     {' · '}
                     {formatMinutes(item.durationMin)}
                     {item.prix !== null ? ` · ${item.prix} €` : ''}

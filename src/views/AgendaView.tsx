@@ -104,10 +104,22 @@ function isoDate(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
+const VIEW_MODE_KEY = 'bella-luna-agenda-view-mode'
+
+function initialViewMode(): 'semaine' | 'jour' {
+  const stored = localStorage.getItem(VIEW_MODE_KEY)
+  if (stored === 'semaine' || stored === 'jour') return stored
+  return window.matchMedia('(max-width: 640px)').matches ? 'jour' : 'semaine'
+}
+
 function AgendaView() {
   const { getToken } = useAuth()
   const [state, setState] = useState<State>({ status: 'loading' })
-  const [viewMode, setViewMode] = useState<'semaine' | 'jour'>('semaine')
+  const [viewMode, setViewModeState] = useState<'semaine' | 'jour'>(initialViewMode)
+  function setViewMode(next: 'semaine' | 'jour') {
+    localStorage.setItem(VIEW_MODE_KEY, next)
+    setViewModeState(next)
+  }
   const [focusDate, setFocusDate] = useState(() => startOfDay(new Date()))
   const weekStart = useMemo(() => getMonday(focusDate), [focusDate])
   const [absences, setAbsences] = useState<AbsenceItem[]>([])
@@ -142,11 +154,6 @@ function AgendaView() {
       .then((data) => setAbsences(data.absences))
       .catch(() => setAbsences([]))
   }, [getToken])
-
-  useEffect(() => {
-    if (window.matchMedia('(max-width: 640px)').matches) setViewMode('jour')
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
 
   useEffect(() => {
     load()
@@ -271,6 +278,7 @@ function AgendaView() {
               statut: item.statut,
               clienteNom: item.clienteNom,
               prestationNom: item.prestationNom,
+              notes: item.notes,
               minutesSupplementaires: item.minutesSupplementaires,
               prestationCouleur: item.prestationCouleur,
             })),
@@ -459,6 +467,7 @@ function AgendaView() {
                   statut: item.statut,
                   clienteNom: item.clienteNom,
                   prestationNom: item.prestationNom,
+                  notes: item.notes,
                   prix: item.prix,
                   minutesSupplementaires: item.minutesSupplementaires,
                   prestationCouleur: item.prestationCouleur,

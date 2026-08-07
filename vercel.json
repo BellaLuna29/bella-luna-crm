@@ -10,5 +10,8 @@
       "path": "/api/prestations?resource=rappels-auto-run",
       "schedule": "0 7 * * *"
     }
+  ],
+  "rewrites": [
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]
 }
