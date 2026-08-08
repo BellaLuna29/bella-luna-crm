@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { randomBytes } from 'node:crypto'
+import { randomBytes, createHash } from 'node:crypto'
 import {
   dbList,
   dbCreate,
@@ -53,6 +53,7 @@ const TABLE_EMAIL_TEMPLATES = 'email_templates'
 const TABLE_DEPENSES = 'depenses'
 const TABLE_ABSENCES = 'absences'
 const TABLE_DISPONIBILITES = 'disponibilites'
+const TABLE_RESERVATION_ATTEMPTS = 'reservation_attempts'
 const SITE_URL = process.env.ALLOWED_ORIGIN || 'https://bella-luna-crm-bella-luna.vercel.app'
 
 interface Prestation {
@@ -728,6 +729,33 @@ async function isValidReservationToken(token: unknown): Promise<boolean> {
   return Boolean(stored) && stored === token
 }
 
+const RATE_LIMIT_MAX_DEMANDES_PAR_HEURE = 5
+const RATE_LIMIT_FENETRE_MS = 60 * 60 * 1000
+
+function getClientIp(req: VercelRequest): string {
+  const forwarded = req.headers['x-forwarded-for']
+  const first = Array.isArray(forwarded) ? forwarded[0] : forwarded
+  const ip = first?.split(',')[0]?.trim()
+  return ip || req.socket?.remoteAddress || 'unknown'
+}
+
+// Salted with a server-only secret so the stored value can't be reversed back
+// to a real IP even if the table were ever exposed — only used to match
+// repeat requests against each other, never to identify anyone.
+function hashIp(ip: string): string {
+  return createHash('sha256').update(`${ip}:${process.env.CLERK_SECRET_KEY ?? ''}`).digest('hex')
+}
+
+/** Records this attempt and reports whether this IP is still under the hourly cap on booking submissions. */
+async function checkAndRecordBookingRateLimit(req: VercelRequest): Promise<boolean> {
+  const ipHash = hashIp(getClientIp(req))
+  const since = new Date(Date.now() - RATE_LIMIT_FENETRE_MS).toISOString()
+  const recent = await dbList(TABLE_RESERVATION_ATTEMPTS, { eq: ['ip_hash', ipHash], gte: ['created_at', since] })
+  if (recent.length >= RATE_LIMIT_MAX_DEMANDES_PAR_HEURE) return false
+  await dbCreate(TABLE_RESERVATION_ATTEMPTS, { ip_hash: ipHash })
+  return true
+}
+
 async function handleReservationToken(req: VercelRequest, res: VercelResponse): Promise<void> {
   if (req.method === 'GET') {
     try {
@@ -987,6 +1015,21 @@ async function handlePublicBooking(req: VercelRequest, res: VercelResponse): Pro
 
   if (!(await isValidReservationToken(b.token))) {
     res.status(404).json({ error: 'Page introuvable.' })
+    return
+  }
+
+  try {
+    if (!(await checkAndRecordBookingRateLimit(req))) {
+      res.status(429).json({ error: 'Trop de demandes envoyées récemment. Réessaie dans une heure.' })
+      return
+    }
+  } catch (error) {
+    if (error instanceof SupabaseConfigError) {
+      res.status(500).json({ error: error.message })
+      return
+    }
+    console.error(error)
+    res.status(502).json({ error: "Impossible de traiter la demande." })
     return
   }
 
