@@ -729,7 +729,7 @@ async function isValidReservationToken(token: unknown): Promise<boolean> {
   return Boolean(stored) && stored === token
 }
 
-const RATE_LIMIT_MAX_DEMANDES_PAR_HEURE = 5
+const RATE_LIMIT_MAX_DEMANDES_PAR_HEURE = 3
 const RATE_LIMIT_FENETRE_MS = 60 * 60 * 1000
 
 function getClientIp(req: VercelRequest): string {
