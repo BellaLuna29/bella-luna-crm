@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
+import { randomBytes } from 'node:crypto'
 import {
   dbList,
   dbCreate,
@@ -700,6 +701,63 @@ const RESERVATION_MAX_JOURS = 60
 const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/
 const HEURE_ONLY_RE = /^([01]\d|2[0-3]):([0-5]\d)$/
 
+function generateReservationToken(): string {
+  return randomBytes(9).toString('base64url')
+}
+
+/** Reads (or creates, on first call) the secret slug gating the public /reserver link. */
+async function ensureReservationToken(regenerate: boolean): Promise<string> {
+  const rows = await dbList(TABLE_PARAMETRES)
+  const existing = rows[0]
+  const current = existing?.lien_reservation_token as string | undefined
+  if (current && !regenerate) return current
+  const token = generateReservationToken()
+  if (existing) {
+    await dbUpdate(TABLE_PARAMETRES, existing.id, { lien_reservation_token: token })
+  } else {
+    await dbCreate(TABLE_PARAMETRES, { libelle: 'Studio', lien_reservation_token: token })
+  }
+  return token
+}
+
+/** Public endpoints are gated by this token instead of a fixed, guessable path — she can rotate it any time to cut off an old/leaked link. */
+async function isValidReservationToken(token: unknown): Promise<boolean> {
+  if (typeof token !== 'string' || token.length === 0) return false
+  const rows = await dbList(TABLE_PARAMETRES)
+  const stored = rows[0]?.lien_reservation_token as string | undefined
+  return Boolean(stored) && stored === token
+}
+
+async function handleReservationToken(req: VercelRequest, res: VercelResponse): Promise<void> {
+  if (req.method === 'GET') {
+    try {
+      res.status(200).json({ token: await ensureReservationToken(false) })
+    } catch (error) {
+      if (error instanceof SupabaseConfigError) {
+        res.status(500).json({ error: error.message })
+        return
+      }
+      console.error(error)
+      res.status(502).json({ error: 'Impossible de récupérer le lien de réservation.' })
+    }
+    return
+  }
+  if (req.method === 'POST') {
+    try {
+      res.status(200).json({ token: await ensureReservationToken(true) })
+    } catch (error) {
+      if (error instanceof SupabaseConfigError) {
+        res.status(500).json({ error: error.message })
+        return
+      }
+      console.error(error)
+      res.status(502).json({ error: 'Impossible de régénérer le lien de réservation.' })
+    }
+    return
+  }
+  res.status(405).json({ error: 'Méthode non autorisée.' })
+}
+
 function minutesFromMidnight(hhmm: string): number {
   const [h, m] = hhmm.split(':').map(Number)
   return h * 60 + m
@@ -763,13 +821,27 @@ interface CreneauxResult {
  * Also reports WHY there's nothing, so the public page can say something
  * more useful than a blank list (not a working day vs. absente vs. complet).
  */
+function nextDateStr(dateStr: string): string {
+  const d = new Date(`${dateStr}T00:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + 1)
+  return d.toISOString().slice(0, 10)
+}
+
 async function computeCreneauxPourDate(dateStr: string, dureeMin: number): Promise<CreneauxResult> {
   const dow = new Date(`${dateStr}T12:00:00`).getDay()
+  // Widen the UTC range by a day on each side of the Paris calendar day so a
+  // CET/CEST offset can never push a real occupation just outside the window.
+  const rangeStart = parisWallClockToUtcIso(dateStr, '00:00')
+  const rangeEnd = parisWallClockToUtcIso(nextDateStr(dateStr), '00:00')
 
   const [dispoRows, absenceRows, rdvRows] = await Promise.all([
     dbList(TABLE_DISPONIBILITES, { eq: ['jour_semaine', dow] }),
     dbList(TABLE_ABSENCES),
-    dbList(TABLE_RENDEZVOUS, { select: '*, prestation:prestations(duree)' }),
+    dbList(TABLE_RENDEZVOUS, {
+      select: '*, prestation:prestations(duree)',
+      gte: ['date', rangeStart],
+      lt: ['date', rangeEnd],
+    }),
   ])
 
   const dispo = dispoRows[0]
@@ -829,6 +901,10 @@ async function handlePublicPrestations(req: VercelRequest, res: VercelResponse):
     res.status(405).json({ error: 'Méthode non autorisée.' })
     return
   }
+  if (!(await isValidReservationToken(req.query.token))) {
+    res.status(404).json({ error: 'Page introuvable.' })
+    return
+  }
   try {
     const rows = await dbList(TABLE_PRESTATIONS)
     const prestations: PublicPrestationItem[] = rows
@@ -860,6 +936,10 @@ async function handlePublicPrestations(req: VercelRequest, res: VercelResponse):
 async function handlePublicDisponibilites(req: VercelRequest, res: VercelResponse): Promise<void> {
   if (req.method !== 'GET') {
     res.status(405).json({ error: 'Méthode non autorisée.' })
+    return
+  }
+  if (!(await isValidReservationToken(req.query.token))) {
+    res.status(404).json({ error: 'Page introuvable.' })
     return
   }
   const dateStr = req.query.date
@@ -904,6 +984,11 @@ async function handlePublicBooking(req: VercelRequest, res: VercelResponse): Pro
     return
   }
   const b = (typeof req.body === 'object' && req.body !== null ? req.body : {}) as Record<string, unknown>
+
+  if (!(await isValidReservationToken(b.token))) {
+    res.status(404).json({ error: 'Page introuvable.' })
+    return
+  }
 
   // Honeypot: real visitors never fill this hidden field. Pretend success
   // without writing anything, so bots don't learn it was rejected.
@@ -1344,6 +1429,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
 
   if (req.query.resource === 'newsletter-send') {
     await handleNewsletterSend(req, res)
+    return
+  }
+  if (req.query.resource === 'reservation-token') {
+    await handleReservationToken(req, res)
     return
   }
   if (req.query.resource === 'questionnaires') {

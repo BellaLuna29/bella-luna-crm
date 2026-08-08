@@ -41,11 +41,19 @@ export interface DbRow {
 
 export async function dbList<T extends DbRow = DbRow>(
   table: string,
-  opts?: { select?: string; order?: { column: string; ascending?: boolean }; eq?: [string, unknown] },
+  opts?: {
+    select?: string
+    order?: { column: string; ascending?: boolean }
+    eq?: [string, unknown]
+    gte?: [string, unknown]
+    lt?: [string, unknown]
+  },
 ): Promise<T[]> {
   const sb = getClient()
   let query = sb.from(table).select(opts?.select ?? '*')
   if (opts?.eq) query = query.eq(opts.eq[0], opts.eq[1])
+  if (opts?.gte) query = query.gte(opts.gte[0], opts.gte[1])
+  if (opts?.lt) query = query.lt(opts.lt[0], opts.lt[1])
   if (opts?.order) query = query.order(opts.order.column, { ascending: opts.order.ascending ?? true })
   const { data, error } = await query
   if (error) throw new Error(`Supabase a répondu une erreur : ${error.message}`)

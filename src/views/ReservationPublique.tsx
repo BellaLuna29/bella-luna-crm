@@ -30,7 +30,11 @@ function maxDateIso(): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
-function ReservationPublique() {
+interface ReservationPubliqueProps {
+  token: string
+}
+
+function ReservationPublique({ token }: ReservationPubliqueProps) {
   const [prestations, setPrestations] = useState<PublicPrestation[] | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [prestationId, setPrestationId] = useState('')
@@ -52,19 +56,34 @@ function ReservationPublique() {
       setLoadError('Configuration manquante.')
       return
     }
-    fetch(`${BASE_URL}/api/prestations?resource=public-prestations`)
-      .then((r) => r.json())
+    if (!token) {
+      setLoadError('Lien invalide ou expiré — demande le lien à jour à Bella Luna.')
+      return
+    }
+    fetch(`${BASE_URL}/api/prestations?resource=public-prestations&token=${encodeURIComponent(token)}`)
+      .then((r) => {
+        if (r.status === 404) throw new Error('invalid-token')
+        return r.json()
+      })
       .then((data) => setPrestations(data.prestations ?? []))
-      .catch(() => setLoadError('Impossible de charger les prestations. Réessaie dans un instant.'))
-  }, [])
+      .catch((err) => {
+        setLoadError(
+          err instanceof Error && err.message === 'invalid-token'
+            ? 'Lien invalide ou expiré — demande le lien à jour à Bella Luna.'
+            : 'Impossible de charger les prestations. Réessaie dans un instant.',
+        )
+      })
+  }, [token])
 
   useEffect(() => {
     setHeure('')
     setCreneaux(null)
     setRaisonVide(null)
-    if (!prestationId || !date || !BASE_URL) return
+    if (!prestationId || !date || !BASE_URL || !token) return
     setLoadingCreneaux(true)
-    fetch(`${BASE_URL}/api/prestations?resource=public-disponibilites&date=${date}&prestationId=${prestationId}`)
+    fetch(
+      `${BASE_URL}/api/prestations?resource=public-disponibilites&date=${date}&prestationId=${prestationId}&token=${encodeURIComponent(token)}`,
+    )
       .then((r) => r.json())
       .then((data) => {
         setCreneaux(data.creneaux ?? [])
@@ -75,7 +94,7 @@ function ReservationPublique() {
         setRaisonVide(null)
       })
       .finally(() => setLoadingCreneaux(false))
-  }, [prestationId, date])
+  }, [prestationId, date, token])
 
   const prestationsParCategorie = useMemo(() => {
     if (!prestations) return []
@@ -109,6 +128,7 @@ function ReservationPublique() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          token,
           prestationId,
           date,
           heure,

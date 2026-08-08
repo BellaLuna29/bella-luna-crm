@@ -19,13 +19,15 @@ if ('serviceWorker' in navigator) {
 }
 
 // /reserver is public — clientes booking online are never signed into Clerk,
-// so it must render entirely outside the auth-gated tree below.
-const isPublicBookingPage = window.location.pathname.startsWith('/reserver')
+// so it must render entirely outside the auth-gated tree below. The trailing
+// segment is a secret token (rotatable in Disponibilités) rather than a fixed,
+// guessable path, so an old/leaked link can be cut off without a deploy.
+const reserverMatch = window.location.pathname.match(/^\/reserver(?:\/([^/]+))?\/?$/)
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    {isPublicBookingPage ? (
-      <ReservationPublique />
+    {reserverMatch ? (
+      <ReservationPublique token={reserverMatch[1] ?? ''} />
     ) : PUBLISHABLE_KEY ? (
       <ClerkProvider publishableKey={PUBLISHABLE_KEY} localization={frFR}>
         <ToastProvider>
