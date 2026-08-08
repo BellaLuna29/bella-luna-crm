@@ -361,8 +361,26 @@ function StatsView() {
     const rdvAnnee = state.rendezvous.filter((r) => inRange(r.date, yearStart, yearEnd))
     const annulesAnnee = rdvAnnee.filter((r) => r.statut === 'Annulé').length
     const tauxAnnulationAnnee = rdvAnnee.length > 0 ? Math.round((annulesAnnee / rdvAnnee.length) * 100) : 0
-    const nouvellesAnnee = state.clients.filter((c) => inRange(c.dateCreation, yearStart, yearEnd)).length
-    return { tauxAnnulationAnnee, nouvellesAnnee }
+    return { tauxAnnulationAnnee }
+  }, [state, selectedYear])
+
+  const yearlyPrestationStats = useMemo(() => {
+    if (state.status !== 'success') return null
+    const yearStart = `${selectedYear}-01-01`
+    const yearEnd = `${selectedYear}-12-31`
+    const map = new Map<string, { count: number; ca: number }>()
+    for (const r of state.rendezvous) {
+      if (!inRange(r.date, yearStart, yearEnd)) continue
+      const nom = r.prestationNom || 'Prestation inconnue'
+      const entry = map.get(nom) ?? { count: 0, ca: 0 }
+      entry.count += 1
+      entry.ca += r.prix ?? 0
+      map.set(nom, entry)
+    }
+    const rows = Array.from(map.entries()).map(([nom, v]) => ({ nom, ...v }))
+    if (rows.length === 0) return { best: null, worst: null }
+    const sorted = [...rows].sort((a, b) => b.ca - a.ca)
+    return { best: sorted[0], worst: sorted[sorted.length - 1] }
   }, [state, selectedYear])
 
   const [subTab, setSubTab] = useState<'apercu' | 'comparaison' | 'prestations'>('apercu')
@@ -410,18 +428,28 @@ function StatsView() {
                     ))}
                   </select>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-3">
+                <div className="flex flex-col gap-6 mt-3">
                   <div>
                     <p className="text-xs text-text-muted mb-2">
                       Chiffre d'affaires par mois — {formatEuros(yearlyData.totalCaAnnee)} sur l'année
                     </p>
-                    <MonthlyBarChart data={yearlyData.monthlyCA} color="#3A5A50" formatValue={formatEuros} />
+                    <MonthlyBarChart
+                      data={yearlyData.monthlyCA}
+                      color="#3A5A50"
+                      formatValue={formatEuros}
+                      formatValueShort={(n) => `${Math.round(n).toLocaleString('fr-FR')} €`}
+                    />
                   </div>
                   <div>
                     <p className="text-xs text-text-muted mb-2">
                       Rendez-vous par mois — {yearlyData.totalRdvAnnee} sur l'année
                     </p>
-                    <MonthlyBarChart data={yearlyData.monthlyRdv} color="#C9A86A" formatValue={(n) => `${n} RDV`} />
+                    <MonthlyBarChart
+                      data={yearlyData.monthlyRdv}
+                      color="#C9A86A"
+                      formatValue={(n) => `${n} RDV`}
+                      formatValueShort={(n) => String(n)}
+                    />
                   </div>
                 </div>
               </div>
@@ -429,10 +457,23 @@ function StatsView() {
               <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
                 <StatTile label="Chiffre d'affaires (année)" value={formatEuros(yearlyData.totalCaAnnee)} />
                 <StatTile label="Rendez-vous (année)" value={String(yearlyData.totalRdvAnnee)} />
-                <StatTile label="Nouvelles clientes (année)" value={String(landingStats.nouvellesAnnee)} />
                 <StatTile label="Taux de fidélisation" value={`${data.tauxFidelisation} %`} />
                 <StatTile label="Taux d'annulation (année)" value={`${landingStats.tauxAnnulationAnnee} %`} />
                 <StatTile label="Factures impayées" value={formatEuros(data.facturesImpayeesMontant)} />
+                {yearlyPrestationStats?.best && (
+                  <StatTile
+                    label="Meilleure prestation (année)"
+                    value={yearlyPrestationStats.best.nom}
+                    sub={formatEuros(yearlyPrestationStats.best.ca)}
+                  />
+                )}
+                {yearlyPrestationStats?.worst && yearlyPrestationStats.worst.nom !== yearlyPrestationStats.best?.nom && (
+                  <StatTile
+                    label="Prestation la moins rentable (année)"
+                    value={yearlyPrestationStats.worst.nom}
+                    sub={formatEuros(yearlyPrestationStats.worst.ca)}
+                  />
+                )}
               </div>
             </>
           )}
@@ -643,11 +684,12 @@ function StatsView() {
   )
 }
 
-function StatTile({ label, value }: { label: string; value: string }) {
+function StatTile({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
     <div className="bg-white border border-border rounded-2xl p-5">
       <div className="text-xs font-semibold text-text-muted uppercase tracking-wide">{label}</div>
       <div className="font-serif text-2xl font-semibold text-sage-dark mt-1.5">{value}</div>
+      {sub && <div className="text-xs text-text-muted mt-1">{sub}</div>}
     </div>
   )
 }

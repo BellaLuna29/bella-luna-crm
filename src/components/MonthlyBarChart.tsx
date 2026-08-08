@@ -4,13 +4,15 @@ interface MonthlyBarChartProps {
   data: { label: string; value: number }[]
   color: string
   formatValue: (n: number) => string
+  /** Compact label drawn above each bar — falls back to formatValue when omitted. */
+  formatValueShort?: (n: number) => string
 }
 
 const WIDTH = 700
 const HEIGHT = 220
-const PADDING = { top: 10, right: 4, bottom: 22, left: 4 }
+const PADDING = { top: 22, right: 4, bottom: 22, left: 4 }
 
-function MonthlyBarChart({ data, color, formatValue }: MonthlyBarChartProps) {
+function MonthlyBarChart({ data, color, formatValue, formatValueShort = formatValue }: MonthlyBarChartProps) {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null)
 
   const max = Math.max(1, ...data.map((d) => d.value))
@@ -61,6 +63,16 @@ function MonthlyBarChart({ data, color, formatValue }: MonthlyBarChartProps) {
                 fill={color}
                 opacity={isHover ? 1 : 0.82}
               />
+              <text
+                x={x + barWidth / 2}
+                y={Math.max(y - 5, PADDING.top - 8)}
+                textAnchor="middle"
+                fontSize={9.5}
+                fontWeight={600}
+                fill="#3A5A50"
+              >
+                {formatValueShort(d.value)}
+              </text>
               <text
                 x={x + barWidth / 2}
                 y={HEIGHT - PADDING.bottom + 14}
