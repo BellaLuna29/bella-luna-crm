@@ -1,19 +1,23 @@
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { Show, SignIn } from '@clerk/react'
 import logo from './assets/logo.png'
 import Sidebar from './components/Sidebar'
 import Topbar from './components/Topbar'
-import ClientsListView from './views/ClientsListView'
-import ClientDetailView from './views/ClientDetailView'
-import AgendaView from './views/AgendaView'
-import DashboardView from './views/DashboardView'
-import StatsView from './views/StatsView'
-import FacturationView from './views/FacturationView'
-import PrestationsView from './views/PrestationsView'
-import ComptaView from './views/ComptaView'
-import CommunicationView from './views/CommunicationView'
-import ParametresView from './views/ParametresView'
 import type { View } from './types'
+
+// Lazy-loaded so the initial bundle only pays for the shell (Sidebar/Topbar)
+// plus whichever single view is actually open — the CRM has a lot of views
+// and she only ever looks at one at a time.
+const ClientsListView = lazy(() => import('./views/ClientsListView'))
+const ClientDetailView = lazy(() => import('./views/ClientDetailView'))
+const AgendaView = lazy(() => import('./views/AgendaView'))
+const DashboardView = lazy(() => import('./views/DashboardView'))
+const StatsView = lazy(() => import('./views/StatsView'))
+const FacturationView = lazy(() => import('./views/FacturationView'))
+const PrestationsView = lazy(() => import('./views/PrestationsView'))
+const ComptaView = lazy(() => import('./views/ComptaView'))
+const CommunicationView = lazy(() => import('./views/CommunicationView'))
+const ParametresView = lazy(() => import('./views/ParametresView'))
 
 const TITLES: Record<View, [string, string]> = {
   dashboard: ['Tableau de bord', "Vue d'ensemble de votre activité"],
@@ -92,6 +96,7 @@ function App() {
               />
             </div>
             <main className="flex-1 p-4 md:p-8 overflow-y-auto overflow-x-hidden print:p-0 print:overflow-visible">
+              <Suspense fallback={<p className="text-sm text-text-muted">Chargement…</p>}>
               <div>
               {view === 'clients' && <ClientsListView />}
               {view === 'client-detail' && selectedClientId && (
@@ -125,6 +130,7 @@ function App() {
                 />
               )}
               </div>
+              </Suspense>
             </main>
           </div>
         </div>
