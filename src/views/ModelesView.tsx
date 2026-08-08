@@ -18,7 +18,7 @@ interface EmailTemplate {
 }
 
 const TOKENS_HINT =
-  'Jetons disponibles : {{nomComplet}}, {{prestation}}, {{date}}, {{montant}}, {{promoNom}}, {{lienQuestionnaire}}'
+  'Jetons disponibles : {{nomComplet}}, {{prestation}}, {{date}}, {{montant}}, {{promoNom}}, {{lienQuestionnaire}}, {{lienReservation}}'
 
 function ModelesView() {
   const { getToken } = useAuth()

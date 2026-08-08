@@ -4,12 +4,15 @@ import { apiFetch, ApiError } from '../lib/api'
 import SearchableSelect from './SearchableSelect'
 import { useToast } from './ToastProvider'
 import Modal from './Modal'
+import MessageComposerModal from './MessageComposerModal'
 import { computeCureProgress, cureTotalSeances } from '../lib/cureProgress'
 import { parseDureeMinutes, formatCreneau } from '../lib/duree'
 
 interface ClientOption {
   id: string
   nomComplet: string
+  telephone: string
+  email: string
 }
 
 interface NewClientResponse {
@@ -86,6 +89,10 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [lienTelephone, setLienTelephone] = useState('')
+  const [lienEmail, setLienEmail] = useState('')
+  const [lienTouched, setLienTouched] = useState(false)
+  const [showLienComposer, setShowLienComposer] = useState(false)
 
   useEffect(() => {
     Promise.all([
@@ -102,6 +109,14 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
         setLoadError(err instanceof ApiError ? err.message : 'Erreur inconnue.')
       })
   }, [getToken])
+
+  useEffect(() => {
+    if (lienTouched) return
+    const client = clients?.find((c) => c.id === values.clienteId)
+    setLienTelephone(client?.telephone ?? '')
+    setLienEmail(client?.email ?? '')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [values.clienteId, clients])
 
   const cureProgress = useMemo(() => computeCureProgress(rdvHistory, prestations ?? []), [rdvHistory, prestations])
 
@@ -140,7 +155,10 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
         method: 'POST',
         body: { nomComplet: quickNom.trim(), telephone: quickTelephone.trim() },
       })
-      setClients((prev) => [...(prev ?? []), { id: data.client.id, nomComplet: data.client.nomComplet }])
+      setClients((prev) => [
+        ...(prev ?? []),
+        { id: data.client.id, nomComplet: data.client.nomComplet, telephone: quickTelephone.trim(), email: '' },
+      ])
       set('clienteId', data.client.id)
       setShowQuickCreate(false)
       setQuickNom('')
@@ -253,8 +271,10 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
   }
 
   const loading = !clients || !prestations
+  const selectedClientNom = clients?.find((c) => c.id === values.clienteId)?.nomComplet ?? ''
 
   return (
+    <>
     <Modal>
       <h3 className="font-serif text-xl font-semibold text-sage-dark mb-4">
         {mode === 'create' ? 'Nouveau rendez-vous' : 'Modifier le rendez-vous'}
@@ -477,6 +497,41 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
             </p>
           </div>
 
+          <div className="bg-sage-pale rounded-[10px] p-3">
+            <span className="block text-xs font-semibold text-sage-dark mb-2">Envoyer le lien de réservation</span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
+              <input
+                type="tel"
+                value={lienTelephone}
+                onChange={(e) => {
+                  setLienTelephone(e.target.value)
+                  setLienTouched(true)
+                }}
+                placeholder="Téléphone"
+                maxLength={30}
+                className="input"
+              />
+              <input
+                type="email"
+                value={lienEmail}
+                onChange={(e) => {
+                  setLienEmail(e.target.value)
+                  setLienTouched(true)
+                }}
+                placeholder="E-mail"
+                className="input"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowLienComposer(true)}
+              disabled={!lienTelephone.trim() && !lienEmail.trim()}
+              className="bg-white border border-border text-sage-dark px-3 py-1.5 rounded-[8px] text-xs font-semibold hover:bg-white/70 disabled:opacity-50"
+            >
+              Envoyer le lien
+            </button>
+          </div>
+
           <Field label="Notes">
             <textarea
               value={values.notes}
@@ -549,6 +604,16 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
         </form>
       )}
     </Modal>
+    {showLienComposer && (
+      <MessageComposerModal
+        context={{ nomComplet: selectedClientNom || 'là' }}
+        telephone={lienTelephone.trim()}
+        email={lienEmail.trim()}
+        initialTemplateKey="lienReservation"
+        onClose={() => setShowLienComposer(false)}
+      />
+    )}
+    </>
   )
 }
 

@@ -65,6 +65,7 @@ function MessageComposerModal({ context, telephone, email, initialTemplateKey, o
   const [emailSubject, setEmailSubject] = useState('')
   const [emailBody, setEmailBody] = useState('')
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [lienReservation, setLienReservation] = useState<string | undefined>(undefined)
 
   useEffect(() => {
     Promise.all([
@@ -73,11 +74,16 @@ function MessageComposerModal({ context, telephone, email, initialTemplateKey, o
       apiFetch<{ questionnaires: Questionnaire[] }>(getToken, '/api/prestations?resource=questionnaires').catch(
         () => ({ questionnaires: [] as Questionnaire[] }),
       ),
+      apiFetch<{ token: string }>(getToken, '/api/prestations?resource=reservation-token').catch(
+        () => ({ token: '' }),
+      ),
     ])
-      .then(([sms, mails, qData]) => {
+      .then(([sms, mails, qData, lienData]) => {
         setSmsTemplates(sms)
         setEmailTemplates(mails)
         setQuestionnaires(qData.questionnaires)
+        const lienReservationValue = lienData.token ? `${window.location.origin}/reserver/${lienData.token}` : undefined
+        setLienReservation(lienReservationValue)
 
         const bestQuestionnaire = findBestQuestionnaire(qData.questionnaires, context.prestation)
         const lienQuestionnaire = bestQuestionnaire?.lien
@@ -86,13 +92,13 @@ function MessageComposerModal({ context, telephone, email, initialTemplateKey, o
         const smsInitial = pickInitial(sms, initialTemplateKey)
         if (smsInitial) {
           setSmsTemplateId(smsInitial.id)
-          setSmsBody(renderTemplate(smsInitial.corps, { ...context, lienQuestionnaire }))
+          setSmsBody(renderTemplate(smsInitial.corps, { ...context, lienQuestionnaire, lienReservation: lienReservationValue }))
         }
         const emailInitial = pickInitial(mails, initialTemplateKey)
         if (emailInitial) {
           setEmailTemplateId(emailInitial.id)
           setEmailSubject(emailInitial.objet)
-          setEmailBody(renderTemplate(emailInitial.corps, { ...context, lienQuestionnaire }))
+          setEmailBody(renderTemplate(emailInitial.corps, { ...context, lienQuestionnaire, lienReservation: lienReservationValue }))
         }
       })
       .catch(() => setLoadError('Impossible de charger les modèles de message.'))
@@ -106,7 +112,7 @@ function MessageComposerModal({ context, telephone, email, initialTemplateKey, o
   function handleSmsTemplateChange(id: string) {
     setSmsTemplateId(id)
     const t = smsTemplates.find((tpl) => tpl.id === id)
-    if (t) setSmsBody(renderTemplate(t.corps, { ...context, lienQuestionnaire: currentLien(questionnaireId) }))
+    if (t) setSmsBody(renderTemplate(t.corps, { ...context, lienQuestionnaire: currentLien(questionnaireId), lienReservation }))
   }
 
   function handleEmailTemplateChange(id: string) {
@@ -114,7 +120,7 @@ function MessageComposerModal({ context, telephone, email, initialTemplateKey, o
     const t = emailTemplates.find((tpl) => tpl.id === id)
     if (t) {
       setEmailSubject(t.objet)
-      setEmailBody(renderTemplate(t.corps, { ...context, lienQuestionnaire: currentLien(questionnaireId) }))
+      setEmailBody(renderTemplate(t.corps, { ...context, lienQuestionnaire: currentLien(questionnaireId), lienReservation }))
     }
   }
 
@@ -122,9 +128,9 @@ function MessageComposerModal({ context, telephone, email, initialTemplateKey, o
     setQuestionnaireId(id)
     const lien = currentLien(id)
     const smsT = smsTemplates.find((tpl) => tpl.id === smsTemplateId)
-    if (smsT) setSmsBody(renderTemplate(smsT.corps, { ...context, lienQuestionnaire: lien }))
+    if (smsT) setSmsBody(renderTemplate(smsT.corps, { ...context, lienQuestionnaire: lien, lienReservation }))
     const mailT = emailTemplates.find((tpl) => tpl.id === emailTemplateId)
-    if (mailT) setEmailBody(renderTemplate(mailT.corps, { ...context, lienQuestionnaire: lien }))
+    if (mailT) setEmailBody(renderTemplate(mailT.corps, { ...context, lienQuestionnaire: lien, lienReservation }))
   }
 
   const smsHref = telephone ? buildSmsLink(telephone, smsBody) : null

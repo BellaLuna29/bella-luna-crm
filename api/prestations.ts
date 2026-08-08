@@ -1046,6 +1046,7 @@ async function handlePublicBooking(req: VercelRequest, res: VercelResponse): Pro
   const nom = typeof b.nom === 'string' ? b.nom.trim() : ''
   const telephone = typeof b.telephone === 'string' ? b.telephone.trim() : ''
   const email = typeof b.email === 'string' ? b.email.trim() : ''
+  const note = typeof b.note === 'string' ? b.note.trim() : ''
 
   if (!DATE_ONLY_RE.test(dateStr) || !HEURE_ONLY_RE.test(heureStr) || !UUID_RE.test(prestationId)) {
     res.status(400).json({ error: 'Créneau invalide.' })
@@ -1057,6 +1058,10 @@ async function handlePublicBooking(req: VercelRequest, res: VercelResponse): Pro
   }
   if (!telephone && !email) {
     res.status(400).json({ error: 'Indique un téléphone ou un e-mail pour être recontactée.' })
+    return
+  }
+  if (note.length > 500) {
+    res.status(400).json({ error: 'La note est trop longue (500 caractères max).' })
     return
   }
 
@@ -1081,6 +1086,7 @@ async function handlePublicBooking(req: VercelRequest, res: VercelResponse): Pro
     const notesParts = [`Réservation en ligne — ${nom}`]
     if (telephone) notesParts.push(`Tél : ${telephone}`)
     if (email) notesParts.push(`E-mail : ${email}`)
+    if (note) notesParts.push(`Note : ${note}`)
 
     await dbCreate(TABLE_RENDEZVOUS, {
       cliente_id: null,

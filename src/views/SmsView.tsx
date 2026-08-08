@@ -137,7 +137,11 @@ function SmsView() {
     templateKey: string
   } | null>(null)
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [pickerMode, setPickerMode] = useState<'client' | 'libre'>('client')
   const [pickedClientId, setPickedClientId] = useState('')
+  const [libreNom, setLibreNom] = useState('')
+  const [libreTelephone, setLibreTelephone] = useState('')
+  const [libreEmail, setLibreEmail] = useState('')
 
   const load = useCallback(() => {
     setState({ status: 'loading' })
@@ -389,6 +393,10 @@ function SmsView() {
 
   function contactLibre() {
     setPickedClientId('')
+    setPickerMode('client')
+    setLibreNom('')
+    setLibreTelephone('')
+    setLibreEmail('')
     setPickerOpen(true)
   }
 
@@ -401,6 +409,17 @@ function SmsView() {
       telephone: client.telephone,
       email: client.email,
       templateKey: 'libre',
+    })
+  }
+
+  function confirmContactSansFiche() {
+    if (!libreTelephone.trim() && !libreEmail.trim()) return
+    setPickerOpen(false)
+    setComposer({
+      context: { nomComplet: libreNom.trim() || 'là' },
+      telephone: libreTelephone.trim(),
+      email: libreEmail.trim(),
+      templateKey: 'lienReservation',
     })
   }
 
@@ -667,14 +686,73 @@ function SmsView() {
 
       {pickerOpen && state.status === 'success' && (
         <Modal size="sm">
-          <h3 className="font-serif text-xl font-semibold text-sage-dark mb-4">Choisir une cliente</h3>
-          <SearchableSelect
-            options={state.clients.map((c) => ({ id: c.id, label: c.nomComplet }))}
-            value={pickedClientId}
-            onChange={setPickedClientId}
-            placeholder="Rechercher une cliente..."
-            emptyLabel="Aucune cliente trouvée."
-          />
+          <h3 className="font-serif text-xl font-semibold text-sage-dark mb-4">Nouveau message</h3>
+          <div className="flex items-center bg-sage-pale rounded-[10px] p-0.5 mb-4">
+            <button
+              type="button"
+              onClick={() => setPickerMode('client')}
+              className={`flex-1 h-8 rounded-[8px] text-sm font-semibold ${
+                pickerMode === 'client' ? 'bg-sage-dark text-white' : 'text-text-muted'
+              }`}
+            >
+              Cliente existante
+            </button>
+            <button
+              type="button"
+              onClick={() => setPickerMode('libre')}
+              className={`flex-1 h-8 rounded-[8px] text-sm font-semibold ${
+                pickerMode === 'libre' ? 'bg-sage-dark text-white' : 'text-text-muted'
+              }`}
+            >
+              Contact sans fiche
+            </button>
+          </div>
+
+          {pickerMode === 'client' ? (
+            <SearchableSelect
+              options={state.clients.map((c) => ({ id: c.id, label: c.nomComplet }))}
+              value={pickedClientId}
+              onChange={setPickedClientId}
+              placeholder="Rechercher une cliente..."
+              emptyLabel="Aucune cliente trouvée."
+            />
+          ) : (
+            <div className="flex flex-col gap-3">
+              <p className="text-xs text-text-muted">
+                Pour envoyer le lien de réservation en ligne à quelqu'un qui n'a pas encore de fiche cliente.
+              </p>
+              <label className="block">
+                <span className="block text-xs font-semibold text-text-muted mb-1">Nom (optionnel)</span>
+                <input
+                  type="text"
+                  value={libreNom}
+                  onChange={(e) => setLibreNom(e.target.value)}
+                  maxLength={200}
+                  className="input"
+                />
+              </label>
+              <label className="block">
+                <span className="block text-xs font-semibold text-text-muted mb-1">Téléphone</span>
+                <input
+                  type="tel"
+                  value={libreTelephone}
+                  onChange={(e) => setLibreTelephone(e.target.value)}
+                  maxLength={30}
+                  className="input"
+                />
+              </label>
+              <label className="block">
+                <span className="block text-xs font-semibold text-text-muted mb-1">E-mail</span>
+                <input
+                  type="email"
+                  value={libreEmail}
+                  onChange={(e) => setLibreEmail(e.target.value)}
+                  className="input"
+                />
+              </label>
+            </div>
+          )}
+
           <div className="flex justify-end gap-3 mt-5">
             <button
               onClick={() => setPickerOpen(false)}
@@ -682,13 +760,23 @@ function SmsView() {
             >
               Annuler
             </button>
-            <button
-              onClick={confirmPickedClient}
-              disabled={!pickedClientId}
-              className="bg-sage-dark text-white px-5 py-2.5 rounded-[10px] text-sm font-semibold disabled:opacity-50"
-            >
-              Continuer
-            </button>
+            {pickerMode === 'client' ? (
+              <button
+                onClick={confirmPickedClient}
+                disabled={!pickedClientId}
+                className="bg-sage-dark text-white px-5 py-2.5 rounded-[10px] text-sm font-semibold disabled:opacity-50"
+              >
+                Continuer
+              </button>
+            ) : (
+              <button
+                onClick={confirmContactSansFiche}
+                disabled={!libreTelephone.trim() && !libreEmail.trim()}
+                className="bg-sage-dark text-white px-5 py-2.5 rounded-[10px] text-sm font-semibold disabled:opacity-50"
+              >
+                Continuer
+              </button>
+            )}
           </div>
         </Modal>
       )}

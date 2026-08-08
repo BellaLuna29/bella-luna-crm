@@ -46,6 +46,7 @@ function ReservationPublique({ token }: ReservationPubliqueProps) {
   const [nom, setNom] = useState('')
   const [telephone, setTelephone] = useState('')
   const [email, setEmail] = useState('')
+  const [note, setNote] = useState('')
   const [site, setSite] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
@@ -135,6 +136,7 @@ function ReservationPublique({ token }: ReservationPubliqueProps) {
           nom: nom.trim(),
           telephone: telephone.trim(),
           email: email.trim(),
+          note: note.trim(),
           site,
         }),
       })
@@ -270,6 +272,18 @@ function ReservationPublique({ token }: ReservationPubliqueProps) {
                 </label>
               </div>
               <p className="text-[11px] text-text-muted -mt-2">Un des deux au moins, pour te recontacter.</p>
+
+              <label className="block">
+                <span className="block text-xs font-semibold text-text-muted mb-1">Note (optionnel)</span>
+                <textarea
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  maxLength={500}
+                  rows={3}
+                  placeholder="Une précision à transmettre ? (allergie, préférence...)"
+                  className="input resize-none"
+                />
+              </label>
 
               {/* Honeypot — hidden from real visitors, bots tend to fill every field */}
               <input
