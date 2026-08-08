@@ -22,6 +22,7 @@ interface RdvItem {
   duree: string
   serieId: string | null
   minutesSupplementaires: number
+  estPrive: boolean
 }
 
 function mapRow(r: DbRow): RdvItem {
@@ -44,6 +45,7 @@ function mapRow(r: DbRow): RdvItem {
     duree: prestation?.duree ?? '',
     serieId: (r.serie_id as string) ?? null,
     minutesSupplementaires: typeof r.minutes_supplementaires === 'number' ? r.minutes_supplementaires : 0,
+    estPrive: Boolean(r.est_prive),
   }
 }
 

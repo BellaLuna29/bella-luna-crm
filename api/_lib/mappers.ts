@@ -433,6 +433,10 @@ export function parseRendezVousInput(
     }
   }
 
+  if ('estPrive' in b) {
+    fields.est_prive = Boolean(b.estPrive)
+  }
+
   if (errors.length > 0) return { errors }
   return { fields }
 }

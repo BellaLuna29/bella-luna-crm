@@ -13,6 +13,7 @@ interface WeekGridItem {
   notes: string
   minutesSupplementaires: number
   prestationCouleur: string | null
+  estPrive: boolean
 }
 
 interface WeekGridAbsence {
@@ -183,6 +184,11 @@ function AgendaWeekGrid({ columns, onClickItem, onAddForColumn }: AgendaWeekGrid
                       {isAnnule && (
                         <span className="absolute top-0 right-0.5">
                           <Icon name="x" size={8} />
+                        </span>
+                      )}
+                      {item.estPrive && (
+                        <span className="absolute top-0 left-0.5" title="Rendez-vous privé">
+                          <Icon name="lock" size={8} />
                         </span>
                       )}
                     </button>

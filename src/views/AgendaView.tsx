@@ -24,6 +24,7 @@ interface RdvItem {
   serieId: string | null
   minutesSupplementaires: number
   prestationCouleur: string | null
+  estPrive: boolean
 }
 
 interface Client {
@@ -243,6 +244,7 @@ function AgendaView() {
         statut: item.statut,
         notes: item.notes,
         minutesSupplementaires: String(item.minutesSupplementaires),
+        estPrive: item.estPrive,
       },
       seriesSiblingIds,
     })
@@ -281,6 +283,7 @@ function AgendaView() {
               notes: item.notes,
               minutesSupplementaires: item.minutesSupplementaires,
               prestationCouleur: item.prestationCouleur,
+              estPrive: item.estPrive,
             })),
           absences: absences
             .filter((a) => a.dateDebut && a.dateFin && a.dateDebut <= key && key <= a.dateFin)
@@ -471,6 +474,7 @@ function AgendaView() {
                   prix: item.prix,
                   minutesSupplementaires: item.minutesSupplementaires,
                   prestationCouleur: item.prestationCouleur,
+                  estPrive: item.estPrive,
                 }))}
               absences={absencesForDay(focusDate).map((a) => ({ id: a.id, libelle: a.libelle, demiJournee: a.demiJournee }))}
               onClickItem={(id) => {

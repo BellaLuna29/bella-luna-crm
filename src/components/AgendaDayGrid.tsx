@@ -15,6 +15,7 @@ interface GridItem {
   prix: number | null
   minutesSupplementaires: number
   prestationCouleur: string | null
+  estPrive: boolean
 }
 
 interface DayGridAbsence {
@@ -137,6 +138,11 @@ function AgendaDayGrid({ items, absences = [], onClickItem, onSendReminder }: Ag
                   </div>
                 </button>
                 <div className="absolute top-1 right-1 flex items-center gap-1">
+                  {item.estPrive && (
+                    <span title="Rendez-vous privé" className="opacity-90">
+                      <Icon name="lock" size={11} />
+                    </span>
+                  )}
                   <RdvStatusPill statut={item.statut} compact />
                   <button
                     onClick={(e) => {

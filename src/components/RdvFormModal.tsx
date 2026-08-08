@@ -41,6 +41,7 @@ export interface RdvFormInitial {
   notes: string
   serieId?: string | null
   minutesSupplementaires: string
+  estPrive: boolean
 }
 
 interface RdvFormModalProps {
@@ -60,6 +61,7 @@ const EMPTY: RdvFormInitial = {
   statut: 'Confirmé',
   notes: '',
   minutesSupplementaires: '0',
+  estPrive: false,
 }
 
 function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, onSaved }: RdvFormModalProps) {
@@ -180,6 +182,7 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
         statut: values.statut,
         notes: values.notes.trim(),
         minutesSupplementaires: minutesSupp,
+        estPrive: values.estPrive,
       }
 
       if (mode === 'create') {
@@ -457,6 +460,22 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
               <option value="Annulé">Annulé</option>
             </select>
           </Field>
+
+          <div>
+            <label className="flex items-center gap-2 text-sm font-semibold text-sage-dark">
+              <input
+                type="checkbox"
+                checked={values.estPrive}
+                onChange={(e) => set('estPrive', e.target.checked)}
+                className="w-4 h-4"
+              />
+              Rendez-vous privé
+            </label>
+            <p className="text-[11px] text-text-muted mt-1">
+              À cocher pour un rendez-vous que tu ne veux pas rendre visible en détail (utile plus tard pour une
+              synchronisation avec Google Agenda : seul le créneau apparaîtrait, sans les détails).
+            </p>
+          </div>
 
           <Field label="Notes">
             <textarea
