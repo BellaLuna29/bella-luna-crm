@@ -120,7 +120,8 @@ function AbsenceFormModal({ initialDate, onClose, onSaved }: AbsenceFormModalPro
         </label>
 
         <p className="text-xs text-text-muted">
-          Cette absence s'affichera dans l'agenda à titre indicatif — elle n'empêche pas la prise de rendez-vous.
+          Cette absence s'affiche dans l'agenda et bloque la réservation en ligne sur ces dates (journée entière ou
+          demi-journée). Tu peux quand même ajouter toi-même un rendez-vous depuis l'agenda si besoin.
         </p>
 
         {error && <p className="text-sm text-danger">{error}</p>}
