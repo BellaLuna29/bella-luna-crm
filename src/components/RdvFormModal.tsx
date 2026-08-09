@@ -90,9 +90,8 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
-  const [lienTelephone, setLienTelephone] = useState('')
-  const [lienEmail, setLienEmail] = useState('')
-  const [lienTouched, setLienTouched] = useState(false)
+  const [lienTelephoneOverride, setLienTelephoneOverride] = useState<string | null>(null)
+  const [lienEmailOverride, setLienEmailOverride] = useState<string | null>(null)
   const [showLienComposer, setShowLienComposer] = useState(false)
 
   useEffect(() => {
@@ -110,14 +109,6 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
         setLoadError(err instanceof ApiError ? err.message : 'Erreur inconnue.')
       })
   }, [getToken])
-
-  useEffect(() => {
-    if (lienTouched) return
-    const client = clients?.find((c) => c.id === values.clienteId)
-    setLienTelephone(client?.telephone ?? '')
-    setLienEmail(client?.email ?? '')
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [values.clienteId, clients])
 
   const cureProgress = useMemo(() => computeCureProgress(rdvHistory, prestations ?? []), [rdvHistory, prestations])
 
@@ -161,6 +152,8 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
         { id: data.client.id, nomComplet: data.client.nomComplet, telephone: quickTelephone.trim(), email: '' },
       ])
       set('clienteId', data.client.id)
+      setLienTelephoneOverride(null)
+      setLienEmailOverride(null)
       setShowQuickCreate(false)
       setQuickNom('')
       setQuickTelephone('')
@@ -272,8 +265,11 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
   }
 
   const loading = !clients || !prestations
-  const selectedClientNom = clients?.find((c) => c.id === values.clienteId)?.nomComplet ?? ''
+  const selectedClient = clients?.find((c) => c.id === values.clienteId)
+  const selectedClientNom = selectedClient?.nomComplet ?? ''
   const selectedPrestation = prestations?.find((p) => p.id === values.prestationId)
+  const lienTelephone = lienTelephoneOverride ?? selectedClient?.telephone ?? ''
+  const lienEmail = lienEmailOverride ?? selectedClient?.email ?? ''
 
   return (
     <>
@@ -294,7 +290,11 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
             <SearchableSelect
               options={clients!.map((c) => ({ id: c.id, label: c.nomComplet }))}
               value={values.clienteId}
-              onChange={(id) => set('clienteId', id)}
+              onChange={(id) => {
+                set('clienteId', id)
+                setLienTelephoneOverride(null)
+                setLienEmailOverride(null)
+              }}
               placeholder="Rechercher une cliente..."
               emptyLabel="Aucune cliente trouvée."
             />
@@ -505,10 +505,7 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
               <input
                 type="tel"
                 value={lienTelephone}
-                onChange={(e) => {
-                  setLienTelephone(e.target.value)
-                  setLienTouched(true)
-                }}
+                onChange={(e) => setLienTelephoneOverride(e.target.value)}
                 placeholder="Téléphone"
                 maxLength={30}
                 className="input"
@@ -516,10 +513,7 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
               <input
                 type="email"
                 value={lienEmail}
-                onChange={(e) => {
-                  setLienEmail(e.target.value)
-                  setLienTouched(true)
-                }}
+                onChange={(e) => setLienEmailOverride(e.target.value)}
                 placeholder="E-mail"
                 className="input"
               />
