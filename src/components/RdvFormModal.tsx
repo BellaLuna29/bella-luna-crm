@@ -7,6 +7,7 @@ import Modal from './Modal'
 import MessageComposerModal from './MessageComposerModal'
 import { computeCureProgress, cureTotalSeances } from '../lib/cureProgress'
 import { parseDureeMinutes, formatCreneau } from '../lib/duree'
+import { formatDateHeureNaturel } from '../lib/formatDate'
 
 interface ClientOption {
   id: string
@@ -272,6 +273,7 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
 
   const loading = !clients || !prestations
   const selectedClientNom = clients?.find((c) => c.id === values.clienteId)?.nomComplet ?? ''
+  const selectedPrestation = prestations?.find((p) => p.id === values.prestationId)
 
   return (
     <>
@@ -498,7 +500,7 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
           </div>
 
           <div className="bg-sage-pale rounded-[10px] p-3">
-            <span className="block text-xs font-semibold text-sage-dark mb-2">Envoyer le lien de réservation</span>
+            <span className="block text-xs font-semibold text-sage-dark mb-2">Envoyer un message</span>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
               <input
                 type="tel"
@@ -528,7 +530,7 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
               disabled={!lienTelephone.trim() && !lienEmail.trim()}
               className="bg-white border border-border text-sage-dark px-3 py-1.5 rounded-[8px] text-xs font-semibold hover:bg-white/70 disabled:opacity-50"
             >
-              Envoyer le lien
+              Envoyer un message
             </button>
           </div>
 
@@ -606,10 +608,15 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
     </Modal>
     {showLienComposer && (
       <MessageComposerModal
-        context={{ nomComplet: selectedClientNom || 'là' }}
+        context={{
+          nomComplet: selectedClientNom || 'là',
+          date: values.date ? formatDateHeureNaturel(values.date) : undefined,
+          prestation: selectedPrestation?.nom,
+          montant: selectedPrestation?.prix,
+        }}
         telephone={lienTelephone.trim()}
         email={lienEmail.trim()}
-        initialTemplateKey="lienReservation"
+        initialTemplateKey="libre"
         onClose={() => setShowLienComposer(false)}
       />
     )}
