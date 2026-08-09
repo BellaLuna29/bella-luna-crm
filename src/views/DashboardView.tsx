@@ -299,6 +299,9 @@ function DashboardView({
       upcoming,
       weeklyChart,
       weeklyChartMax,
+      // Demandes de réservation en ligne pas encore traitées : sans ça elles
+      // n'existent que comme bloc ambre dans l'agenda, faciles à rater.
+      demandesEnAttente: validRdv.filter((r) => r.statut === 'En attente').length,
     }
   }, [state, now])
 
@@ -578,6 +581,27 @@ function DashboardView({
 
       {state.status === 'success' && stats && (
         <div className="flex flex-col gap-6">
+          {stats.demandesEnAttente > 0 && (
+            <button
+              onClick={onNavigateAgenda}
+              className="w-full text-left bg-gold-pale border border-gold rounded-2xl p-4 flex items-center gap-3 hover:brightness-95 transition-[filter]"
+            >
+              <span className="w-9 h-9 rounded-full bg-gold/25 text-gold-text flex items-center justify-center shrink-0">
+                <Icon name="bell" size={18} />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-sm font-semibold text-sage-dark">
+                  {stats.demandesEnAttente} demande{stats.demandesEnAttente > 1 ? 's' : ''} de rendez-vous en ligne à
+                  traiter
+                </span>
+                <span className="block text-xs text-text-muted">
+                  Réservée{stats.demandesEnAttente > 1 ? 's' : ''} via ton lien — à confirmer ou annuler dans
+                  l'agenda.
+                </span>
+              </span>
+            </button>
+          )}
+
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <StatCard
               label="RDV aujourd'hui"

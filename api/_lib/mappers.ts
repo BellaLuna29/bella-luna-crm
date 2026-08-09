@@ -830,7 +830,14 @@ export interface Parametres {
   seuilAnniversaireJours: number
   seuilInactiviteLongueJours: number
   rappelsAutoActifs: boolean
+  /** Délai minimum entre maintenant et un créneau réservable en ligne. */
+  reservationDelaiMinHeures: number
+  /** Jusqu'à combien de jours à l'avance une cliente peut réserver en ligne. */
+  reservationMaxJours: number
 }
+
+const RESERVATION_DELAI_MIN_HEURES_DEFAUT = 2
+const RESERVATION_MAX_JOURS_DEFAUT = 60
 
 const SEUIL_COLUMNS = {
   seuilRecontactJours: 'seuil_recontact_jours',
@@ -855,10 +862,17 @@ export function mapParametres(row: DbRow | null): Parametres {
     const v = row?.[SEUIL_COLUMNS[key]]
     seuils[key] = typeof v === 'number' && Number.isFinite(v) ? v : SEUIL_DEFAULTS[key]
   }
+  const entierOuDefaut = (v: unknown, defaut: number) =>
+    typeof v === 'number' && Number.isFinite(v) ? v : defaut
   return {
     objectifCaMensuel: (row?.objectif_ca_mensuel as number) ?? null,
     ...seuils,
     rappelsAutoActifs: Boolean(row?.rappels_auto_actifs),
+    reservationDelaiMinHeures: entierOuDefaut(
+      row?.reservation_delai_min_heures,
+      RESERVATION_DELAI_MIN_HEURES_DEFAUT,
+    ),
+    reservationMaxJours: entierOuDefaut(row?.reservation_max_jours, RESERVATION_MAX_JOURS_DEFAUT),
   }
 }
 
@@ -897,6 +911,24 @@ export function parseParametresInput(body: unknown): { fields: Record<string, un
 
   if ('rappelsAutoActifs' in b) {
     fields.rappels_auto_actifs = Boolean(b.rappelsAutoActifs)
+  }
+
+  if ('reservationDelaiMinHeures' in b) {
+    const v = b.reservationDelaiMinHeures
+    if (typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= 720) {
+      fields.reservation_delai_min_heures = v
+    } else {
+      errors.push('Le délai minimum de réservation doit être un nombre entier d\'heures entre 0 et 720.')
+    }
+  }
+
+  if ('reservationMaxJours' in b) {
+    const v = b.reservationMaxJours
+    if (typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= 365) {
+      fields.reservation_max_jours = v
+    } else {
+      errors.push('La réservation à l\'avance doit être un nombre entier de jours entre 1 et 365.')
+    }
   }
 
   if (errors.length > 0) return { errors }

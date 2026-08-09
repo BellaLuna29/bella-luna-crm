@@ -49,6 +49,8 @@ function ParametresView({ onSelectClient, onNavigateFacturation, onNavigateNewsl
   const [objectifCa, setObjectifCa] = useState('')
   const [seuils, setSeuils] = useState<Record<string, string>>({})
   const [rappelsAutoActifs, setRappelsAutoActifs] = useState(false)
+  const [reservationDelaiMinHeures, setReservationDelaiMinHeures] = useState('2')
+  const [reservationMaxJours, setReservationMaxJours] = useState('60')
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
@@ -65,6 +67,8 @@ function ParametresView({ onSelectClient, onNavigateFacturation, onNavigateNewsl
         setObjectifCa(data.objectifCaMensuel !== null ? String(data.objectifCaMensuel) : '')
         setSeuils(Object.fromEntries(SEUIL_FIELDS.map(({ key }) => [key, String(data[key])])))
         setRappelsAutoActifs(data.rappelsAutoActifs)
+        setReservationDelaiMinHeures(String(data.reservationDelaiMinHeures))
+        setReservationMaxJours(String(data.reservationMaxJours))
         setState({ status: 'success' })
       })
       .catch((error: unknown) => {
@@ -104,9 +108,26 @@ function ParametresView({ onSelectClient, onNavigateFacturation, onNavigateNewsl
       ;(seuilUpdates as Record<string, number>)[key] = n
     }
 
+    const delaiNum = Number(reservationDelaiMinHeures)
+    if (!Number.isInteger(delaiNum) || delaiNum < 0 || delaiNum > 720) {
+      setSaveError('Le délai minimum de réservation doit être un nombre entier d\'heures entre 0 et 720.')
+      return
+    }
+    const maxJoursNum = Number(reservationMaxJours)
+    if (!Number.isInteger(maxJoursNum) || maxJoursNum < 1 || maxJoursNum > 365) {
+      setSaveError('La réservation à l\'avance doit être un nombre entier de jours entre 1 et 365.')
+      return
+    }
+
     setSaving(true)
     try {
-      await saveParametres(getToken, { objectifCaMensuel: objectifNum, rappelsAutoActifs, ...seuilUpdates })
+      await saveParametres(getToken, {
+        objectifCaMensuel: objectifNum,
+        rappelsAutoActifs,
+        reservationDelaiMinHeures: delaiNum,
+        reservationMaxJours: maxJoursNum,
+        ...seuilUpdates,
+      })
       setSaved(true)
       setTimeout(() => setSaved(false), 3000)
     } catch (err) {
@@ -265,6 +286,51 @@ function ParametresView({ onSelectClient, onNavigateFacturation, onNavigateNewsl
                   />
                   Activer l'envoi automatique des rappels par e-mail
                 </label>
+              </div>
+
+              <div className="bg-white border border-border rounded-2xl p-5">
+                <h3 className="font-serif text-lg font-semibold text-sage-dark mb-1">Réservation en ligne</h3>
+                <p className="text-xs text-text-muted mb-4">
+                  S'applique à la page que tes clientes utilisent via ton lien de réservation. Le délai minimum
+                  évite qu'une cliente réserve un créneau dans la foulée sans que tu sois prévenue.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <label className="block">
+                    <span className="block text-xs font-semibold text-text-muted mb-1">Délai minimum</span>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min={0}
+                        max={720}
+                        value={reservationDelaiMinHeures}
+                        onChange={(e) => setReservationDelaiMinHeures(e.target.value)}
+                        className="input max-w-24"
+                      />
+                      <span className="text-xs text-text-muted">heures à l'avance</span>
+                    </div>
+                    <span className="block text-[11px] text-text-muted mt-0.5">
+                      Aucun créneau plus proche que ça ne sera proposé. 0 = réservation possible jusqu'à la
+                      dernière minute.
+                    </span>
+                  </label>
+                  <label className="block">
+                    <span className="block text-xs font-semibold text-text-muted mb-1">Réservation à l'avance</span>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min={1}
+                        max={365}
+                        value={reservationMaxJours}
+                        onChange={(e) => setReservationMaxJours(e.target.value)}
+                        className="input max-w-24"
+                      />
+                      <span className="text-xs text-text-muted">jours maximum</span>
+                    </div>
+                    <span className="block text-[11px] text-text-muted mt-0.5">
+                      Jusqu'où tes clientes peuvent réserver dans le futur.
+                    </span>
+                  </label>
+                </div>
               </div>
 
               {saveError && <p className="text-sm text-danger">{saveError}</p>}

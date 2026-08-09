@@ -698,7 +698,6 @@ async function handleNewsletterUnsubscribe(req: VercelRequest, res: VercelRespon
 }
 
 const CRENEAU_PAS_MINUTES = 30
-const RESERVATION_MAX_JOURS = 60
 const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/
 const HEURE_ONLY_RE = /^([01]\d|2[0-3]):([0-5]\d)$/
 
@@ -834,7 +833,7 @@ function parisWallClockToUtcIso(dateStr: string, heureStr: string): string {
   return new Date(guessUtc.getTime() + driftMs).toISOString()
 }
 
-type RaisonIndisponible = 'jour_inactif' | 'absence' | 'complet'
+type RaisonIndisponible = 'jour_inactif' | 'absence' | 'complet' | 'delai'
 
 interface CreneauxResult {
   creneaux: string[]
@@ -862,7 +861,7 @@ async function computeCreneauxPourDate(dateStr: string, dureeMin: number): Promi
   const rangeStart = parisWallClockToUtcIso(dateStr, '00:00')
   const rangeEnd = parisWallClockToUtcIso(nextDateStr(dateStr), '00:00')
 
-  const [dispoRows, absenceRows, rdvRows] = await Promise.all([
+  const [dispoRows, absenceRows, rdvRows, paramRows] = await Promise.all([
     dbList(TABLE_DISPONIBILITES, { eq: ['jour_semaine', dow] }),
     dbList(TABLE_ABSENCES),
     dbList(TABLE_RENDEZVOUS, {
@@ -870,7 +869,13 @@ async function computeCreneauxPourDate(dateStr: string, dureeMin: number): Promi
       gte: ['date', rangeStart],
       lt: ['date', rangeEnd],
     }),
+    dbList(TABLE_PARAMETRES),
   ])
+  const { reservationDelaiMinHeures } = mapParametres(paramRows[0] ?? null)
+  // Earliest instant a cliente may book. Compared against each slot's real UTC
+  // instant (not its wall-clock minute), so a delay spanning midnight or a
+  // CET/CEST switch is handled correctly.
+  const instantMin = Date.now() + reservationDelaiMinHeures * 60 * 60 * 1000
 
   const dispo = dispoRows[0]
   if (!dispo || !dispo.actif) return { creneaux: [], raison: 'jour_inactif' }
@@ -908,11 +913,21 @@ async function computeCreneauxPourDate(dateStr: string, dureeMin: number): Promi
   }
 
   const creneaux: string[] = []
+  let ecartesParDelai = 0
   for (let t = fenetreDebut; t + dureeMin <= fenetreFin; t += CRENEAU_PAS_MINUTES) {
     const chevauche = occupations.some((o) => t < o.fin && t + dureeMin > o.debut)
-    if (!chevauche) creneaux.push(hhmmFromMinutes(t))
+    if (chevauche) continue
+    const hhmm = hhmmFromMinutes(t)
+    if (new Date(parisWallClockToUtcIso(dateStr, hhmm)).getTime() < instantMin) {
+      ecartesParDelai += 1
+      continue
+    }
+    creneaux.push(hhmm)
   }
-  return { creneaux, raison: creneaux.length === 0 ? 'complet' : null }
+  if (creneaux.length > 0) return { creneaux, raison: null }
+  // Distinguish "everything was already booked" from "the day is still free but
+  // it's too late to book it now" — very different messages for the cliente.
+  return { creneaux, raison: ecartesParDelai > 0 ? 'delai' : 'complet' }
 }
 
 interface PublicPrestationItem {
@@ -934,7 +949,8 @@ async function handlePublicPrestations(req: VercelRequest, res: VercelResponse):
     return
   }
   try {
-    const rows = await dbList(TABLE_PRESTATIONS)
+    const [rows, paramRows] = await Promise.all([dbList(TABLE_PRESTATIONS), dbList(TABLE_PARAMETRES)])
+    const { reservationMaxJours } = mapParametres(paramRows[0] ?? null)
     const prestations: PublicPrestationItem[] = rows
       .filter((r) => {
         const duree = (r.duree as string) ?? ''
@@ -949,7 +965,7 @@ async function handlePublicPrestations(req: VercelRequest, res: VercelResponse):
         duree: (r.duree as string) ?? '',
       }))
       .sort((a, b) => a.categorie.localeCompare(b.categorie) || a.nom.localeCompare(b.nom))
-    res.status(200).json({ prestations })
+    res.status(200).json({ prestations, maxJours: reservationMaxJours })
   } catch (error) {
     if (error instanceof SupabaseConfigError) {
       res.status(500).json({ error: error.message })
@@ -976,16 +992,18 @@ async function handlePublicDisponibilites(req: VercelRequest, res: VercelRespons
     res.status(400).json({ error: 'Date ou prestation invalide.' })
     return
   }
-  const todayStr = new Intl.DateTimeFormat('fr-CA', { timeZone: 'Europe/Paris' }).format(new Date())
-  const maxDate = new Date()
-  maxDate.setDate(maxDate.getDate() + RESERVATION_MAX_JOURS)
-  const maxDateStr = new Intl.DateTimeFormat('fr-CA', { timeZone: 'Europe/Paris' }).format(maxDate)
-  if (dateStr < todayStr || dateStr > maxDateStr) {
-    res.status(200).json({ creneaux: [], raison: 'jour_inactif' })
-    return
-  }
-
   try {
+    const paramRows = await dbList(TABLE_PARAMETRES)
+    const { reservationMaxJours } = mapParametres(paramRows[0] ?? null)
+    const todayStr = new Intl.DateTimeFormat('fr-CA', { timeZone: 'Europe/Paris' }).format(new Date())
+    const maxDate = new Date()
+    maxDate.setDate(maxDate.getDate() + reservationMaxJours)
+    const maxDateStr = new Intl.DateTimeFormat('fr-CA', { timeZone: 'Europe/Paris' }).format(maxDate)
+    if (dateStr < todayStr || dateStr > maxDateStr) {
+      res.status(200).json({ creneaux: [], raison: 'jour_inactif' })
+      return
+    }
+
     const prestation = await dbGet(TABLE_PRESTATIONS, prestationId)
     const duree = (prestation?.duree as string) ?? ''
     if (!prestation || !duree.trim() || cureTotalSeances((prestation.type as string) ?? '')) {

@@ -13,6 +13,7 @@ const RAISON_MESSAGES: Record<string, string> = {
   jour_inactif: "Bella Luna ne propose pas de rendez-vous ce jour de la semaine — essaie un autre jour.",
   absence: 'Bella Luna est absente à cette date — essaie un autre jour.',
   complet: 'Complet ce jour-là — essaie une autre date.',
+  delai: "C'est trop juste pour réserver ce jour-là — choisis une date un peu plus tard.",
 }
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL as string | undefined
@@ -23,9 +24,9 @@ function todayIso(): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
-function maxDateIso(): string {
+function maxDateIso(joursMax: number): string {
   const d = new Date()
-  d.setDate(d.getDate() + 60)
+  d.setDate(d.getDate() + joursMax)
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
@@ -47,6 +48,7 @@ function ReservationPublique({ token }: ReservationPubliqueProps) {
   const [telephone, setTelephone] = useState('')
   const [email, setEmail] = useState('')
   const [note, setNote] = useState('')
+  const [maxJours, setMaxJours] = useState(60)
   const [site, setSite] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
@@ -66,7 +68,10 @@ function ReservationPublique({ token }: ReservationPubliqueProps) {
         if (r.status === 404) throw new Error('invalid-token')
         return r.json()
       })
-      .then((data) => setPrestations(data.prestations ?? []))
+      .then((data) => {
+        setPrestations(data.prestations ?? [])
+        if (typeof data.maxJours === 'number') setMaxJours(data.maxJours)
+      })
       .catch((err) => {
         setLoadError(
           err instanceof Error && err.message === 'invalid-token'
@@ -205,7 +210,7 @@ function ReservationPublique({ token }: ReservationPubliqueProps) {
                   type="date"
                   value={date}
                   min={todayIso()}
-                  max={maxDateIso()}
+                  max={maxDateIso(maxJours)}
                   onChange={(e) => setDate(e.target.value)}
                   className="input"
                   required

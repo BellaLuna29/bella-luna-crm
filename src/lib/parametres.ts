@@ -9,6 +9,10 @@ export interface Parametres {
   seuilAnniversaireJours: number
   seuilInactiviteLongueJours: number
   rappelsAutoActifs: boolean
+  /** Délai minimum entre maintenant et un créneau réservable en ligne. */
+  reservationDelaiMinHeures: number
+  /** Jusqu'à combien de jours à l'avance une cliente peut réserver en ligne. */
+  reservationMaxJours: number
 }
 
 type GetToken = () => Promise<string | null>
