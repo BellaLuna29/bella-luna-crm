@@ -3,24 +3,12 @@ import { useAuth } from '@clerk/react'
 import { apiFetch } from '../lib/api'
 import Icon from './Icon'
 import { avatarColorClass } from '../lib/avatarColor'
+import { rechercher } from '../lib/recherche'
 
 interface Client {
   id: string
   nomComplet: string
   telephone: string
-}
-
-const COMBINING_MARKS_START = 0x0300
-const COMBINING_MARKS_END = 0x036f
-
-function normalize(s: string): string {
-  const decomposed = s.toLowerCase().normalize('NFD')
-  let out = ''
-  for (const ch of decomposed) {
-    const cp = ch.codePointAt(0) ?? 0
-    if (cp < COMBINING_MARKS_START || cp > COMBINING_MARKS_END) out += ch
-  }
-  return out
 }
 
 function initials(name: string): string {
@@ -69,7 +57,7 @@ function GlobalClientSearch({ onSelectClient }: GlobalClientSearchProps) {
   const results =
     query.trim().length === 0
       ? []
-      : clients.filter((c) => normalize(c.nomComplet).includes(normalize(query))).slice(0, MAX_RESULTS)
+      : rechercher(clients, query, (c) => `${c.nomComplet} ${c.telephone}`).slice(0, MAX_RESULTS)
 
   function pick(id: string) {
     onSelectClient(id)

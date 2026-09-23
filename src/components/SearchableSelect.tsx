@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { rechercher } from '../lib/recherche'
 
 export interface SearchableOption {
   id: string
@@ -12,19 +13,6 @@ interface SearchableSelectProps {
   onChange: (id: string) => void
   placeholder: string
   emptyLabel?: string
-}
-
-const COMBINING_MARKS_START = 0x0300
-const COMBINING_MARKS_END = 0x036f
-
-function normalize(s: string): string {
-  const decomposed = s.toLowerCase().normalize('NFD')
-  let out = ''
-  for (const ch of decomposed) {
-    const cp = ch.codePointAt(0) ?? 0
-    if (cp < COMBINING_MARKS_START || cp > COMBINING_MARKS_END) out += ch
-  }
-  return out
 }
 
 const DROPDOWN_MAX_HEIGHT = 288 // px, matches max-h-72
@@ -59,13 +47,13 @@ function SearchableSelect({ options, value, onChange, placeholder, emptyLabel }:
     setOpen(true)
     // Give the (possibly taller) expanded field room to breathe inside a
     // scrolling modal, so the dropdown itself doesn't end up clipped.
-    inputRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    // Deliberately instant, not smooth: a 300ms animation keeps sliding the
+    // freshly-rendered list under her finger, so the tap lands on the wrong
+    // row — or on nothing at all.
+    inputRef.current?.scrollIntoView({ block: 'nearest', behavior: 'auto' })
   }
 
-  const filtered =
-    query.trim().length === 0
-      ? options
-      : options.filter((o) => normalize(o.label).includes(normalize(query)))
+  const filtered = rechercher(options, query, (o) => `${o.label} ${o.sublabel ?? ''}`)
 
   return (
     <div ref={rootRef} className="relative">
