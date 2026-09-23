@@ -16,6 +16,16 @@ const DEMI_JOURNEE_OPTIONS = [
   { value: 'apres-midi', label: 'Après-midi' },
 ] as const
 
+/** Les trois façons de se rendre indisponible, exclusives entre elles. */
+type Mode = 'journees' | 'heures' | 'recurrent'
+const MODES: { value: Mode; label: string; aide: string }[] = [
+  { value: 'journees', label: 'Jours', aide: 'Une ou plusieurs journées, entières ou en demi-journée.' },
+  { value: 'heures', label: 'Heures', aide: 'Une plage horaire sur une seule date.' },
+  { value: 'recurrent', label: 'Chaque semaine', aide: 'Une plage horaire qui revient le même jour, toutes les semaines.' },
+]
+const JOURS = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi']
+const JOURS_ORDRE = [1, 2, 3, 4, 5, 6, 0]
+
 function AbsenceFormModal({ initialDate, onClose, onSaved }: AbsenceFormModalProps) {
   const { getToken } = useAuth()
   const [libelle, setLibelle] = useState('')
@@ -23,6 +33,10 @@ function AbsenceFormModal({ initialDate, onClose, onSaved }: AbsenceFormModalPro
   const [dateFin, setDateFin] = useState(initialDate ?? '')
   const [type, setType] = useState<(typeof TYPE_OPTIONS)[number]>('Vacances')
   const [demiJournee, setDemiJournee] = useState('')
+  const [mode, setMode] = useState<Mode>('journees')
+  const [heureDebut, setHeureDebut] = useState('12:00')
+  const [heureFin, setHeureFin] = useState('14:00')
+  const [jourSemaine, setJourSemaine] = useState(1)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -32,21 +46,66 @@ function AbsenceFormModal({ initialDate, onClose, onSaved }: AbsenceFormModalPro
     e.preventDefault()
     setError(null)
 
-    if (!libelle.trim() || !dateDebut || !dateFin) {
-      setError('Libellé, date de début et date de fin sont obligatoires.')
+    if (!libelle.trim()) {
+      setError('Le libellé est obligatoire.')
       return
     }
-    if (dateFin < dateDebut) {
-      setError('La date de fin doit être après la date de début.')
+    if (mode !== 'recurrent') {
+      if (!dateDebut || !dateFin) {
+        setError('La date de début et la date de fin sont obligatoires.')
+        return
+      }
+      if (dateFin < dateDebut) {
+        setError('La date de fin doit être après la date de début.')
+        return
+      }
+    }
+    if (mode !== 'journees' && heureDebut >= heureFin) {
+      setError("L'heure de fin doit être après l'heure de début.")
       return
     }
 
+    // Une récurrence hebdomadaire n'a pas de période : on enregistre la date du
+    // jour pour satisfaire le schéma, le calcul des créneaux ne la lit pas.
+    const aujourdhui = new Date().toISOString().slice(0, 10)
+    const corps =
+      mode === 'journees'
+        ? {
+            libelle: libelle.trim(),
+            dateDebut,
+            dateFin,
+            type,
+            demiJournee: isSingleDay ? demiJournee || null : null,
+            heureDebut: null,
+            heureFin: null,
+            recurrence: null,
+          }
+        : mode === 'heures'
+          ? {
+              libelle: libelle.trim(),
+              dateDebut,
+              dateFin: dateDebut,
+              type,
+              demiJournee: null,
+              heureDebut,
+              heureFin,
+              recurrence: null,
+            }
+          : {
+              libelle: libelle.trim(),
+              dateDebut: aujourdhui,
+              dateFin: aujourdhui,
+              type,
+              demiJournee: null,
+              heureDebut,
+              heureFin,
+              recurrence: 'hebdomadaire',
+              jourSemaine,
+            }
+
     setSaving(true)
     try {
-      await apiFetch(getToken, '/api/absences', {
-        method: 'POST',
-        body: { libelle: libelle.trim(), dateDebut, dateFin, type, demiJournee: isSingleDay ? demiJournee || null : null },
-      })
+      await apiFetch(getToken, '/api/absences', { method: 'POST', body: corps })
       onSaved()
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Erreur inconnue.')
@@ -72,30 +131,111 @@ function AbsenceFormModal({ initialDate, onClose, onSaved }: AbsenceFormModalPro
           />
         </label>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div>
+          <span className="block text-xs font-semibold text-text-muted mb-1">Ce que tu bloques</span>
+          <div className="flex items-center bg-sage-pale rounded-[10px] p-0.5">
+            {MODES.map((m) => (
+              <button
+                key={m.value}
+                type="button"
+                onClick={() => setMode(m.value)}
+                className={`flex-1 h-9 rounded-[8px] text-sm font-semibold ${
+                  mode === m.value ? 'bg-sage-dark text-white' : 'text-text-muted'
+                }`}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+          <p className="text-[11px] text-text-muted mt-1.5">
+            {MODES.find((m) => m.value === mode)?.aide}
+          </p>
+        </div>
+
+        {mode === 'journees' && (
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block">
+              <span className="block text-xs font-semibold text-text-muted mb-1">Date début *</span>
+              <input
+                type="date"
+                value={dateDebut}
+                onChange={(e) => setDateDebut(e.target.value)}
+                className="input"
+                required
+              />
+            </label>
+            <label className="block">
+              <span className="block text-xs font-semibold text-text-muted mb-1">Date fin *</span>
+              <input
+                type="date"
+                value={dateFin}
+                onChange={(e) => setDateFin(e.target.value)}
+                className="input"
+                required
+              />
+            </label>
+          </div>
+        )}
+
+        {mode === 'heures' && (
           <label className="block">
-            <span className="block text-xs font-semibold text-text-muted mb-1">Date début *</span>
+            <span className="block text-xs font-semibold text-text-muted mb-1">Date *</span>
             <input
               type="date"
               value={dateDebut}
-              onChange={(e) => setDateDebut(e.target.value)}
+              onChange={(e) => {
+                setDateDebut(e.target.value)
+                setDateFin(e.target.value)
+              }}
               className="input"
               required
             />
           </label>
-          <label className="block">
-            <span className="block text-xs font-semibold text-text-muted mb-1">Date fin *</span>
-            <input
-              type="date"
-              value={dateFin}
-              onChange={(e) => setDateFin(e.target.value)}
-              className="input"
-              required
-            />
-          </label>
-        </div>
+        )}
 
-        {isSingleDay && (
+        {mode === 'recurrent' && (
+          <label className="block">
+            <span className="block text-xs font-semibold text-text-muted mb-1">Chaque *</span>
+            <select
+              value={jourSemaine}
+              onChange={(e) => setJourSemaine(Number(e.target.value))}
+              className="input"
+            >
+              {JOURS_ORDRE.map((j) => (
+                <option key={j} value={j}>
+                  {JOURS[j]}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+
+        {mode !== 'journees' && (
+          <div className="grid grid-cols-2 gap-3">
+            <label className="block">
+              <span className="block text-xs font-semibold text-text-muted mb-1">De *</span>
+              <input
+                type="time"
+                value={heureDebut}
+                onChange={(e) => setHeureDebut(e.target.value)}
+                className="input"
+                required
+              />
+            </label>
+            <label className="block">
+              <span className="block text-xs font-semibold text-text-muted mb-1">À *</span>
+              <input
+                type="time"
+                value={heureFin}
+                onChange={(e) => setHeureFin(e.target.value)}
+                className="input"
+                required
+              />
+            </label>
+          </div>
+        )}
+
+        {mode === 'journees' && isSingleDay && (
           <label className="block">
             <span className="block text-xs font-semibold text-text-muted mb-1">Durée</span>
             <select value={demiJournee} onChange={(e) => setDemiJournee(e.target.value)} className="input">
@@ -120,8 +260,8 @@ function AbsenceFormModal({ initialDate, onClose, onSaved }: AbsenceFormModalPro
         </label>
 
         <p className="text-xs text-text-muted">
-          Cette absence s'affiche dans l'agenda et bloque la réservation en ligne sur ces dates (journée entière ou
-          demi-journée). Tu peux quand même ajouter toi-même un rendez-vous depuis l'agenda si besoin.
+          Ce blocage s'affiche dans l'agenda et empêche tes clientes de réserver en ligne sur ce créneau. Tu peux
+          quand même y ajouter toi-même un rendez-vous si besoin.
         </p>
 
         {error && <p className="text-sm text-danger">{error}</p>}

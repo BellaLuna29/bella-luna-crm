@@ -21,6 +21,9 @@ interface WeekGridAbsence {
   libelle: string
   type: string
   demiJournee: string | null
+  /** Plage horaire bloquée (HH:MM) ; null = journée entière ou demi-journée. */
+  heureDebut?: string | null
+  heureFin?: string | null
 }
 
 const HATCH_STYLE: CSSProperties = {
@@ -133,8 +136,25 @@ function AgendaWeekGrid({ columns, onClickItem, onAddForColumn }: AgendaWeekGrid
               <div className="relative" style={{ height: totalHeight }}>
                 {col.absences.map((a) => {
                   const midiTop = Math.max(0, (MIDI_HOUR - startHour) * HOUR_HEIGHT)
-                  const top = a.demiJournee === 'apres-midi' ? midiTop : 0
-                  const height = a.demiJournee === 'matin' ? midiTop : a.demiJournee === 'apres-midi' ? totalHeight - midiTop : totalHeight
+                  const enMinutes = (hhmm: string) => {
+                    const [h, m] = hhmm.split(':').map(Number)
+                    return (h - startHour) * 60 + m
+                  }
+                  const plage =
+                    a.heureDebut && a.heureFin
+                      ? {
+                          top: (enMinutes(a.heureDebut) / 60) * HOUR_HEIGHT,
+                          height: ((enMinutes(a.heureFin) - enMinutes(a.heureDebut)) / 60) * HOUR_HEIGHT,
+                        }
+                      : null
+                  const top = plage ? plage.top : a.demiJournee === 'apres-midi' ? midiTop : 0
+                  const height = plage
+                    ? plage.height
+                    : a.demiJournee === 'matin'
+                      ? midiTop
+                      : a.demiJournee === 'apres-midi'
+                        ? totalHeight - midiTop
+                        : totalHeight
                   return (
                     <div
                       key={a.id}

@@ -13,6 +13,17 @@ interface AbsenceItem {
   dateFin: string | null
   type: string
   demiJournee: string | null
+  /** Plage horaire bloquée (HH:MM), ou null pour toute la journée. */
+  heureDebut: string | null
+  heureFin: string | null
+  /** 'hebdomadaire' avec jourSemaine (0 = dimanche), ou null si ponctuelle. */
+  recurrence: string | null
+  jourSemaine: number | null
+}
+
+/** Postgres renvoie un `time` en "HH:MM:SS" ; l'app ne manipule que "HH:MM". */
+function versHeureCourte(v: unknown): string | null {
+  return typeof v === 'string' && v.length >= 5 ? v.slice(0, 5) : null
 }
 
 function mapRow(r: DbRow): AbsenceItem {
@@ -23,6 +34,10 @@ function mapRow(r: DbRow): AbsenceItem {
     dateFin: (r.date_fin as string) ?? null,
     type: (r.type as string) ?? 'Vacances',
     demiJournee: (r.demi_journee as string) ?? null,
+    heureDebut: versHeureCourte(r.heure_debut),
+    heureFin: versHeureCourte(r.heure_fin),
+    recurrence: (r.recurrence as string) ?? null,
+    jourSemaine: typeof r.jour_semaine === 'number' ? r.jour_semaine : null,
   }
 }
 

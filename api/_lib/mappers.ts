@@ -670,6 +670,48 @@ export function parseAbsenceInput(
     }
   }
 
+  // Plage horaire : les deux bornes vont ensemble, ou aucune (journée entière).
+  const aHeureDebut = 'heureDebut' in b
+  const aHeureFin = 'heureFin' in b
+  if (aHeureDebut || aHeureFin) {
+    const hd = b.heureDebut
+    const hf = b.heureFin
+    const vide = (v: unknown) => v === null || v === ''
+    if (vide(hd) && vide(hf)) {
+      fields.heure_debut = null
+      fields.heure_fin = null
+    } else if (
+      typeof hd === 'string' &&
+      typeof hf === 'string' &&
+      HEURE_RE.test(hd) &&
+      HEURE_RE.test(hf)
+    ) {
+      if (hd >= hf) {
+        errors.push("L'heure de fin doit être après l'heure de début.")
+      } else {
+        fields.heure_debut = hd
+        fields.heure_fin = hf
+      }
+    } else {
+      errors.push('Plage horaire invalide (format HH:MM, début et fin ensemble).')
+    }
+  }
+
+  // Récurrence : soit rien, soit hebdomadaire avec son jour de semaine.
+  if ('recurrence' in b || 'jourSemaine' in b) {
+    const r = b.recurrence
+    const j = b.jourSemaine
+    if (r === null || r === '' || r === undefined) {
+      fields.recurrence = null
+      fields.jour_semaine = null
+    } else if (r === 'hebdomadaire' && typeof j === 'number' && Number.isInteger(j) && j >= 0 && j <= 6) {
+      fields.recurrence = 'hebdomadaire'
+      fields.jour_semaine = j
+    } else {
+      errors.push('Récurrence invalide.')
+    }
+  }
+
   if (errors.length > 0) return { errors }
   return { fields }
 }

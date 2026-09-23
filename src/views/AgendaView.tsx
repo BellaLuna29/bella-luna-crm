@@ -40,6 +40,10 @@ interface AbsenceItem {
   dateFin: string | null
   type: string
   demiJournee: string | null
+  heureDebut: string | null
+  heureFin: string | null
+  recurrence: string | null
+  jourSemaine: number | null
 }
 
 type State =
@@ -103,6 +107,17 @@ function toDateTimeLocalFromIso(iso: string | null): string {
 function isoDate(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
+/**
+ * Même règle que le calcul des créneaux côté serveur : un blocage hebdomadaire
+ * vaut pour son jour de semaine et ignore ses dates, un blocage ponctuel vaut
+ * à l'intérieur de sa période.
+ */
+function absenceSApplique(a: AbsenceItem, day: Date): boolean {
+  if (a.recurrence === 'hebdomadaire') return a.jourSemaine === day.getDay()
+  const key = isoDate(day)
+  return Boolean(a.dateDebut && a.dateFin && a.dateDebut <= key && key <= a.dateFin)
 }
 
 const VIEW_MODE_KEY = 'bella-luna-agenda-view-mode'
@@ -215,8 +230,7 @@ function AgendaView() {
   }, [state])
 
   function absencesForDay(day: Date): AbsenceItem[] {
-    const key = isoDate(day)
-    return absences.filter((a) => a.dateDebut && a.dateFin && a.dateDebut <= key && key <= a.dateFin)
+    return absences.filter((a) => absenceSApplique(a, day))
   }
 
   function jumpToDate(dateStr: string) {
@@ -265,7 +279,6 @@ function AgendaView() {
   const weekColumns: WeekGridColumn[] = useMemo(
     () =>
       days.map((day, i) => {
-        const key = isoDate(day)
         return {
           key: dayKey(day),
           label: DAY_LABELS[i].slice(0, 3),
@@ -286,8 +299,8 @@ function AgendaView() {
               estPrive: item.estPrive,
             })),
           absences: absences
-            .filter((a) => a.dateDebut && a.dateFin && a.dateDebut <= key && key <= a.dateFin)
-            .map((a) => ({ id: a.id, libelle: a.libelle, type: a.type, demiJournee: a.demiJournee })),
+            .filter((a) => absenceSApplique(a, day))
+            .map((a) => ({ id: a.id, libelle: a.libelle, type: a.type, demiJournee: a.demiJournee, heureDebut: a.heureDebut, heureFin: a.heureFin })),
         }
       }),
     [days, byDay, today, absences],
@@ -476,7 +489,7 @@ function AgendaView() {
                   prestationCouleur: item.prestationCouleur,
                   estPrive: item.estPrive,
                 }))}
-              absences={absencesForDay(focusDate).map((a) => ({ id: a.id, libelle: a.libelle, demiJournee: a.demiJournee }))}
+              absences={absencesForDay(focusDate).map((a) => ({ id: a.id, libelle: a.libelle, demiJournee: a.demiJournee, heureDebut: a.heureDebut, heureFin: a.heureFin }))}
               onClickItem={(id) => {
                 const item = state.items.find((i) => i.id === id)
                 if (item) openEdit(item)

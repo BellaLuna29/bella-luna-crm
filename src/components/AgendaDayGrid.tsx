@@ -22,6 +22,9 @@ interface DayGridAbsence {
   id: string
   libelle: string
   demiJournee: string | null
+  /** Plage horaire bloquée (HH:MM) ; null = toute la journée ou demi-journée. */
+  heureDebut?: string | null
+  heureFin?: string | null
 }
 
 interface AgendaDayGridProps {
@@ -91,8 +94,27 @@ function AgendaDayGrid({ items, absences = [], onClickItem, onSendReminder }: Ag
         <div className="flex-1 relative" style={{ height: totalHeight }}>
           {absences.map((a) => {
             const midiTop = Math.max(0, (MIDI_HOUR - startHour) * HOUR_HEIGHT)
-            const top = a.demiJournee === 'apres-midi' ? midiTop : 0
-            const height = a.demiJournee === 'matin' ? midiTop : a.demiJournee === 'apres-midi' ? totalHeight - midiTop : totalHeight
+            // Une plage horaire se hachure sur ses seules heures ; sinon on
+            // retombe sur la journée entière ou la demi-journée.
+            const enMinutes = (hhmm: string) => {
+              const [h, m] = hhmm.split(':').map(Number)
+              return (h - startHour) * 60 + m
+            }
+            const plage =
+              a.heureDebut && a.heureFin
+                ? {
+                    top: (enMinutes(a.heureDebut) / 60) * HOUR_HEIGHT,
+                    height: ((enMinutes(a.heureFin) - enMinutes(a.heureDebut)) / 60) * HOUR_HEIGHT,
+                  }
+                : null
+            const top = plage ? plage.top : a.demiJournee === 'apres-midi' ? midiTop : 0
+            const height = plage
+              ? plage.height
+              : a.demiJournee === 'matin'
+                ? midiTop
+                : a.demiJournee === 'apres-midi'
+                  ? totalHeight - midiTop
+                  : totalHeight
             return (
               <div
                 key={a.id}

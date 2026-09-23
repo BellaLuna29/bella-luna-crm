@@ -883,19 +883,37 @@ async function computeCreneauxPourDate(dateStr: string, dureeMin: number): Promi
   let fenetreDebut = minutesFromMidnight((dispo.heure_debut as string) ?? '09:00')
   let fenetreFin = minutesFromMidnight((dispo.heure_fin as string) ?? '18:00')
 
+  const occupations: { debut: number; fin: number }[] = []
+
   const MIDI = 13 * 60
   for (const a of absenceRows) {
-    const debut = a.date_debut as string | null
-    const fin = a.date_fin as string | null
-    if (!debut || !fin || dateStr < debut || dateStr > fin) continue
+    // Une absence hebdomadaire (pause déjeuner, créneau perso récurrent) vaut
+    // pour son jour de semaine et ignore les dates ; une absence ponctuelle
+    // s'applique à l'intérieur de sa période.
+    if (a.recurrence === 'hebdomadaire') {
+      if (a.jour_semaine !== dow) continue
+    } else {
+      const debut = a.date_debut as string | null
+      const fin = a.date_fin as string | null
+      if (!debut || !fin || dateStr < debut || dateStr > fin) continue
+    }
+
+    // Une plage horaire se comporte comme un rendez-vous : elle occupe ces
+    // heures-là sans fermer le reste de la journée. Bloquer 12h–14h doit
+    // laisser le matin ET l'après-midi réservables.
+    const heureDebut = a.heure_debut as string | null
+    const heureFin = a.heure_fin as string | null
+    if (heureDebut && heureFin) {
+      occupations.push({ debut: minutesFromMidnight(heureDebut), fin: minutesFromMidnight(heureFin) })
+      continue
+    }
+
     const demi = a.demi_journee as string | null
     if (!demi) return { creneaux: [], raison: 'absence' }
     if (demi === 'matin') fenetreDebut = Math.max(fenetreDebut, MIDI)
     else if (demi === 'apres-midi') fenetreFin = Math.min(fenetreFin, MIDI)
   }
   if (fenetreDebut >= fenetreFin) return { creneaux: [], raison: 'absence' }
-
-  const occupations: { debut: number; fin: number }[] = []
   for (const r of rdvRows) {
     const rDateStr = r.date as string | null
     if (!rDateStr || r.statut === 'Annulé') continue
