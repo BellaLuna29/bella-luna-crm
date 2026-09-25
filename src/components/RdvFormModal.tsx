@@ -314,6 +314,7 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
                     value={quickNom}
                     onChange={(e) => setQuickNom(e.target.value)}
                     placeholder="Nom complet *"
+                aria-label="Nom complet de la nouvelle cliente"
                     maxLength={200}
                     className="input"
                   />
@@ -322,6 +323,7 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
                     value={quickTelephone}
                     onChange={(e) => setQuickTelephone(e.target.value)}
                     placeholder="Téléphone (optionnel)"
+                aria-label="Téléphone de la nouvelle cliente"
                     maxLength={30}
                     className="input"
                   />
@@ -507,6 +509,7 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
                 value={lienTelephone}
                 onChange={(e) => setLienTelephoneOverride(e.target.value)}
                 placeholder="Téléphone"
+                aria-label="Téléphone du destinataire"
                 maxLength={30}
                 className="input"
               />
@@ -515,6 +518,7 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
                 value={lienEmail}
                 onChange={(e) => setLienEmailOverride(e.target.value)}
                 placeholder="E-mail"
+                aria-label="E-mail du destinataire"
                 className="input"
               />
             </div>

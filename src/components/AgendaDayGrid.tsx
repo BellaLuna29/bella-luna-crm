@@ -171,7 +171,7 @@ function AgendaDayGrid({ items, absences = [], onClickItem, onSendReminder }: Ag
                       e.stopPropagation()
                       onSendReminder(item.id)
                     }}
-                    className="w-5 h-5 flex items-center justify-center rounded-full bg-white/25 hover:bg-white/40 print:hidden"
+                    className="w-8 h-8 -m-1.5 flex items-center justify-center rounded-full bg-white/25 hover:bg-white/40 print:hidden"
                     aria-label={`Envoyer le rappel à ${item.clienteNom || 'la cliente'}`}
                     title="Envoyer le rappel"
                   >

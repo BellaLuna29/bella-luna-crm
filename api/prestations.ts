@@ -699,6 +699,13 @@ async function handleNewsletterUnsubscribe(req: VercelRequest, res: VercelRespon
 
 const CRENEAU_PAS_MINUTES = 30
 const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/
+
+/** Format ET date réelle : « 2026-02-30 » a le bon format mais n'existe pas. */
+function estDateValide(v: unknown): v is string {
+  if (typeof v !== 'string' || !DATE_ONLY_RE.test(v)) return false
+  const d = new Date(`${v}T00:00:00Z`)
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v
+}
 const HEURE_ONLY_RE = /^([01]\d|2[0-3]):([0-5]\d)$/
 
 function generateReservationToken(): string {
@@ -1006,7 +1013,7 @@ async function handlePublicDisponibilites(req: VercelRequest, res: VercelRespons
   }
   const dateStr = req.query.date
   const prestationId = req.query.prestationId
-  if (typeof dateStr !== 'string' || !DATE_ONLY_RE.test(dateStr) || typeof prestationId !== 'string' || !UUID_RE.test(prestationId)) {
+  if (!estDateValide(dateStr) || typeof prestationId !== 'string' || !UUID_RE.test(prestationId)) {
     res.status(400).json({ error: 'Date ou prestation invalide.' })
     return
   }
@@ -1084,7 +1091,7 @@ async function handlePublicBooking(req: VercelRequest, res: VercelResponse): Pro
   const email = typeof b.email === 'string' ? b.email.trim() : ''
   const note = typeof b.note === 'string' ? b.note.trim() : ''
 
-  if (!DATE_ONLY_RE.test(dateStr) || !HEURE_ONLY_RE.test(heureStr) || !UUID_RE.test(prestationId)) {
+  if (!estDateValide(dateStr) || !HEURE_ONLY_RE.test(heureStr) || !UUID_RE.test(prestationId)) {
     res.status(400).json({ error: 'Créneau invalide.' })
     return
   }
