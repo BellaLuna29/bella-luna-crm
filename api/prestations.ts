@@ -614,6 +614,9 @@ async function handleNewsletterSend(req: VercelRequest, res: VercelResponse): Pr
         unsubscribeUrl: `${SITE_URL}/api/prestations?resource=newsletter-unsubscribe&id=${c.id}`,
       }),
       text: bodyText,
+      headers: {
+        'List-Unsubscribe': `<${SITE_URL}/api/prestations?resource=newsletter-unsubscribe&id=${c.id}>`,
+      },
     }))
 
     const result = await sendNewsletterBatch(items)

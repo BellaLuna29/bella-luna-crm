@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import nodemailer from 'nodemailer'
 
 export class EmailConfigError extends Error {}
@@ -23,6 +24,22 @@ function getTransporter(): nodemailer.Transporter {
 }
 
 const SITE_URL = process.env.ALLOWED_ORIGIN || 'https://bella-luna-crm-bella-luna.vercel.app'
+const LOGO_CID = 'bella-luna-logo@bellaluna'
+
+function logoForEmail(): Buffer | null {
+  try {
+    return readFileSync(new URL('../../public/email-logo.png', import.meta.url))
+  } catch {
+    // Le lien public reste utilisé comme solution de secours si le bundler
+    // n'embarque pas l'asset dans le fichier de fonction.
+    return null
+  }
+}
+
+function htmlAvecLogoInline(html: string, logo: Buffer | null): string {
+  if (!logo) return html
+  return html.replace(`${SITE_URL}/email-logo.png`, `cid:${LOGO_CID}`)
+}
 
 /** Adresse réellement expéditrice — c'est elle qu'on demande d'ajouter aux contacts. */
 function adresseExpedition(): string {
@@ -161,6 +178,7 @@ export interface NewsletterSendItem {
   subject: string
   html: string
   text?: string
+  headers?: Record<string, string>
 }
 
 export interface NewsletterSendResult {
@@ -182,6 +200,7 @@ export async function sendNewsletterBatch(items: NewsletterSendItem[]): Promise<
   }
 
   const user = process.env.GMAIL_USER?.trim()
+  const logo = logoForEmail()
   let mailer: nodemailer.Transporter
   try {
     mailer = getTransporter()
@@ -196,8 +215,12 @@ export async function sendNewsletterBatch(items: NewsletterSendItem[]): Promise<
         from: `Bella Luna <${user}>`,
         to: item.to,
         subject: item.subject,
-        html: item.html,
+        html: htmlAvecLogoInline(item.html, logo),
         text: item.text,
+        headers: item.headers,
+        attachments: logo
+          ? [{ filename: 'email-logo.png', content: logo, cid: LOGO_CID, contentDisposition: 'inline' as const }]
+          : undefined,
       }),
     ),
   )
