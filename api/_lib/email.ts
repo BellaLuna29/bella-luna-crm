@@ -130,8 +130,8 @@ function coquille({ bodyText, piedNewsletter }: { bodyText: string; piedNewslett
             </tr>
             <tr>
               <td style="padding:20px 32px 26px;font-family:${POLICE_TEXTE};font-size:12px;line-height:1.7;color:${SAGE_LISIBLE};text-align:center;">
-                Ceci n'est pas un courrier indésirable. Pour être sûre de recevoir nos messages,
-                ajoutez <a href="mailto:${expediteur}" style="color:#8A6D2F;font-weight:600;text-decoration:none;">${expediteur}</a>
+                Pour être sûre de recevoir les prochains messages, ajoutez
+                <a href="mailto:${expediteur}" style="color:#8A6D2F;font-weight:600;text-decoration:none;">${expediteur}</a>
                 à vos contacts.
               </td>
             </tr>
