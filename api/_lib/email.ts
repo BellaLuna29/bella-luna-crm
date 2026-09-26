@@ -160,6 +160,7 @@ export interface NewsletterSendItem {
   to: string
   subject: string
   html: string
+  text?: string
 }
 
 export interface NewsletterSendResult {
@@ -196,6 +197,7 @@ export async function sendNewsletterBatch(items: NewsletterSendItem[]): Promise<
         to: item.to,
         subject: item.subject,
         html: item.html,
+        text: item.text,
       }),
     ),
   )

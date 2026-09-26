@@ -613,6 +613,7 @@ async function handleNewsletterSend(req: VercelRequest, res: VercelResponse): Pr
         bodyText,
         unsubscribeUrl: `${SITE_URL}/api/prestations?resource=newsletter-unsubscribe&id=${c.id}`,
       }),
+      text: bodyText,
     }))
 
     const result = await sendNewsletterBatch(items)
@@ -657,7 +658,7 @@ async function handleManualEmailSend(req: VercelRequest, res: VercelResponse): P
   }
 
   try {
-    const result = await sendNewsletterBatch([{ to, subject, html: buildTransactionalHtml(message) }])
+    const result = await sendNewsletterBatch([{ to, subject, html: buildTransactionalHtml(message), text: message }])
     if (result.sent === 0) {
       res.status(502).json({ error: result.errorMessage ?? "L'e-mail n'a pas pu être envoyé." })
       return
@@ -1420,7 +1421,7 @@ async function handleRappelsAutoRun(req: VercelRequest, res: VercelResponse): Pr
       const corps = renderTemplate((template.corps as string) ?? '', ctx)
 
       try {
-        const result = await sendNewsletterBatch([{ to: email, subject: objet, html: buildTransactionalHtml(corps) }])
+        const result = await sendNewsletterBatch([{ to: email, subject: objet, html: buildTransactionalHtml(corps), text: corps }])
         if (result.sent > 0) {
           await dbUpdate(TABLE_RENDEZVOUS, row.id, { rappel_auto_envoye_le: new Date().toISOString() })
           await dbCreate(TABLE_COMMUNICATIONS_LOG, {
