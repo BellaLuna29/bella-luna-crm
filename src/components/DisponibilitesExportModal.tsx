@@ -3,11 +3,19 @@ import { useAuth } from '@clerk/react'
 import { apiFetch, ApiError } from '../lib/api'
 import { useToast } from './ToastProvider'
 import Modal from './Modal'
+import Icon from './Icon'
+import { parseDureeMinutes } from '../lib/duree'
 
 interface Disponibilite { jourSemaine: number; actif: boolean; heureDebut: string; heureFin: string }
 interface Absence {
   dateDebut: string | null; dateFin: string | null; demiJournee: string | null
   heureDebut: string | null; heureFin: string | null; recurrence: string | null; jourSemaine: number | null
+}
+interface RendezVous {
+  date: string | null
+  statut: string
+  duree: string
+  minutesSupplementaires: number
 }
 interface DisponibilitesExportModalProps { onClose: () => void }
 
@@ -54,11 +62,43 @@ function applies(absence: Absence, date: Date): boolean {
   return Boolean(absence.dateDebut && absence.dateFin && absence.dateDebut <= key && key <= absence.dateFin)
 }
 
-function getStatus(date: Date, disponibilites: Map<number, Disponibilite>, absences: Absence[]): { status: StatutJour; label: string } {
+function parisDateKey(date: Date): string {
+  return new Intl.DateTimeFormat('fr-CA', { timeZone: 'Europe/Paris' }).format(date)
+}
+
+function parisMinutes(date: Date): number {
+  const parts = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(date)
+  const hour = Number(parts.find((part) => part.type === 'hour')?.value ?? 0)
+  const minute = Number(parts.find((part) => part.type === 'minute')?.value ?? 0)
+  return hour * 60 + minute
+}
+
+function hasFreeTime(start: number, end: number, occupations: { start: number; end: number }[]): boolean {
+  for (let cursor = start; cursor + 30 <= end; cursor += 30) {
+    if (!occupations.some((block) => cursor < block.end && cursor + 30 > block.start)) return true
+  }
+  return false
+}
+
+function getStatus(
+  date: Date,
+  disponibilites: Map<number, Disponibilite>,
+  absences: Absence[],
+  rendezvous: RendezVous[],
+): { status: StatutJour; label: string } {
   const dispo = disponibilites.get(date.getDay())
-  if (!dispo?.actif) return { status: 'off', label: 'COMPLET' }
-  let start = minutes(dispo.heureDebut) ?? 9 * 60
-  let end = minutes(dispo.heureFin) ?? 18 * 60
+  const aucunJourConfigure = [...disponibilites.values()].every((item) => !item.actif)
+  const rendezvousDuJour = rendezvous.filter((item) => {
+    if (!item.date || item.statut === 'Annulé') return false
+    const instant = new Date(item.date)
+    return !Number.isNaN(instant.getTime()) && parisDateKey(instant) === dateKey(date)
+  })
+  if (!dispo?.actif && !aucunJourConfigure) return { status: 'off', label: 'COMPLET' }
+  if (aucunJourConfigure && date.getDay() === 0 && rendezvousDuJour.length === 0) return { status: 'off', label: 'COMPLET' }
+
+  let start = minutes(dispo?.heureDebut ?? null) ?? 9 * 60
+  let end = minutes(dispo?.heureFin ?? null) ?? 18 * 60
+  const occupations: { start: number; end: number }[] = []
   let horairesAjustes = false
 
   for (const absence of absences.filter((item) => applies(item, date))) {
@@ -69,25 +109,36 @@ function getStatus(date: Date, disponibilites: Map<number, Disponibilite>, absen
     const absenceEnd = minutes(absence.heureFin)
     if (absenceStart !== null && absenceEnd !== null && absenceStart < end && absenceEnd > start) {
       if (absenceStart <= start && absenceEnd >= end) return { status: 'off', label: 'COMPLET' }
+      occupations.push({ start: absenceStart, end: absenceEnd })
       horairesAjustes = true
     }
   }
 
   if (start >= end) return { status: 'off', label: 'COMPLET' }
-  const label = horairesAjustes ? 'Horaires ajustés' : `${formatHour(dispo.heureDebut)} – ${formatHour(dispo.heureFin)}`
-  if (end <= 13 * 60) return { status: 'matin', label }
-  if (start >= 13 * 60) return { status: 'apres-midi', label }
-  return { status: 'journee', label }
+  for (const item of rendezvousDuJour) {
+    const instant = new Date(item.date as string)
+    const itemStart = parisMinutes(instant)
+    const duration = parseDureeMinutes(item.duree) + item.minutesSupplementaires
+    if (duration > 0) occupations.push({ start: itemStart, end: itemStart + duration })
+  }
+
+  const matin = hasFreeTime(start, Math.min(end, 13 * 60), occupations)
+  const apresMidi = hasFreeTime(Math.max(start, 13 * 60), end, occupations)
+  if (!matin && !apresMidi) return { status: 'off', label: 'COMPLET' }
+  const label = horairesAjustes ? 'Horaires ajustés' : `${formatHour(dispo?.heureDebut ?? null) || '9h'} – ${formatHour(dispo?.heureFin ?? null) || '18h'}`
+  if (matin && apresMidi) return { status: 'journee', label }
+  return matin ? { status: 'matin', label } : { status: 'apres-midi', label }
 }
 
 function getStatusPourStory(
   date: Date,
   disponibilites: Map<number, Disponibilite>,
   absences: Absence[],
+  rendezvous: RendezVous[],
   surcharges: SurchargesDisponibilite,
 ): { status: StatutJour; label: string } {
   const choisi = surcharges[dateKey(date)]
-  if (!choisi) return getStatus(date, disponibilites, absences)
+  if (!choisi) return getStatus(date, disponibilites, absences, rendezvous)
   if (choisi === 'off') return { status: 'off', label: 'COMPLET' }
   return {
     status: choisi,
@@ -172,6 +223,7 @@ function drawMonthly(
   month: number,
   disponibilites: Map<number, Disponibilite>,
   absences: Absence[],
+  rendezvous: RendezVous[],
   surcharges: SurchargesDisponibilite,
 ) {
   drawTitle(ctx, `en ${MOIS[month]}`)
@@ -203,7 +255,7 @@ function drawMonthly(
     ctx.strokeRect(x, y, cellWidth, cellHeight)
     const day = index - offset + 1
     if (day < 1 || day > dayCount) continue
-    const result = getStatusPourStory(new Date(year, month, day), disponibilites, absences, surcharges)
+    const result = getStatusPourStory(new Date(year, month, day), disponibilites, absences, rendezvous, surcharges)
     ctx.textAlign = 'left'
     ctx.fillStyle = '#5B452C'
     ctx.font = '500 24px Fraunces, Georgia, serif'
@@ -225,6 +277,7 @@ function drawWeekly(
   weekStart: Date,
   disponibilites: Map<number, Disponibilite>,
   absences: Absence[],
+  rendezvous: RendezVous[],
   surcharges: SurchargesDisponibilite,
 ) {
   const weekEnd = addDays(weekStart, 6)
@@ -239,7 +292,7 @@ function drawWeekly(
   const cardHeight = 470
   for (let index = 0; index < 7; index += 1) {
     const date = addDays(weekStart, index)
-    const result = getStatusPourStory(date, disponibilites, absences, surcharges)
+    const result = getStatusPourStory(date, disponibilites, absences, rendezvous, surcharges)
     const x = gridX + index * columnWidth
     ctx.fillStyle = 'rgba(249, 247, 242, 0.78)'
     ctx.fillRect(x, gridY, columnWidth, cardHeight)
@@ -277,6 +330,7 @@ async function drawExport(
   weekStart: Date,
   disponibilites: Map<number, Disponibilite>,
   absences: Absence[],
+  rendezvous: RendezVous[],
   surcharges: SurchargesDisponibilite,
 ) {
   const ctx = canvas.getContext('2d')
@@ -296,8 +350,8 @@ async function drawExport(
     ctx.fillRect(0, 0, width, height)
   }
   drawBase(ctx, width, height)
-  if (format === 'mois') drawMonthly(ctx, year, month, disponibilites, absences, surcharges)
-  else drawWeekly(ctx, weekStart, disponibilites, absences, surcharges)
+  if (format === 'mois') drawMonthly(ctx, year, month, disponibilites, absences, rendezvous, surcharges)
+  else drawWeekly(ctx, weekStart, disponibilites, absences, rendezvous, surcharges)
 }
 
 function canvasToFile(canvas: HTMLCanvasElement, name: string): Promise<File> {
@@ -320,6 +374,7 @@ function DisponibilitesExportModal({ onClose }: DisponibilitesExportModalProps) 
   const [weekStart, setWeekStart] = useState(() => mondayOf(today))
   const [disponibilites, setDisponibilites] = useState<Disponibilite[]>([])
   const [absences, setAbsences] = useState<Absence[]>([])
+  const [rendezvous, setRendezvous] = useState<RendezVous[]>([])
   const [surcharges, setSurcharges] = useState<SurchargesDisponibilite>({})
   const [statutSelectionne, setStatutSelectionne] = useState<StatutJour>('journee')
   const [loading, setLoading] = useState(true)
@@ -327,7 +382,9 @@ function DisponibilitesExportModal({ onClose }: DisponibilitesExportModalProps) 
   const [sharing, setSharing] = useState(false)
 
   const draw = useCallback(async () => {
-    if (!canvasRef.current || disponibilites.length === 0) return
+    // Le canvas n'existe qu'après le chargement : attendre son montage évite une
+    // première image vide lorsque les trois requêtes se terminent en même temps.
+    if (loading || !canvasRef.current || disponibilites.length === 0) return
     setRendering(true)
     try {
       await drawExport(
@@ -338,19 +395,25 @@ function DisponibilitesExportModal({ onClose }: DisponibilitesExportModalProps) 
         weekStart,
         new Map(disponibilites.map((item) => [item.jourSemaine, item])),
         absences,
+        rendezvous,
         surcharges,
       )
     } finally {
       setRendering(false)
     }
-  }, [absences, disponibilites, format, month, surcharges, weekStart, year])
+  }, [absences, disponibilites, format, loading, month, rendezvous, surcharges, weekStart, year])
 
   useEffect(() => {
     Promise.all([
       apiFetch<{ disponibilites: Disponibilite[] }>(getToken, '/api/prestations?resource=disponibilites'),
       apiFetch<{ absences: Absence[] }>(getToken, '/api/absences'),
+      apiFetch<{ rendezvous: RendezVous[] }>(getToken, '/api/rendezvous'),
     ])
-      .then(([availability, absenceData]) => { setDisponibilites(availability.disponibilites); setAbsences(absenceData.absences) })
+      .then(([availability, absenceData, rendezvousData]) => {
+        setDisponibilites(availability.disponibilites)
+        setAbsences(absenceData.absences)
+        setRendezvous(rendezvousData.rendezvous)
+      })
       .catch((error: unknown) => showToast(error instanceof ApiError ? error.message : 'Impossible de charger les disponibilités.', 'error'))
       .finally(() => setLoading(false))
   }, [getToken, showToast])
@@ -460,8 +523,8 @@ function DisponibilitesExportModal({ onClose }: DisponibilitesExportModalProps) 
         {loading ? <p className="text-sm text-text-muted self-center">Préparation de l’image…</p> : <canvas ref={canvasRef} onClick={marquerJour} className="w-full max-w-[390px] rounded-xl shadow-sm cursor-pointer" role="button" tabIndex={0} aria-label="Appuyer sur un jour du calendrier pour modifier sa disponibilité" />}
       </div>
       <div className="mt-3 bg-sage-pale rounded-[10px] p-3">
-        <p className="text-xs font-semibold text-sage-dark">Modifier cette story</p>
-        <p className="text-xs text-text-muted mt-1">Choisis une couleur, puis touche les jours concernés dans le calendrier.</p>
+        <p className="text-xs font-semibold text-sage-dark">Ajuster la story si besoin</p>
+        <p className="text-xs text-text-muted mt-1">Les pastilles sont calculées depuis l’agenda. Choisis une couleur, puis touche un jour pour la modifier uniquement sur cette image.</p>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
           {([
             ['off', 'Complet'],
@@ -480,13 +543,24 @@ function DisponibilitesExportModal({ onClose }: DisponibilitesExportModalProps) 
             </button>
           ))}
         </div>
-        {aucunJourActif && <p className="text-xs text-gold-text mt-3">Les horaires hebdomadaires ne sont pas encore activés. Les pastilles posées ici s’appliquent uniquement à cette story.</p>}
+        {aucunJourActif && <p className="text-xs text-gold-text mt-3">Aucun horaire hebdomadaire n’est activé : le mode automatique se base sur les créneaux réellement libres de l’agenda, du lundi au samedi.</p>}
         {Object.keys(surcharges).length > 0 && <button type="button" onClick={() => setSurcharges({})} className="text-xs font-semibold text-sage-dark hover:underline mt-3">Revenir aux disponibilités de l’agenda</button>}
       </div>
-      <p className="text-xs text-text-muted mt-1">Sur téléphone, « Partager / Instagram » ouvre le menu de partage : Instagram est proposé s’il est installé.</p>
-      <div className="flex justify-end gap-3 mt-4">
-        <button type="button" onClick={onClose} className="btn-secondary">Fermer</button>
-        <button type="button" onClick={share} disabled={loading || rendering || sharing} className="btn-primary disabled:opacity-50">{sharing || rendering ? 'Préparation…' : 'Partager / Instagram'}</button>
+      <p className="text-xs text-text-muted mt-1">Sur téléphone, le partage ouvre directement les applications disponibles, dont Instagram s’il est installé.</p>
+      <div className="grid sm:grid-cols-[auto_1fr] gap-3 mt-4">
+        <button type="button" onClick={onClose} className="btn-secondary min-h-14">Fermer</button>
+        <button
+          type="button"
+          onClick={share}
+          disabled={loading || rendering || sharing}
+          className="min-h-14 rounded-[10px] bg-sage-dark text-white px-4 flex items-center justify-center gap-3 shadow-sm disabled:opacity-50"
+        >
+          <span className="w-9 h-9 rounded-full bg-white/15 flex items-center justify-center shrink-0"><Icon name="share" size={19} /></span>
+          <span className="text-left leading-tight">
+            <span className="block text-sm font-semibold">{sharing || rendering ? 'Préparation de l’image…' : 'Partager la story'}</span>
+            <span className="block text-[11px] text-white/75 mt-0.5">Instagram, Messages et autres applications</span>
+          </span>
+        </button>
       </div>
     </Modal>
   )

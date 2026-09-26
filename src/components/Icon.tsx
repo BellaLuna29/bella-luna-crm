@@ -20,6 +20,7 @@ export type IconName =
   | 'check'
   | 'mail'
   | 'send'
+  | 'share'
   | 'chevron-left'
   | 'chevron-right'
   | 'x'
@@ -65,6 +66,7 @@ const PATHS: Record<IconName, string> = {
   check: '<polyline points="20 6 9 17 4 12"/>',
   mail: '<rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>',
   send: '<path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"/><path d="m21.854 2.147-10.94 10.939"/>',
+  share: '<path d="M12 16V3"/><path d="m7 8 5-5 5 5"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/>',
   'chevron-left': '<path d="m15 18-6-6 6-6"/>',
   'chevron-right': '<path d="m9 18 6-6-6-6"/>',
   x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',

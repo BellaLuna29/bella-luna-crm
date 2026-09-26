@@ -120,15 +120,16 @@ function AbsenceFormModal({ initialDate, onClose, onSaved }: AbsenceFormModalPro
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <label className="block">
-          <span className="block text-xs font-semibold text-text-muted mb-1">Libellé *</span>
+          <span className="block text-xs font-semibold text-text-muted mb-1">Motif / note de l’absence *</span>
           <input
             type="text"
             value={libelle}
             onChange={(e) => setLibelle(e.target.value)}
-            placeholder="Ex : Vacances d'été"
+            placeholder="Ex : Jour off — danse"
             className="input"
             required
           />
+          <span className="block text-[11px] text-text-muted mt-1">Ce texte apparaît dans l’onglet Organisation et sur la zone bloquée de l’agenda.</span>
         </label>
 
         <div>
