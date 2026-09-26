@@ -539,12 +539,18 @@ function DisponibilitesExportModal({ onClose }: DisponibilitesExportModalProps) 
       </div>
       <p className="text-xs text-text-muted mt-1">Sur téléphone, le partage ouvre directement les applications disponibles, dont Instagram s’il est installé.</p>
       <div className="grid sm:grid-cols-[auto_1fr] gap-3 mt-4">
-        <button type="button" onClick={onClose} className="btn-secondary min-h-14">Fermer</button>
+        <button
+          type="button"
+          onClick={onClose}
+          className="min-h-14 rounded-[10px] border border-danger bg-white px-5 text-sm font-semibold text-danger transition-colors hover:bg-danger hover:text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-danger"
+        >
+          Fermer
+        </button>
         <button
           type="button"
           onClick={share}
           disabled={loading || rendering || sharing}
-          className="min-h-14 rounded-[10px] bg-sage-dark text-white px-4 flex items-center justify-center gap-3 shadow-sm disabled:opacity-50"
+          className="min-h-14 rounded-[10px] bg-sage-dark text-white px-4 flex items-center justify-center gap-3 shadow-sm transition-all hover:bg-sage-dark/90 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sage-dark disabled:opacity-50"
         >
           <span className="w-9 h-9 rounded-full bg-white/15 flex items-center justify-center shrink-0"><Icon name="share" size={19} /></span>
           <span className="text-left leading-tight">
