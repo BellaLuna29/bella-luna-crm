@@ -180,7 +180,7 @@ export async function sendNewsletterBatch(items: NewsletterSendItem[]): Promise<
     return { sent: 0, failedEmails: items.map((i) => i.to), errorMessage: '100 destinataires maximum par envoi.' }
   }
 
-  const user = process.env.GMAIL_USER
+  const user = process.env.GMAIL_USER?.trim()
   let mailer: nodemailer.Transporter
   try {
     mailer = getTransporter()
