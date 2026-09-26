@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 import { useAuth } from '@clerk/react'
 import { apiFetch, ApiError } from '../lib/api'
 import { useToast } from './ToastProvider'
@@ -13,6 +13,7 @@ interface DisponibilitesExportModalProps { onClose: () => void }
 
 type ExportFormat = 'mois' | 'semaine'
 type StatutJour = 'off' | 'matin' | 'apres-midi' | 'journee'
+type SurchargesDisponibilite = Record<string, StatutJour>
 
 const JOURS_COURTS = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
 const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
@@ -77,6 +78,21 @@ function getStatus(date: Date, disponibilites: Map<number, Disponibilite>, absen
   if (end <= 13 * 60) return { status: 'matin', label }
   if (start >= 13 * 60) return { status: 'apres-midi', label }
   return { status: 'journee', label }
+}
+
+function getStatusPourStory(
+  date: Date,
+  disponibilites: Map<number, Disponibilite>,
+  absences: Absence[],
+  surcharges: SurchargesDisponibilite,
+): { status: StatutJour; label: string } {
+  const choisi = surcharges[dateKey(date)]
+  if (!choisi) return getStatus(date, disponibilites, absences)
+  if (choisi === 'off') return { status: 'off', label: 'COMPLET' }
+  return {
+    status: choisi,
+    label: choisi === 'matin' ? 'Matin' : choisi === 'apres-midi' ? 'Après-midi' : 'Flexible',
+  }
 }
 
 function roundedRect(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number) {
@@ -150,7 +166,14 @@ function drawLegend(ctx: CanvasRenderingContext2D, y: number) {
   })
 }
 
-function drawMonthly(ctx: CanvasRenderingContext2D, year: number, month: number, disponibilites: Map<number, Disponibilite>, absences: Absence[]) {
+function drawMonthly(
+  ctx: CanvasRenderingContext2D,
+  year: number,
+  month: number,
+  disponibilites: Map<number, Disponibilite>,
+  absences: Absence[],
+  surcharges: SurchargesDisponibilite,
+) {
   drawTitle(ctx, `en ${MOIS[month]}`)
   const gridX = 105
   const gridY = 590
@@ -180,7 +203,7 @@ function drawMonthly(ctx: CanvasRenderingContext2D, year: number, month: number,
     ctx.strokeRect(x, y, cellWidth, cellHeight)
     const day = index - offset + 1
     if (day < 1 || day > dayCount) continue
-    const result = getStatus(new Date(year, month, day), disponibilites, absences)
+    const result = getStatusPourStory(new Date(year, month, day), disponibilites, absences, surcharges)
     ctx.textAlign = 'left'
     ctx.fillStyle = '#5B452C'
     ctx.font = '500 24px Fraunces, Georgia, serif'
@@ -197,7 +220,13 @@ function drawMonthly(ctx: CanvasRenderingContext2D, year: number, month: number,
   drawReservationButton(ctx, 1702)
 }
 
-function drawWeekly(ctx: CanvasRenderingContext2D, weekStart: Date, disponibilites: Map<number, Disponibilite>, absences: Absence[]) {
+function drawWeekly(
+  ctx: CanvasRenderingContext2D,
+  weekStart: Date,
+  disponibilites: Map<number, Disponibilite>,
+  absences: Absence[],
+  surcharges: SurchargesDisponibilite,
+) {
   const weekEnd = addDays(weekStart, 6)
   drawTitle(ctx, `du ${weekStart.getDate()} au ${weekEnd.getDate()} ${MOIS[weekEnd.getMonth()]}`)
   ctx.textAlign = 'center'
@@ -210,7 +239,7 @@ function drawWeekly(ctx: CanvasRenderingContext2D, weekStart: Date, disponibilit
   const cardHeight = 470
   for (let index = 0; index < 7; index += 1) {
     const date = addDays(weekStart, index)
-    const result = getStatus(date, disponibilites, absences)
+    const result = getStatusPourStory(date, disponibilites, absences, surcharges)
     const x = gridX + index * columnWidth
     ctx.fillStyle = 'rgba(249, 247, 242, 0.78)'
     ctx.fillRect(x, gridY, columnWidth, cardHeight)
@@ -240,7 +269,16 @@ function drawWeekly(ctx: CanvasRenderingContext2D, weekStart: Date, disponibilit
   drawReservationButton(ctx, 1695)
 }
 
-async function drawExport(canvas: HTMLCanvasElement, format: ExportFormat, year: number, month: number, weekStart: Date, disponibilites: Map<number, Disponibilite>, absences: Absence[]) {
+async function drawExport(
+  canvas: HTMLCanvasElement,
+  format: ExportFormat,
+  year: number,
+  month: number,
+  weekStart: Date,
+  disponibilites: Map<number, Disponibilite>,
+  absences: Absence[],
+  surcharges: SurchargesDisponibilite,
+) {
   const ctx = canvas.getContext('2d')
   if (!ctx) return
   const width = 1080
@@ -258,8 +296,8 @@ async function drawExport(canvas: HTMLCanvasElement, format: ExportFormat, year:
     ctx.fillRect(0, 0, width, height)
   }
   drawBase(ctx, width, height)
-  if (format === 'mois') drawMonthly(ctx, year, month, disponibilites, absences)
-  else drawWeekly(ctx, weekStart, disponibilites, absences)
+  if (format === 'mois') drawMonthly(ctx, year, month, disponibilites, absences, surcharges)
+  else drawWeekly(ctx, weekStart, disponibilites, absences, surcharges)
 }
 
 function canvasToFile(canvas: HTMLCanvasElement, name: string): Promise<File> {
@@ -282,6 +320,8 @@ function DisponibilitesExportModal({ onClose }: DisponibilitesExportModalProps) 
   const [weekStart, setWeekStart] = useState(() => mondayOf(today))
   const [disponibilites, setDisponibilites] = useState<Disponibilite[]>([])
   const [absences, setAbsences] = useState<Absence[]>([])
+  const [surcharges, setSurcharges] = useState<SurchargesDisponibilite>({})
+  const [statutSelectionne, setStatutSelectionne] = useState<StatutJour>('journee')
   const [loading, setLoading] = useState(true)
   const [rendering, setRendering] = useState(false)
   const [sharing, setSharing] = useState(false)
@@ -290,11 +330,20 @@ function DisponibilitesExportModal({ onClose }: DisponibilitesExportModalProps) 
     if (!canvasRef.current || disponibilites.length === 0) return
     setRendering(true)
     try {
-      await drawExport(canvasRef.current, format, year, month, weekStart, new Map(disponibilites.map((item) => [item.jourSemaine, item])), absences)
+      await drawExport(
+        canvasRef.current,
+        format,
+        year,
+        month,
+        weekStart,
+        new Map(disponibilites.map((item) => [item.jourSemaine, item])),
+        absences,
+        surcharges,
+      )
     } finally {
       setRendering(false)
     }
-  }, [absences, disponibilites, format, month, weekStart, year])
+  }, [absences, disponibilites, format, month, surcharges, weekStart, year])
 
   useEffect(() => {
     Promise.all([
@@ -314,6 +363,43 @@ function DisponibilitesExportModal({ onClose }: DisponibilitesExportModalProps) 
       setYear(next.getFullYear())
       setMonth(next.getMonth())
     } else setWeekStart((current) => addDays(current, delta * 7))
+  }
+
+  function jourAuPoint(clientX: number, clientY: number): Date | null {
+    const canvas = canvasRef.current
+    if (!canvas) return null
+    const bounds = canvas.getBoundingClientRect()
+    const x = ((clientX - bounds.left) / bounds.width) * 1080
+    const y = ((clientY - bounds.top) / bounds.height) * 1920
+
+    if (format === 'semaine') {
+      const gridX = 92
+      const gridY = 665
+      const columnWidth = 128
+      const cardHeight = 470
+      if (x < gridX || x >= gridX + columnWidth * 7 || y < gridY || y >= gridY + cardHeight) return null
+      return addDays(weekStart, Math.floor((x - gridX) / columnWidth))
+    }
+
+    const gridX = 105
+    const gridY = 590 + 68
+    const cellWidth = 124
+    const cellHeight = 143
+    const firstDay = new Date(year, month, 1)
+    const offset = (firstDay.getDay() + 6) % 7
+    const dayCount = new Date(year, month + 1, 0).getDate()
+    if (x < gridX || x >= gridX + cellWidth * 7 || y < gridY) return null
+    const column = Math.floor((x - gridX) / cellWidth)
+    const row = Math.floor((y - gridY) / cellHeight)
+    const day = row * 7 + column - offset + 1
+    if (day < 1 || day > dayCount) return null
+    return new Date(year, month, day)
+  }
+
+  function marquerJour(event: MouseEvent<HTMLCanvasElement>) {
+    const date = jourAuPoint(event.clientX, event.clientY)
+    if (!date) return
+    setSurcharges((current) => ({ ...current, [dateKey(date)]: statutSelectionne }))
   }
 
   async function share() {
@@ -342,6 +428,7 @@ function DisponibilitesExportModal({ onClose }: DisponibilitesExportModalProps) 
 
   const weekEnd = addDays(weekStart, 6)
   const periodLabel = format === 'mois' ? `${MOIS[month]} ${year}` : `du ${weekStart.getDate()} au ${weekEnd.getDate()} ${MOIS[weekEnd.getMonth()]}`
+  const aucunJourActif = disponibilites.length > 0 && disponibilites.every((item) => !item.actif)
 
   return (
     <Modal size="lg">
@@ -370,9 +457,32 @@ function DisponibilitesExportModal({ onClose }: DisponibilitesExportModalProps) 
         <button type="button" onClick={() => movePeriod(1)} className="btn-secondary min-w-11 min-h-11" aria-label="Période suivante">→</button>
       </div>
       <div className="bg-sage-pale rounded-2xl p-3 flex justify-center min-h-64">
-        {loading ? <p className="text-sm text-text-muted self-center">Préparation de l’image…</p> : <canvas ref={canvasRef} className="w-full max-w-[390px] rounded-xl shadow-sm" />}
+        {loading ? <p className="text-sm text-text-muted self-center">Préparation de l’image…</p> : <canvas ref={canvasRef} onClick={marquerJour} className="w-full max-w-[390px] rounded-xl shadow-sm cursor-pointer" role="button" tabIndex={0} aria-label="Appuyer sur un jour du calendrier pour modifier sa disponibilité" />}
       </div>
-      <p className="text-xs text-text-muted mt-3">Les pastilles utilisent les disponibilités et indisponibilités déjà enregistrées dans l’agenda.</p>
+      <div className="mt-3 bg-sage-pale rounded-[10px] p-3">
+        <p className="text-xs font-semibold text-sage-dark">Modifier cette story</p>
+        <p className="text-xs text-text-muted mt-1">Choisis une couleur, puis touche les jours concernés dans le calendrier.</p>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
+          {([
+            ['off', 'Complet'],
+            ['matin', 'Matin'],
+            ['apres-midi', 'Après-midi'],
+            ['journee', 'Journée'],
+          ] as const).map(([status, label]) => (
+            <button
+              key={status}
+              type="button"
+              onClick={() => setStatutSelectionne(status)}
+              className={`min-h-11 rounded-[8px] border text-xs font-semibold ${statutSelectionne === status ? 'border-sage-dark bg-white text-sage-dark' : 'border-transparent bg-white/60 text-text-muted'}`}
+            >
+              <span className="inline-block w-3 h-3 rounded-full mr-1.5 align-[-1px]" style={{ backgroundColor: COULEURS[status] }} />
+              {label}
+            </button>
+          ))}
+        </div>
+        {aucunJourActif && <p className="text-xs text-gold-text mt-3">Les horaires hebdomadaires ne sont pas encore activés. Les pastilles posées ici s’appliquent uniquement à cette story.</p>}
+        {Object.keys(surcharges).length > 0 && <button type="button" onClick={() => setSurcharges({})} className="text-xs font-semibold text-sage-dark hover:underline mt-3">Revenir aux disponibilités de l’agenda</button>}
+      </div>
       <p className="text-xs text-text-muted mt-1">Sur téléphone, « Partager / Instagram » ouvre le menu de partage : Instagram est proposé s’il est installé.</p>
       <div className="flex justify-end gap-3 mt-4">
         <button type="button" onClick={onClose} className="btn-secondary">Fermer</button>
