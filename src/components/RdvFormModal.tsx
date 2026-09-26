@@ -56,6 +56,7 @@ interface RdvFormModalProps {
   seriesSiblingIds?: string[]
   onClose: () => void
   onSaved: () => void
+  onOpenAbsence?: (initialDate?: string) => void
 }
 
 const EMPTY: RdvFormInitial = {
@@ -68,7 +69,7 @@ const EMPTY: RdvFormInitial = {
   estPrive: false,
 }
 
-function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, onSaved }: RdvFormModalProps) {
+function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, onSaved, onOpenAbsence }: RdvFormModalProps) {
   const { getToken } = useAuth()
   const { showToast } = useToast()
   const [values, setValues] = useState<RdvFormInitial>({ ...EMPTY, ...initialValues })
@@ -93,6 +94,11 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
   const [lienTelephoneOverride, setLienTelephoneOverride] = useState<string | null>(null)
   const [lienEmailOverride, setLienEmailOverride] = useState<string | null>(null)
   const [showLienComposer, setShowLienComposer] = useState(false)
+  const [creationType, setCreationType] = useState<'cliente' | 'prive'>(
+    initialValues?.estPrive && !initialValues.clienteId && !initialValues.prestationId ? 'prive' : 'cliente',
+  )
+
+  const isPrivateBooking = creationType === 'prive'
 
   useEffect(() => {
     Promise.all([
@@ -123,13 +129,18 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
   }, [values.clienteId, values.prestationId, prestations, cureProgress])
 
   const creneau = useMemo(() => {
-    if (!values.date || !values.prestationId) return null
+    if (!values.date) return null
+    if (isPrivateBooking) {
+      const privateMinutes = Number(values.minutesSupplementaires) || 0
+      return privateMinutes > 0 ? formatCreneau(values.date, privateMinutes) : null
+    }
+    if (!values.prestationId) return null
     const prestation = prestations?.find((p) => p.id === values.prestationId)
     if (!prestation) return null
     const minutesSupp = Number(values.minutesSupplementaires) || 0
     const totalMinutes = parseDureeMinutes(prestation.duree) + minutesSupp
     return formatCreneau(values.date, totalMinutes)
-  }, [values.date, values.prestationId, values.minutesSupplementaires, prestations])
+  }, [isPrivateBooking, values.date, values.prestationId, values.minutesSupplementaires, prestations])
 
   function set<K extends keyof RdvFormInitial>(key: K, value: RdvFormInitial[K]) {
     setValues((v) => ({ ...v, [key]: value }))
@@ -169,8 +180,8 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
     e.preventDefault()
     setError(null)
 
-    if (!values.clienteId || !values.prestationId || !values.date) {
-      setError('Cliente, prestation et date/heure sont obligatoires.')
+    if ((!isPrivateBooking && (!values.clienteId || !values.prestationId || !values.date)) || (isPrivateBooking && (!values.date || !values.notes.trim()))) {
+      setError(isPrivateBooking ? 'Le libellé et la date/heure sont obligatoires.' : 'Cliente, prestation et date/heure sont obligatoires.')
       return
     }
     if (mode === 'create' && repeatEnabled && (repeatIntervalWeeks < 1 || repeatCount < 2 || repeatCount > 52)) {
@@ -178,8 +189,8 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
       return
     }
     const minutesSupp = Number(values.minutesSupplementaires)
-    if (!Number.isFinite(minutesSupp) || minutesSupp < 0 || minutesSupp > 480) {
-      setError('Le temps supplémentaire doit être un nombre de minutes entre 0 et 480.')
+    if (!Number.isFinite(minutesSupp) || minutesSupp < 0 || minutesSupp > 480 || (isPrivateBooking && minutesSupp < 5)) {
+      setError(isPrivateBooking ? 'La durée du créneau doit être comprise entre 5 et 480 minutes.' : 'Le temps supplémentaire doit être un nombre de minutes entre 0 et 480.')
       return
     }
 
@@ -188,13 +199,13 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
     try {
       const baseDate = new Date(values.date)
       const body = {
-        clienteId: values.clienteId,
-        prestationId: values.prestationId,
+        clienteId: isPrivateBooking ? null : values.clienteId,
+        prestationId: isPrivateBooking ? null : values.prestationId,
         date: baseDate.toISOString(),
-        statut: values.statut,
+        statut: isPrivateBooking ? 'Confirmé' : values.statut,
         notes: values.notes.trim(),
         minutesSupplementaires: minutesSupp,
-        estPrive: values.estPrive,
+        estPrive: isPrivateBooking || values.estPrive,
       }
 
       if (mode === 'create') {
@@ -275,7 +286,7 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
     <>
     <Modal>
       <h3 className="font-serif text-xl font-semibold text-sage-dark mb-4">
-        {mode === 'create' ? 'Nouveau rendez-vous' : 'Modifier le rendez-vous'}
+        {mode === 'create' ? (isPrivateBooking ? 'Nouveau créneau privé' : 'Nouveau rendez-vous') : 'Modifier le rendez-vous'}
       </h3>
 
       {loadError && <p className="text-sm text-danger mb-4">{loadError}</p>}
@@ -286,6 +297,44 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
 
       {!loading && (
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          {mode === 'create' && (
+            <div className="flex items-center bg-sage-pale rounded-[10px] p-1" role="tablist" aria-label="Type d’ajout à l’agenda">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={!isPrivateBooking}
+                onClick={() => {
+                  setCreationType('cliente')
+                  set('estPrive', false)
+                }}
+                className={`flex-1 min-h-11 rounded-[8px] text-sm font-semibold ${!isPrivateBooking ? 'bg-sage-dark text-white' : 'text-text-muted'}`}
+              >
+                Rendez-vous cliente
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={isPrivateBooking}
+                onClick={() => {
+                  setCreationType('prive')
+                  setValues((current) => ({ ...current, clienteId: '', prestationId: '', estPrive: true, statut: 'Confirmé', minutesSupplementaires: current.minutesSupplementaires === '0' ? '60' : current.minutesSupplementaires }))
+                }}
+                className={`flex-1 min-h-11 rounded-[8px] text-sm font-semibold ${isPrivateBooking ? 'bg-sage-dark text-white' : 'text-text-muted'}`}
+              >
+                Créneau privé
+              </button>
+              <button
+                type="button"
+                onClick={() => onOpenAbsence?.(values.date ? values.date.slice(0, 10) : undefined)}
+                className="min-h-11 px-3 rounded-[8px] text-xs font-semibold text-text-muted"
+                title="Poser une indisponibilité"
+              >
+                Indispo
+              </button>
+            </div>
+          )}
+
+          {!isPrivateBooking && <>
           <Field label="Cliente *">
             <SearchableSelect
               options={clients!.map((c) => ({ id: c.id, label: c.nomComplet }))}
@@ -376,6 +425,22 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
               </p>
             )}
           </Field>
+          </>}
+
+          {isPrivateBooking && (
+            <Field label="Libellé du créneau privé *">
+              <input
+                type="text"
+                value={values.notes}
+                onChange={(e) => set('notes', e.target.value)}
+                placeholder="Ex. Pause, rendez-vous personnel, formation…"
+                maxLength={5000}
+                required
+                className="input"
+              />
+              <p className="text-[11px] text-text-muted mt-1">Ce libellé apparaît uniquement dans ton agenda.</p>
+            </Field>
+          )}
 
           <Field label="Date et heure *">
             <input
@@ -387,22 +452,23 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
             />
           </Field>
 
-          <Field label="Temps supplémentaire">
+          <Field label={isPrivateBooking ? 'Durée du créneau *' : 'Temps supplémentaire'}>
             <div className="flex items-center gap-2">
               <input
                 type="number"
-                min={0}
+                min={isPrivateBooking ? 5 : 0}
                 max={480}
                 step={5}
                 value={values.minutesSupplementaires}
                 onChange={(e) => set('minutesSupplementaires', e.target.value)}
                 className="input max-w-24"
               />
-              <span className="text-xs text-text-muted">minutes en plus de la durée habituelle</span>
+              <span className="text-xs text-text-muted">{isPrivateBooking ? 'minutes à bloquer dans l’agenda' : 'minutes en plus de la durée habituelle'}</span>
             </div>
             <p className="text-[11px] text-text-muted mt-0.5">
-              Si tu sais qu'il te faudra plus de temps avec cette cliente, ajoute-le ici — l'agenda réservera le
-              créneau en conséquence.
+              {isPrivateBooking
+                ? 'Ce créneau bloque l’horaire dans ton agenda sans créer de cliente ni de facture.'
+                : "Si tu sais qu'il te faudra plus de temps avec cette cliente, ajoute-le ici — l'agenda réservera le créneau en conséquence."}
             </p>
             {creneau && (
               <p className="text-xs font-semibold text-sage-dark bg-sage-pale rounded-[8px] px-2.5 py-1.5 mt-2 inline-block">
@@ -457,7 +523,7 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
             </div>
           )}
 
-          {mode === 'edit' && seriesSiblingIds && seriesSiblingIds.length > 0 && (
+          {!isPrivateBooking && mode === 'edit' && seriesSiblingIds && seriesSiblingIds.length > 0 && (
             <label className="flex items-start gap-2 text-sm bg-sage-pale rounded-[10px] p-3">
               <input
                 type="checkbox"
@@ -472,7 +538,7 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
             </label>
           )}
 
-          <Field label="Statut">
+          {!isPrivateBooking && <Field label="Statut">
             <select
               value={values.statut}
               onChange={(e) => set('statut', e.target.value)}
@@ -483,9 +549,9 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
               <option value="Honoré">Honoré</option>
               <option value="Annulé">Annulé</option>
             </select>
-          </Field>
+          </Field>}
 
-          <div>
+          {!isPrivateBooking && <div>
             <label className="flex items-center gap-2 text-sm font-semibold text-sage-dark">
               <input
                 type="checkbox"
@@ -499,9 +565,9 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
               À cocher pour un rendez-vous que tu ne veux pas rendre visible en détail (utile plus tard pour une
               synchronisation avec Google Agenda : seul le créneau apparaîtrait, sans les détails).
             </p>
-          </div>
+          </div>}
 
-          <div className="bg-sage-pale rounded-[10px] p-3">
+          {!isPrivateBooking && <div className="bg-sage-pale rounded-[10px] p-3">
             <span className="block text-xs font-semibold text-sage-dark mb-2">Envoyer un message</span>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
               <input
@@ -530,9 +596,9 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
             >
               Envoyer un message
             </button>
-          </div>
+          </div>}
 
-          <Field label="Notes">
+          {!isPrivateBooking && <Field label="Notes">
             <textarea
               value={values.notes}
               onChange={(e) => set('notes', e.target.value)}
@@ -540,7 +606,7 @@ function RdvFormModal({ mode, rdvId, initialValues, seriesSiblingIds, onClose, o
               rows={3}
               className="input resize-y"
             />
-          </Field>
+          </Field>}
 
           {error && <p className="text-sm text-danger">{error}</p>}
 

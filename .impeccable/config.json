@@ -1,0 +1,14 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "overused-font",
+        "value": "fraunces",
+        "createdAt": "2026-09-26T19:56:06.765Z",
+        "reason": "Client visual reference and incumbent Bella Luna identity use a high-contrast editorial serif for Instagram availability stories."
+      }
+    ]
+  }
+}

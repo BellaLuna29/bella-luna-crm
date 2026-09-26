@@ -367,12 +367,15 @@ export function parseRendezVousInput(
   const b = body as Record<string, unknown>
   const errors: string[] = []
   const fields: Record<string, unknown> = {}
+  const estCreneauPrive = b.estPrive === true
 
   if ('clienteId' in b || requireCore) {
     const v = b.clienteId
     if (typeof v === 'string' && UUID_RE.test(v)) {
       fields.cliente_id = v
-    } else if (requireCore) {
+    } else if (v === null && estCreneauPrive) {
+      fields.cliente_id = null
+    } else if (requireCore && !estCreneauPrive) {
       errors.push('La cliente est obligatoire.')
     }
   }
@@ -381,7 +384,9 @@ export function parseRendezVousInput(
     const v = b.prestationId
     if (typeof v === 'string' && UUID_RE.test(v)) {
       fields.prestation_id = v
-    } else if (requireCore) {
+    } else if (v === null && estCreneauPrive) {
+      fields.prestation_id = null
+    } else if (requireCore && !estCreneauPrive) {
       errors.push('La prestation est obligatoire.')
     }
   }

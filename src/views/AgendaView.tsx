@@ -3,7 +3,6 @@ import { useAuth } from '@clerk/react'
 import { apiFetch, ApiError } from '../lib/api'
 import AgendaDayGrid from '../components/AgendaDayGrid'
 import AgendaWeekGrid, { type WeekGridColumn } from '../components/AgendaWeekGrid'
-import Icon from '../components/Icon'
 import RdvFormModal, { type RdvFormInitial } from '../components/RdvFormModal'
 import AbsenceFormModal from '../components/AbsenceFormModal'
 import MessageComposerModal from '../components/MessageComposerModal'
@@ -146,6 +145,7 @@ function AgendaView() {
   const [prestationsLegend, setPrestationsLegend] = useState<{ id: string; nom: string; couleur: string | null }[]>([])
   const [showLegend, setShowLegend] = useState(false)
   const [showDisponibilitesExport, setShowDisponibilitesExport] = useState(false)
+  const [showOrganisation, setShowOrganisation] = useState(false)
   const [composer, setComposer] = useState<{ context: TemplateContext; telephone: string; email: string } | null>(
     null,
   )
@@ -376,10 +376,10 @@ function AgendaView() {
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <button
-            onClick={() => setAbsenceModal({ initialDate: isoDate(focusDate) })}
-            className="bg-white border border-border text-sage-dark px-4 py-2.5 rounded-[10px] text-sm font-semibold hover:bg-sage-pale"
+            onClick={() => setShowOrganisation((visible) => !visible)}
+            className={`border px-4 py-2.5 rounded-[10px] text-sm font-semibold ${showOrganisation ? 'bg-sage-dark border-sage-dark text-white' : 'bg-white border-border text-sage-dark hover:bg-sage-pale'}`}
           >
-            Poser une absence
+            Organisation
           </button>
           <button
             onClick={() => window.print()}
@@ -423,28 +423,38 @@ function AgendaView() {
 
       {showDisponibilitesExport && <DisponibilitesExportModal onClose={() => setShowDisponibilitesExport(false)} />}
 
-      {absenceError && <p className="text-sm text-danger mb-3 print:hidden">{absenceError}</p>}
-
-      {currentAbsences.length > 0 && (
-        <div className="flex flex-wrap gap-2 mb-4 print:hidden">
-          {currentAbsences.map((a) => (
-            <span
-              key={a.id}
-              className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold ${ABSENCE_STYLES[a.type] ?? 'bg-sage-light text-sage-dark'}`}
+      {showOrganisation && (
+        <section className="bg-white border border-border rounded-2xl p-4 mb-4 print:hidden">
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <div>
+              <h3 className="font-serif text-base font-semibold text-sage-dark">Indisponibilités à venir</h3>
+              <p className="text-xs text-text-muted mt-0.5">Elles restent visibles sous forme de zones bloquées dans l’agenda.</p>
+            </div>
+            <button
+              onClick={() => setAbsenceModal({ initialDate: isoDate(focusDate) })}
+              className="btn-secondary shrink-0"
             >
-              {a.libelle}
-              {a.demiJournee === 'matin' ? ' — Matin' : a.demiJournee === 'apres-midi' ? ' — Après-midi' : ''} (
-              {a.dateDebut} → {a.dateFin})
-              <button
-                onClick={() => handleDeleteAbsence(a.id)}
-                className="hover:opacity-70"
-                aria-label={`Supprimer l'absence ${a.libelle}`}
-              >
-                ×
-              </button>
-            </span>
-          ))}
-        </div>
+              Ajouter
+            </button>
+          </div>
+          {absenceError && <p className="text-sm text-danger mb-3">{absenceError}</p>}
+          {currentAbsences.length === 0 ? (
+            <p className="text-sm text-text-muted">Aucune indisponibilité à venir.</p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {currentAbsences.map((a) => (
+                <div key={a.id} className={`flex items-center justify-between gap-3 px-3 py-2 rounded-[10px] text-sm ${ABSENCE_STYLES[a.type] ?? 'bg-sage-light text-sage-dark'}`}>
+                  <span>
+                    <strong>{a.libelle}</strong>
+                    {a.demiJournee === 'matin' ? ' — matin' : a.demiJournee === 'apres-midi' ? ' — après-midi' : ''}
+                    {a.heureDebut && a.heureFin ? ` — ${a.heureDebut} à ${a.heureFin}` : ''}
+                  </span>
+                  <button onClick={() => handleDeleteAbsence(a.id)} className="min-w-11 min-h-11 text-lg hover:opacity-70" aria-label={`Supprimer l’absence ${a.libelle}`}>×</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
       )}
 
       {state.status === 'loading' && <p className="text-sm text-text-muted">Chargement…</p>}
@@ -464,21 +474,6 @@ function AgendaView() {
               +
             </button>
           </div>
-
-          {absencesForDay(focusDate).length > 0 && (
-            <div className="flex flex-col gap-2 mb-4">
-              {absencesForDay(focusDate).map((a) => (
-                <span
-                  key={a.id}
-                  className={`text-sm font-semibold px-3 py-2 rounded-lg inline-flex items-center gap-1.5 ${ABSENCE_STYLES[a.type] ?? 'bg-sage-light text-sage-dark'}`}
-                >
-                  {a.type === 'Vacances' && <Icon name="sun" size={14} />}
-                  {a.libelle}
-                  {a.demiJournee === 'matin' ? ' — Matin' : a.demiJournee === 'apres-midi' ? ' — Après-midi' : ''}
-                </span>
-              ))}
-            </div>
-          )}
 
           {(byDay.get(dayKey(focusDate)) ?? []).length === 0 && absencesForDay(focusDate).length === 0 ? (
             <p className="text-sm text-text-muted">Aucun rendez-vous ce jour-là.</p>
@@ -529,6 +524,10 @@ function AgendaView() {
           onSaved={() => {
             setModal(null)
             load()
+          }}
+          onOpenAbsence={(initialDate) => {
+            setModal(null)
+            setAbsenceModal({ initialDate })
           }}
         />
       )}

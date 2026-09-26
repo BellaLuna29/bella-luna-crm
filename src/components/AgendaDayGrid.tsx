@@ -77,8 +77,8 @@ function AgendaDayGrid({ items, absences = [], onClickItem, onSendReminder }: Ag
               <div
                 key={h}
                 style={{ height: HOUR_HEIGHT }}
-                className={`text-xs text-text-muted px-2 pt-1 border-l-4 ${
-                  isMorning ? 'border-l-gold bg-gold-pale/25' : 'border-l-avatar-teal bg-avatar-teal-pale/40'
+                className={`text-xs text-text-muted px-2 pt-1 ${
+                  isMorning ? 'bg-gold-pale/25' : 'bg-avatar-teal-pale/40'
                 }`}
               >
                 {isZoneStart && (
@@ -137,7 +137,7 @@ function AgendaDayGrid({ items, absences = [], onClickItem, onSendReminder }: Ag
             const height = Math.max(30, (item.durationMin / 60) * HOUR_HEIGHT - 4)
             const isAnnule = item.statut === 'Annulé'
             const isEnAttente = item.statut === 'En attente'
-            const displayNom = item.clienteNom || item.notes || 'Cliente inconnue'
+            const displayNom = item.estPrive ? item.notes || 'Créneau privé' : item.clienteNom || item.notes || 'Cliente inconnue'
             const blockColor = isEnAttente ? EN_ATTENTE_COULEUR : item.prestationCouleur
             return (
               <div
@@ -153,7 +153,7 @@ function AgendaDayGrid({ items, absences = [], onClickItem, onSendReminder }: Ag
                     {displayNom}
                   </div>
                   <div className="text-[11px] opacity-90 truncate pr-16">
-                    {isAnnule ? 'Annulé' : item.prestationNom || 'Prestation inconnue'} · {formatHeure(item.start)}–{formatHeure(item.end)}
+                    {isAnnule ? 'Annulé' : item.estPrive ? 'Créneau privé' : item.prestationNom || 'Prestation inconnue'} · {formatHeure(item.start)}–{formatHeure(item.end)}
                     {' · '}
                     {formatMinutes(item.durationMin)}
                     {item.prix !== null ? ` · ${item.prix} €` : ''}

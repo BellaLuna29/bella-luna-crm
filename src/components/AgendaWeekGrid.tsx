@@ -177,7 +177,7 @@ function AgendaWeekGrid({ columns, onClickItem, onAddForColumn }: AgendaWeekGrid
                   const height = Math.max(18, (item.durationMin / 60) * HOUR_HEIGHT - 2)
                   const isAnnule = item.statut === 'Annulé'
                   const isEnAttente = item.statut === 'En attente'
-                  const displayNom = item.clienteNom || item.notes || '?'
+                  const displayNom = item.estPrive ? item.notes || 'Créneau privé' : item.clienteNom || item.notes || '?'
                   const blockColor = isEnAttente ? EN_ATTENTE_COULEUR : item.prestationCouleur
                   return (
                     <button
@@ -189,14 +189,14 @@ function AgendaWeekGrid({ columns, onClickItem, onAddForColumn }: AgendaWeekGrid
                           : `text-white hover:brightness-95 ${blockColor ? '' : avatarColorClass(item.prestationNom)}`
                       }`}
                       style={{ top, height, backgroundColor: !isAnnule && blockColor ? blockColor : undefined }}
-                      title={`${displayNom} — ${item.prestationNom || 'Prestation inconnue'}${isAnnule ? ' (Annulé)' : isEnAttente ? ' (En attente)' : ''}`}
+                      title={`${displayNom} — ${item.estPrive ? 'Créneau privé' : item.prestationNom || 'Prestation inconnue'}${isAnnule ? ' (Annulé)' : isEnAttente ? ' (En attente)' : ''}`}
                     >
                       <span className={`block text-[9px] sm:text-[11px] font-semibold leading-tight truncate ${isAnnule ? 'line-through' : ''}`}>
                         {isEnAttente ? '? ' : ''}
                         {displayNom}
                       </span>
                       <span className="hidden sm:block text-[9px] opacity-90 leading-tight truncate">
-                        {isAnnule ? 'Annulé' : item.prestationNom}
+                        {isAnnule ? 'Annulé' : item.estPrive ? 'Créneau privé' : item.prestationNom}
                       </span>
                       <span className="hidden sm:block text-[9px] opacity-80 leading-tight truncate">
                         {formatMinutes(item.durationMin)}
