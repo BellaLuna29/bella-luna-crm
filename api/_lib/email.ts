@@ -6,8 +6,10 @@ let transporter: nodemailer.Transporter | null = null
 
 function getTransporter(): nodemailer.Transporter {
   if (transporter) return transporter
-  const user = process.env.GMAIL_USER
-  const pass = process.env.GMAIL_APP_PASSWORD
+  const user = process.env.GMAIL_USER?.trim()
+  // Google affiche souvent le mot de passe d'application par groupes de quatre
+  // caractères. Les espaces éventuels copiés dans Vercel ne doivent pas casser SMTP.
+  const pass = process.env.GMAIL_APP_PASSWORD?.replace(/\s/g, '')
   if (!user || !pass) {
     throw new EmailConfigError("GMAIL_USER et/ou GMAIL_APP_PASSWORD ne sont pas définis sur Vercel.")
   }
@@ -199,11 +201,19 @@ export async function sendNewsletterBatch(items: NewsletterSendItem[]): Promise<
   )
 
   const failedEmails: string[] = []
+  let hasTransportError = false
   let sent = 0
   results.forEach((result, i) => {
     if (result.status === 'fulfilled') sent += 1
-    else failedEmails.push(items[i].to)
+    else {
+      failedEmails.push(items[i].to)
+      hasTransportError = true
+    }
   })
 
-  return { sent, failedEmails }
+  return {
+    sent,
+    failedEmails,
+    errorMessage: hasTransportError ? "Gmail n'a pas accepté l'envoi. Vérifie le compte et le mot de passe d'application." : undefined,
+  }
 }
