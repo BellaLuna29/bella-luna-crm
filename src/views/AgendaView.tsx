@@ -7,6 +7,7 @@ import Icon from '../components/Icon'
 import RdvFormModal, { type RdvFormInitial } from '../components/RdvFormModal'
 import AbsenceFormModal from '../components/AbsenceFormModal'
 import MessageComposerModal from '../components/MessageComposerModal'
+import DisponibilitesExportModal from '../components/DisponibilitesExportModal'
 import { formatDateHeureNaturel } from '../lib/formatDate'
 import type { TemplateContext } from '../lib/templateEngine'
 
@@ -144,6 +145,7 @@ function AgendaView() {
   const [clients, setClients] = useState<Client[]>([])
   const [prestationsLegend, setPrestationsLegend] = useState<{ id: string; nom: string; couleur: string | null }[]>([])
   const [showLegend, setShowLegend] = useState(false)
+  const [showDisponibilitesExport, setShowDisponibilitesExport] = useState(false)
   const [composer, setComposer] = useState<{ context: TemplateContext; telephone: string; email: string } | null>(
     null,
   )
@@ -385,6 +387,12 @@ function AgendaView() {
           >
             Exporter en PDF
           </button>
+          <button
+            onClick={() => setShowDisponibilitesExport(true)}
+            className="bg-white border border-border text-sage-dark px-4 py-2.5 rounded-[10px] text-sm font-semibold hover:bg-sage-pale"
+          >
+            Exporter disponibilités
+          </button>
           {prestationsLegend.length > 0 && (
             <button
               onClick={() => setShowLegend((v) => !v)}
@@ -412,6 +420,8 @@ function AgendaView() {
           ))}
         </div>
       )}
+
+      {showDisponibilitesExport && <DisponibilitesExportModal onClose={() => setShowDisponibilitesExport(false)} />}
 
       {absenceError && <p className="text-sm text-danger mb-3 print:hidden">{absenceError}</p>}
 
