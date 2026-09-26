@@ -660,8 +660,22 @@ async function handleManualEmailSend(req: VercelRequest, res: VercelResponse): P
     return
   }
 
+  let unsubscribeUrl: string | undefined
   try {
-    const result = await sendNewsletterBatch([{ to, subject, html: buildTransactionalHtml(message), text: message }])
+    const matchingClients = await dbList(TABLE_CLIENTS, { eq: ['email', to] })
+    const matchingClient = matchingClients[0]
+    if (matchingClient?.id) {
+      unsubscribeUrl = `${SITE_URL}/api/prestations?resource=newsletter-unsubscribe&id=${matchingClient.id}`
+    }
+  } catch (lookupError) {
+    // L'envoi reste possible même si la recherche de la fiche cliente échoue.
+    console.error(lookupError)
+  }
+
+  try {
+    const result = await sendNewsletterBatch([
+      { to, subject, html: buildTransactionalHtml(message, { unsubscribeUrl }), text: message },
+    ])
     if (result.sent === 0) {
       res.status(502).json({ error: result.errorMessage ?? "L'e-mail n'a pas pu être envoyé." })
       return

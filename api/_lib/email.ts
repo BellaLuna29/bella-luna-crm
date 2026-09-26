@@ -77,8 +77,18 @@ function paragraphes(bodyText: string): string {
  * rendu que pour la newsletter : un rappel de rendez-vous n'a pas à proposer
  * une désinscription, on ne se désabonne pas de son propre rendez-vous.
  */
-function coquille({ bodyText, piedNewsletter }: { bodyText: string; piedNewsletter?: string }): string {
+function coquille({ bodyText, piedNewsletter, unsubscribeUrl }: { bodyText: string; piedNewsletter?: string; unsubscribeUrl?: string }): string {
   const expediteur = escapeHtml(adresseExpedition())
+  const piedDesinscription = unsubscribeUrl
+    ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;">
+            <tr>
+              <td style="padding:18px 24px 8px;text-align:center;font-family:${POLICE_TEXTE};font-size:11.5px;line-height:1.7;color:${SAGE_LISIBLE};">
+                Vous ne souhaitez plus recevoir la newsletter de Bella&nbsp;Luna ?
+                <a href="${unsubscribeUrl}" style="color:${SAGE_LISIBLE};text-decoration:underline;">Se désinscrire</a>
+              </td>
+            </tr>
+          </table>`
+    : ''
   return `<!doctype html>
 <html lang="fr">
   <head>
@@ -136,7 +146,7 @@ function coquille({ bodyText, piedNewsletter }: { bodyText: string; piedNewslett
               </td>
             </tr>
           </table>
-          ${piedNewsletter ?? ''}
+          ${piedNewsletter ?? piedDesinscription}
         </td>
       </tr>
     </table>
@@ -169,8 +179,8 @@ export function buildNewsletterHtml({ bodyText, unsubscribeUrl }: { bodyText: st
  * Même coquille, sans le pied newsletter : pour les messages transactionnels
  * (rappels de rendez-vous), auxquels on ne s'abonne pas.
  */
-export function buildTransactionalHtml(bodyText: string): string {
-  return coquille({ bodyText })
+export function buildTransactionalHtml(bodyText: string, options: { unsubscribeUrl?: string } = {}): string {
+  return coquille({ bodyText, unsubscribeUrl: options.unsubscribeUrl })
 }
 
 export interface NewsletterSendItem {
