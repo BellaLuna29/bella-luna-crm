@@ -631,6 +631,61 @@ async function handleNewsletterSend(req: VercelRequest, res: VercelResponse): Pr
   }
 }
 
+async function handleManualEmailSend(req: VercelRequest, res: VercelResponse): Promise<void> {
+  if (req.method !== 'POST') {
+    res.status(405).json({ error: 'Méthode non autorisée.' })
+    return
+  }
+
+  const body = req.body as { to?: unknown; subject?: unknown; message?: unknown; label?: unknown }
+  const to = typeof body.to === 'string' ? body.to.trim() : ''
+  const subject = typeof body.subject === 'string' ? body.subject.trim() : ''
+  const message = typeof body.message === 'string' ? body.message.trim() : ''
+  const label = typeof body.label === 'string' ? body.label.trim().slice(0, 120) : 'Message manuel'
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+    res.status(400).json({ error: "L'adresse e-mail n'est pas valide." })
+    return
+  }
+  if (!subject || subject.length > 200) {
+    res.status(400).json({ error: "L'objet est obligatoire et doit contenir 200 caractères maximum." })
+    return
+  }
+  if (!message || message.length > 12000) {
+    res.status(400).json({ error: 'Le message est obligatoire et doit contenir 12 000 caractères maximum.' })
+    return
+  }
+
+  try {
+    const result = await sendNewsletterBatch([{ to, subject, html: buildTransactionalHtml(message) }])
+    if (result.sent === 0) {
+      res.status(502).json({ error: result.errorMessage ?? "L'e-mail n'a pas pu être envoyé." })
+      return
+    }
+
+    try {
+      await dbCreate(TABLE_COMMUNICATIONS_LOG, {
+        contenu: `${label} — ${to}`,
+        type: 'Email',
+        destinataires: 1,
+        date_envoi: new Date().toISOString(),
+      })
+    } catch (logError) {
+      // L'e-mail est déjà parti : un problème d'historique ne doit pas le faire apparaître comme échoué.
+      console.error(logError)
+    }
+
+    res.status(200).json({ sent: true })
+  } catch (error) {
+    if (error instanceof EmailConfigError) {
+      res.status(500).json({ error: error.message })
+      return
+    }
+    console.error(error)
+    res.status(502).json({ error: "Impossible d'envoyer l'e-mail." })
+  }
+}
+
 function unsubscribePage(title: string, message: string): string {
   return `<!doctype html>
 <html lang="fr">
@@ -1521,6 +1576,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
 
   if (req.query.resource === 'newsletter-send') {
     await handleNewsletterSend(req, res)
+    return
+  }
+  if (req.query.resource === 'manual-email-send') {
+    await handleManualEmailSend(req, res)
     return
   }
   if (req.query.resource === 'reservation-token') {

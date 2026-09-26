@@ -5,6 +5,7 @@ import { fetchSmsTemplates, fetchEmailTemplates, type SmsTemplate, type EmailTem
 import { renderTemplate, type TemplateContext } from '../lib/templateEngine'
 import { buildSmsLink, buildMailtoLink } from '../lib/contactLinks'
 import { logCommunication } from '../lib/communicationsLog'
+import { sendManualEmail } from '../lib/emailSend'
 import Modal from './Modal'
 
 interface Questionnaire {
@@ -64,6 +65,10 @@ function MessageComposerModal({ context, telephone, email, initialTemplateKey, o
   const [smsBody, setSmsBody] = useState('')
   const [emailSubject, setEmailSubject] = useState('')
   const [emailBody, setEmailBody] = useState('')
+  const [emailTo, setEmailTo] = useState(email)
+  const [sendingEmail, setSendingEmail] = useState(false)
+  const [emailSent, setEmailSent] = useState(false)
+  const [sendError, setSendError] = useState<string | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [lienReservation, setLienReservation] = useState<string | undefined>(undefined)
 
@@ -134,7 +139,7 @@ function MessageComposerModal({ context, telephone, email, initialTemplateKey, o
   }
 
   const smsHref = telephone ? buildSmsLink(telephone, smsBody) : null
-  const mailHref = email ? buildMailtoLink(email, emailSubject, emailBody) : null
+  const mailHref = emailTo ? buildMailtoLink(emailTo, emailSubject, emailBody) : null
   const smsLabel = smsTemplates.find((t) => t.id === smsTemplateId)?.libelle ?? 'SMS'
   const emailLabel = emailTemplates.find((t) => t.id === emailTemplateId)?.libelle ?? 'E-mail'
 
@@ -145,13 +150,33 @@ function MessageComposerModal({ context, telephone, email, initialTemplateKey, o
     })
   }
 
+  async function handleDirectEmailSend() {
+    if (!emailTo.trim() || !emailSubject.trim() || !emailBody.trim()) return
+    setSendingEmail(true)
+    setEmailSent(false)
+    setSendError(null)
+    try {
+      await sendManualEmail(getToken, {
+        to: emailTo.trim(),
+        subject: emailSubject.trim(),
+        message: emailBody.trim(),
+        label: emailLabel,
+      })
+      setEmailSent(true)
+    } catch (error) {
+      setSendError(error instanceof Error ? error.message : "L'e-mail n'a pas pu être envoyé.")
+    } finally {
+      setSendingEmail(false)
+    }
+  }
+
   const showQuestionnairePicker = questionnaires.length > 0
 
   return (
     <Modal>
       <h3 className="font-serif text-xl font-semibold text-sage-dark mb-1">Contacter {context.nomComplet}</h3>
       <p className="text-xs text-text-muted mb-4">
-        Prépare le message puis ouvre l'app SMS ou Mail de ta tablette pour l'envoyer.
+        Prépare le modèle puis envoie-le directement depuis l'adresse Bella Luna, ou ouvre ton application de messagerie.
       </p>
 
       {loadError && <p className="text-sm text-danger mb-3">{loadError}</p>}
@@ -193,6 +218,20 @@ function MessageComposerModal({ context, telephone, email, initialTemplateKey, o
       <div className="border border-border rounded-2xl p-4 mb-4">
         <div className="text-xs font-semibold text-sage-dark uppercase tracking-wide mb-3">Message e-mail</div>
         <label className="block mb-3">
+          <span className="block text-xs font-semibold text-text-muted mb-1">Destinataire</span>
+          <input
+            type="email"
+            value={emailTo}
+            onChange={(e) => {
+              setEmailTo(e.target.value)
+              setEmailSent(false)
+              setSendError(null)
+            }}
+            placeholder="adresse@exemple.fr"
+            className="input"
+          />
+        </label>
+        <label className="block mb-3">
           <span className="block text-xs font-semibold text-text-muted mb-1">Modèle</span>
           <select value={emailTemplateId} onChange={(e) => handleEmailTemplateChange(e.target.value)} className="input">
             {emailTemplates.map((t) => (
@@ -215,8 +254,11 @@ function MessageComposerModal({ context, telephone, email, initialTemplateKey, o
       </div>
 
       {!telephone && !email && (
-        <p className="text-sm text-danger mb-3">Aucun téléphone ni e-mail enregistré pour cette cliente.</p>
+        <p className="text-sm text-text-muted mb-3">Aucun contact prérempli. Tu peux saisir directement un e-mail ou un numéro.</p>
       )}
+
+      {sendError && <p className="text-sm text-danger mb-3">{sendError}</p>}
+      {emailSent && <p className="text-sm text-sage-dark mb-3">E-mail envoyé avec le modèle Bella Luna.</p>}
 
       <div className="flex justify-end gap-3 flex-wrap">
         <button
@@ -235,6 +277,14 @@ function MessageComposerModal({ context, telephone, email, initialTemplateKey, o
             Ouvrir par e-mail
           </a>
         )}
+        <button
+          type="button"
+          onClick={handleDirectEmailSend}
+          disabled={sendingEmail || !emailTo.trim() || !emailSubject.trim() || !emailBody.trim()}
+          className="bg-gold text-sage-dark px-5 py-2.5 rounded-[10px] text-sm font-semibold hover:bg-gold/90 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {sendingEmail ? 'Envoi…' : 'Envoyer par e-mail'}
+        </button>
         {smsHref && (
           <a
             href={smsHref}
