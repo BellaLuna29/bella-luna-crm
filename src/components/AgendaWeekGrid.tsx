@@ -158,11 +158,11 @@ function AgendaWeekGrid({ columns, onClickItem, onAddForColumn }: AgendaWeekGrid
                   return (
                     <div
                       key={a.id}
-                      className="absolute left-0 right-0 pointer-events-none flex items-start justify-center px-0.5 pt-1 text-center"
+                      className="absolute left-0 right-0 pointer-events-none flex items-center justify-center px-0.5 text-center"
                       style={{ top, height, ...HATCH_STYLE }}
                       title={a.libelle}
                     >
-                      <span className="max-w-full rounded bg-white/80 px-1 py-0.5 text-[8px] sm:text-[10px] font-semibold leading-tight text-sage-dark truncate">
+                      <span className="max-w-full rounded bg-sage-dark px-1.5 py-1 text-[8px] sm:text-[10px] font-bold leading-tight text-white shadow-sm truncate">
                         {a.libelle}
                       </span>
                     </div>

@@ -33,12 +33,6 @@ function minutes(value: string | null): number | null {
   return Number.isFinite(hour) && Number.isFinite(minute) ? hour * 60 + minute : null
 }
 
-function formatHour(value: string | null): string {
-  if (!value) return ''
-  const [hour, minute] = value.slice(0, 5).split(':')
-  return minute === '00' ? `${Number(hour)}h` : `${Number(hour)}h${minute}`
-}
-
 function dateKey(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
@@ -99,7 +93,6 @@ function getStatus(
   let start = minutes(dispo?.heureDebut ?? null) ?? 9 * 60
   let end = minutes(dispo?.heureFin ?? null) ?? 18 * 60
   const occupations: { start: number; end: number }[] = []
-  let horairesAjustes = false
 
   for (const absence of absences.filter((item) => applies(item, date))) {
     if (!absence.demiJournee && !absence.heureDebut && !absence.heureFin) return { status: 'off', label: 'COMPLET' }
@@ -110,7 +103,6 @@ function getStatus(
     if (absenceStart !== null && absenceEnd !== null && absenceStart < end && absenceEnd > start) {
       if (absenceStart <= start && absenceEnd >= end) return { status: 'off', label: 'COMPLET' }
       occupations.push({ start: absenceStart, end: absenceEnd })
-      horairesAjustes = true
     }
   }
 
@@ -125,9 +117,8 @@ function getStatus(
   const matin = hasFreeTime(start, Math.min(end, 13 * 60), occupations)
   const apresMidi = hasFreeTime(Math.max(start, 13 * 60), end, occupations)
   if (!matin && !apresMidi) return { status: 'off', label: 'COMPLET' }
-  const label = horairesAjustes ? 'Horaires ajustés' : `${formatHour(dispo?.heureDebut ?? null) || '9h'} – ${formatHour(dispo?.heureFin ?? null) || '18h'}`
-  if (matin && apresMidi) return { status: 'journee', label }
-  return matin ? { status: 'matin', label } : { status: 'apres-midi', label }
+  if (matin && apresMidi) return { status: 'journee', label: 'Journée' }
+  return matin ? { status: 'matin', label: 'Matin' } : { status: 'apres-midi', label: 'Après-midi' }
 }
 
 function getStatusPourStory(
@@ -142,7 +133,7 @@ function getStatusPourStory(
   if (choisi === 'off') return { status: 'off', label: 'COMPLET' }
   return {
     status: choisi,
-    label: choisi === 'matin' ? 'Matin' : choisi === 'apres-midi' ? 'Après-midi' : 'Flexible',
+    label: choisi === 'matin' ? 'Matin' : choisi === 'apres-midi' ? 'Après-midi' : 'Journée',
   }
 }
 
@@ -264,7 +255,7 @@ function drawMonthly(
     if (result.status !== 'off') {
       ctx.textAlign = 'center'
       ctx.fillStyle = '#5B452C'
-      ctx.font = result.label === 'Horaires ajustés' ? '500 13px Inter, Arial, sans-serif' : '600 16px Inter, Arial, sans-serif'
+      ctx.font = '600 16px Inter, Arial, sans-serif'
       ctx.fillText(result.label, x + cellWidth / 2, y + 121)
     }
   }
@@ -308,8 +299,8 @@ function drawWeekly(
     drawStatusDot(ctx, x + columnWidth / 2, gridY + 195, result, true)
     if (result.status !== 'off') {
       ctx.fillStyle = '#5B452C'
-      ctx.font = result.label === 'Horaires ajustés' ? '500 15px Inter, Arial, sans-serif' : '600 18px Inter, Arial, sans-serif'
-      const label = result.label === 'Horaires ajustés' ? ['Horaires', 'ajustés'] : result.label.split(' – ')
+      ctx.font = '600 18px Inter, Arial, sans-serif'
+      const label = [result.label]
       label.forEach((line, lineIndex) => ctx.fillText(line, x + columnWidth / 2, gridY + 285 + lineIndex * 25))
     }
   }

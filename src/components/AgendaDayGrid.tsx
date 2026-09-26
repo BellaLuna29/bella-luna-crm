@@ -118,11 +118,11 @@ function AgendaDayGrid({ items, absences = [], onClickItem, onSendReminder }: Ag
             return (
               <div
                 key={a.id}
-                className="absolute left-0 right-0 pointer-events-none flex items-start justify-center px-3 pt-2 text-center"
+                className="absolute left-0 right-0 pointer-events-none flex items-center justify-center px-3 text-center"
                 style={{ top, height, ...HATCH_STYLE }}
                 title={a.libelle}
               >
-                <span className="max-w-full rounded-full bg-white/80 px-2 py-0.5 text-[11px] font-semibold text-sage-dark shadow-sm truncate">
+                <span className="max-w-full rounded-full bg-sage-dark px-3 py-1 text-[11px] font-bold text-white shadow-md truncate">
                   Indisponible · {a.libelle}
                 </span>
               </div>
