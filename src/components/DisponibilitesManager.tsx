@@ -26,6 +26,9 @@ function DisponibilitesManager() {
   const [state, setState] = useState<State>({ status: 'loading' })
   const [savingDay, setSavingDay] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [addingSlotDay, setAddingSlotDay] = useState<number | null>(null)
+  const [newSlotStart, setNewSlotStart] = useState('17:00')
+  const [newSlotEnd, setNewSlotEnd] = useState('19:00')
   const [lienToken, setLienToken] = useState<string | null>(null)
   const [showRegenConfirm, setShowRegenConfirm] = useState(false)
   const [regenerating, setRegenerating] = useState(false)
@@ -84,10 +87,48 @@ function DisponibilitesManager() {
     }
   }
 
+  async function saveSlot(id: string, updates: { heureDebut?: string; heureFin?: string }) {
+    setError(null)
+    try {
+      await apiFetch(getToken, `/api/prestations?resource=disponibilites&id=${id}`, {
+        method: 'PATCH',
+        body: updates,
+      })
+      load()
+      showToast('Plage horaire mise à jour.')
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Erreur inconnue.')
+    }
+  }
+
+  async function addSlot(jourSemaine: number) {
+    setError(null)
+    try {
+      await apiFetch(getToken, '/api/prestations?resource=disponibilites', {
+        method: 'POST',
+        body: { jourSemaine, actif: true, heureDebut: newSlotStart, heureFin: newSlotEnd },
+      })
+      setAddingSlotDay(null)
+      load()
+      showToast('Nouvelle plage ajoutée.')
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Erreur inconnue.')
+    }
+  }
+
+  async function removeSlot(id: string) {
+    setError(null)
+    try {
+      await apiFetch(getToken, `/api/prestations?resource=disponibilites&id=${id}`, { method: 'DELETE' })
+      load()
+      showToast('Plage supprimée.')
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Erreur inconnue.')
+    }
+  }
+
   if (state.status === 'loading') return <p className="text-sm text-text-muted">Chargement…</p>
   if (state.status === 'error') return <p className="text-sm text-danger">{state.message}</p>
-
-  const byJour = new Map(state.disponibilites.map((d) => [d.jourSemaine, d]))
 
   const lienReservation = lienToken ? `${window.location.origin}/reserver/${lienToken}` : null
 
@@ -159,38 +200,82 @@ function DisponibilitesManager() {
       )}
       <div className="flex flex-col gap-2">
         {JOUR_ORDER.map((jour) => {
-          const d = byJour.get(jour)
+          const slots = state.disponibilites.filter((item) => item.jourSemaine === jour)
+          const d = slots[0]
           if (!d) return null
           const busy = savingDay === jour
           return (
-            <div key={jour} className="flex items-center gap-3 flex-wrap bg-sage-pale rounded-[10px] px-3 py-2.5">
-              <label className="flex items-center gap-2 text-sm font-semibold text-sage-dark w-32 shrink-0">
+            <div key={jour} className={`rounded-[10px] px-3 py-2.5 ${d.actif ? 'bg-sage-pale' : 'bg-stone-200'}`}>
+              <div className="flex items-center gap-3 flex-wrap">
+                <label className="flex items-center gap-2 text-sm font-semibold text-sage-dark w-32 shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={d.actif}
+                    disabled={busy}
+                    onChange={(e) => saveDay(jour, { actif: e.target.checked })}
+                    className="w-4 h-4"
+                  />
+                  {JOUR_LABELS[jour]}
+                </label>
+                <span className="text-xs font-semibold text-text-muted">Disponible de</span>
                 <input
-                  type="checkbox"
-                  checked={d.actif}
-                  disabled={busy}
-                  onChange={(e) => saveDay(jour, { actif: e.target.checked })}
-                  className="w-4 h-4"
+                  type="time"
+                  value={d.heureDebut}
+                  disabled={busy || !d.actif}
+                  onChange={(e) => saveDay(jour, { heureDebut: e.target.value })}
+                  className="input max-w-32 disabled:opacity-50"
+                  aria-label={`Heure de début — ${JOUR_LABELS[jour]}`}
                 />
-                {JOUR_LABELS[jour]}
-              </label>
-              <input
-                type="time"
-                value={d.heureDebut}
-                disabled={busy || !d.actif}
-                onChange={(e) => saveDay(jour, { heureDebut: e.target.value })}
-                className="input max-w-32 disabled:opacity-50"
-                aria-label={`Heure de début — ${JOUR_LABELS[jour]}`}
-              />
-              <span className="text-xs font-semibold text-text-muted">à</span>
-              <input
-                type="time"
-                value={d.heureFin}
-                disabled={busy || !d.actif}
-                onChange={(e) => saveDay(jour, { heureFin: e.target.value })}
-                className="input max-w-32 disabled:opacity-50"
-                aria-label={`Heure de fin — ${JOUR_LABELS[jour]}`}
-              />
+                <span className="text-xs font-semibold text-text-muted">à</span>
+                <input
+                  type="time"
+                  value={d.heureFin}
+                  disabled={busy || !d.actif}
+                  onChange={(e) => saveDay(jour, { heureFin: e.target.value })}
+                  className="input max-w-32 disabled:opacity-50"
+                  aria-label={`Heure de fin — ${JOUR_LABELS[jour]}`}
+                />
+                {!d.actif && <span className="text-xs font-semibold text-text-muted">Indisponible toute la journée</span>}
+              </div>
+              {slots.slice(1).map((slot, index) => (
+                <div key={slot.id} className="flex items-center gap-2 flex-wrap mt-2 pl-0 sm:pl-36">
+                  <span className="text-xs font-semibold text-text-muted">Plage {index + 2} :</span>
+                  <input
+                    type="time"
+                    value={slot.heureDebut}
+                    disabled={busy || !d.actif}
+                    onChange={(e) => saveSlot(slot.id, { heureDebut: e.target.value })}
+                    className="input max-w-32 disabled:opacity-50"
+                    aria-label={`Début de la plage ${index + 2} — ${JOUR_LABELS[jour]}`}
+                  />
+                  <span className="text-xs font-semibold text-text-muted">à</span>
+                  <input
+                    type="time"
+                    value={slot.heureFin}
+                    disabled={busy || !d.actif}
+                    onChange={(e) => saveSlot(slot.id, { heureFin: e.target.value })}
+                    className="input max-w-32 disabled:opacity-50"
+                    aria-label={`Fin de la plage ${index + 2} — ${JOUR_LABELS[jour]}`}
+                  />
+                  <button type="button" onClick={() => removeSlot(slot.id)} disabled={busy} className="text-danger text-xs font-semibold hover:underline disabled:opacity-50">
+                    Supprimer
+                  </button>
+                </div>
+              ))}
+              {addingSlotDay === jour ? (
+                <div className="flex items-center gap-2 flex-wrap mt-2 pl-0 sm:pl-36">
+                  <span className="text-xs font-semibold text-text-muted">Nouvelle plage :</span>
+                  <input type="time" value={newSlotStart} onChange={(e) => setNewSlotStart(e.target.value)} className="input max-w-32" aria-label={`Début de la nouvelle plage — ${JOUR_LABELS[jour]}`} />
+                  <span className="text-xs font-semibold text-text-muted">à</span>
+                  <input type="time" value={newSlotEnd} onChange={(e) => setNewSlotEnd(e.target.value)} className="input max-w-32" aria-label={`Fin de la nouvelle plage — ${JOUR_LABELS[jour]}`} />
+                  <button type="button" onClick={() => addSlot(jour)} className="btn-primary text-xs px-3 py-2">Ajouter</button>
+                  <button type="button" onClick={() => setAddingSlotDay(null)} className="text-text-muted text-xs font-semibold hover:underline">Annuler</button>
+                </div>
+              ) : (
+                <button type="button" onClick={() => setAddingSlotDay(jour)} disabled={!d.actif || busy} className="text-xs font-semibold text-sage-dark hover:underline mt-2 ml-0 sm:ml-36 disabled:opacity-50">
+                  + Ajouter une autre plage horaire
+                </button>
+              )}
             </div>
           )
         })}

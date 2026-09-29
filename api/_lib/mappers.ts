@@ -1133,6 +1133,12 @@ export function parseDisponibiliteInput(body: unknown): { fields: Record<string,
   const errors: string[] = []
   const fields: Record<string, unknown> = {}
 
+  if ('jourSemaine' in b) {
+    const v = b.jourSemaine
+    if (Number.isInteger(v) && (v as number) >= 0 && (v as number) <= 6) fields.jour_semaine = v
+    else errors.push('Jour de la semaine invalide.')
+  }
+
   if ('actif' in b) {
     fields.actif = Boolean(b.actif)
   }

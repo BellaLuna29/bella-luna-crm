@@ -76,37 +76,40 @@ function hasFreeTime(start: number, end: number, occupations: { start: number; e
 
 function getStatus(
   date: Date,
-  disponibilites: Map<number, Disponibilite>,
+  disponibilites: Map<number, Disponibilite[]>,
   absences: Absence[],
   rendezvous: RendezVous[],
 ): { status: StatutJour; label: string } {
-  const dispo = disponibilites.get(date.getDay())
-  const aucunJourConfigure = [...disponibilites.values()].every((item) => !item.actif)
+  const disposDuJour = (disponibilites.get(date.getDay()) ?? []).filter((item) => item.actif)
+  const aucunJourConfigure = [...disponibilites.values()].every((items) => items.every((item) => !item.actif))
   const rendezvousDuJour = rendezvous.filter((item) => {
     if (!item.date || item.statut === 'Annulé') return false
     const instant = new Date(item.date)
     return !Number.isNaN(instant.getTime()) && parisDateKey(instant) === dateKey(date)
   })
-  if (!dispo?.actif && !aucunJourConfigure) return { status: 'off', label: 'COMPLET' }
+  if (disposDuJour.length === 0 && !aucunJourConfigure) return { status: 'off', label: 'COMPLET' }
   if (aucunJourConfigure && date.getDay() === 0 && rendezvousDuJour.length === 0) return { status: 'off', label: 'COMPLET' }
 
-  let start = minutes(dispo?.heureDebut ?? null) ?? 9 * 60
-  let end = minutes(dispo?.heureFin ?? null) ?? 18 * 60
+  let fenetres = disposDuJour.length > 0
+    ? disposDuJour
+        .map((dispo) => ({ start: minutes(dispo.heureDebut) ?? 9 * 60, end: minutes(dispo.heureFin) ?? 18 * 60 }))
+        .filter((window) => window.start < window.end)
+    : [{ start: 9 * 60, end: 18 * 60 }]
   const occupations: { start: number; end: number }[] = []
 
   for (const absence of absences.filter((item) => applies(item, date))) {
     if (!absence.demiJournee && !absence.heureDebut && !absence.heureFin) return { status: 'off', label: 'COMPLET' }
-    if (absence.demiJournee === 'matin') { start = Math.max(start, 13 * 60); continue }
-    if (absence.demiJournee === 'apres-midi') { end = Math.min(end, 13 * 60); continue }
+    if (absence.demiJournee === 'matin') { fenetres = fenetres.map((window) => ({ ...window, start: Math.max(window.start, 13 * 60) })).filter((window) => window.start < window.end); continue }
+    if (absence.demiJournee === 'apres-midi') { fenetres = fenetres.map((window) => ({ ...window, end: Math.min(window.end, 13 * 60) })).filter((window) => window.start < window.end); continue }
     const absenceStart = minutes(absence.heureDebut)
     const absenceEnd = minutes(absence.heureFin)
-    if (absenceStart !== null && absenceEnd !== null && absenceStart < end && absenceEnd > start) {
-      if (absenceStart <= start && absenceEnd >= end) return { status: 'off', label: 'COMPLET' }
+    const recouvreUnePlage = absenceStart !== null && absenceEnd !== null && fenetres.some((window) => absenceStart < window.end && absenceEnd > window.start)
+    if (recouvreUnePlage && absenceStart !== null && absenceEnd !== null) {
       occupations.push({ start: absenceStart, end: absenceEnd })
     }
   }
 
-  if (start >= end) return { status: 'off', label: 'COMPLET' }
+  if (fenetres.length === 0) return { status: 'off', label: 'COMPLET' }
   for (const item of rendezvousDuJour) {
     const instant = new Date(item.date as string)
     const itemStart = parisMinutes(instant)
@@ -114,8 +117,8 @@ function getStatus(
     if (duration > 0) occupations.push({ start: itemStart, end: itemStart + duration })
   }
 
-  const matin = hasFreeTime(start, Math.min(end, 13 * 60), occupations)
-  const apresMidi = hasFreeTime(Math.max(start, 13 * 60), end, occupations)
+  const matin = fenetres.some((window) => hasFreeTime(window.start, Math.min(window.end, 13 * 60), occupations))
+  const apresMidi = fenetres.some((window) => hasFreeTime(Math.max(window.start, 13 * 60), window.end, occupations))
   if (!matin && !apresMidi) return { status: 'off', label: 'COMPLET' }
   if (matin && apresMidi) return { status: 'journee', label: 'Journée' }
   return matin ? { status: 'matin', label: 'Matin' } : { status: 'apres-midi', label: 'Après-midi' }
@@ -123,7 +126,7 @@ function getStatus(
 
 function getStatusPourStory(
   date: Date,
-  disponibilites: Map<number, Disponibilite>,
+  disponibilites: Map<number, Disponibilite[]>,
   absences: Absence[],
   rendezvous: RendezVous[],
   surcharges: SurchargesDisponibilite,
@@ -160,7 +163,7 @@ function drawStatusDot(ctx: CanvasRenderingContext2D, x: number, y: number, resu
     ctx.fillStyle = 'rgba(91, 69, 44, 0.26)'
     ctx.font = large ? '600 26px Inter, Arial, sans-serif' : '600 16px Inter, Arial, sans-serif'
     ctx.textAlign = 'center'
-    ctx.fillText('COMPLET', 0, 0)
+    ctx.fillText('INDISPONIBLE', 0, 0)
     ctx.restore()
     return
   }
@@ -212,7 +215,7 @@ function drawMonthly(
   ctx: CanvasRenderingContext2D,
   year: number,
   month: number,
-  disponibilites: Map<number, Disponibilite>,
+  disponibilites: Map<number, Disponibilite[]>,
   absences: Absence[],
   rendezvous: RendezVous[],
   surcharges: SurchargesDisponibilite,
@@ -248,6 +251,11 @@ function drawMonthly(
     if (day < 1 || day > dayCount) continue
     const result = getStatusPourStory(new Date(year, month, day), disponibilites, absences, rendezvous, surcharges)
     ctx.textAlign = 'left'
+    ctx.fillStyle = result.status === 'off' ? 'rgba(190, 186, 178, 0.72)' : 'rgba(249, 247, 242, 0.62)'
+    ctx.fillRect(x, y, cellWidth, cellHeight)
+    ctx.strokeStyle = 'rgba(91, 69, 44, 0.38)'
+    ctx.lineWidth = 1.5
+    ctx.strokeRect(x, y, cellWidth, cellHeight)
     ctx.fillStyle = '#5B452C'
     ctx.font = '500 24px Fraunces, Georgia, serif'
     ctx.fillText(String(day), x + 12, y + 31)
@@ -266,7 +274,7 @@ function drawMonthly(
 function drawWeekly(
   ctx: CanvasRenderingContext2D,
   weekStart: Date,
-  disponibilites: Map<number, Disponibilite>,
+  disponibilites: Map<number, Disponibilite[]>,
   absences: Absence[],
   rendezvous: RendezVous[],
   surcharges: SurchargesDisponibilite,
@@ -285,7 +293,7 @@ function drawWeekly(
     const date = addDays(weekStart, index)
     const result = getStatusPourStory(date, disponibilites, absences, rendezvous, surcharges)
     const x = gridX + index * columnWidth
-    ctx.fillStyle = 'rgba(249, 247, 242, 0.78)'
+    ctx.fillStyle = result.status === 'off' ? 'rgba(190, 186, 178, 0.72)' : 'rgba(249, 247, 242, 0.78)'
     ctx.fillRect(x, gridY, columnWidth, cardHeight)
     ctx.strokeStyle = 'rgba(91, 69, 44, 0.38)'
     ctx.lineWidth = 1.5
@@ -319,7 +327,7 @@ async function drawExport(
   year: number,
   month: number,
   weekStart: Date,
-  disponibilites: Map<number, Disponibilite>,
+  disponibilites: Map<number, Disponibilite[]>,
   absences: Absence[],
   rendezvous: RendezVous[],
   surcharges: SurchargesDisponibilite,
@@ -384,7 +392,11 @@ function DisponibilitesExportModal({ onClose }: DisponibilitesExportModalProps) 
         year,
         month,
         weekStart,
-        new Map(disponibilites.map((item) => [item.jourSemaine, item])),
+        disponibilites.reduce((groups, item) => {
+          const current = groups.get(item.jourSemaine) ?? []
+          groups.set(item.jourSemaine, [...current, item])
+          return groups
+        }, new Map<number, Disponibilite[]>()),
         absences,
         rendezvous,
         surcharges,
@@ -518,7 +530,7 @@ function DisponibilitesExportModal({ onClose }: DisponibilitesExportModalProps) 
         <p className="text-xs text-text-muted mt-1">Les pastilles sont calculées depuis l’agenda. Choisis une couleur, puis touche un jour pour la modifier uniquement sur cette image.</p>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
           {([
-            ['off', 'Complet'],
+            ['off', 'Indisponible'],
             ['matin', 'Matin'],
             ['apres-midi', 'Après-midi'],
             ['journee', 'Journée'],

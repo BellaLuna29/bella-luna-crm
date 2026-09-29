@@ -407,7 +407,57 @@ async function handleDisponibilites(req: VercelRequest, res: VercelResponse): Pr
     return
   }
 
+  if (req.method === 'POST') {
+    const parsed = parseDisponibiliteInput(req.body)
+    if ('errors' in parsed || typeof parsed.fields.jour_semaine !== 'number') {
+      res.status(400).json({ error: 'jourSemaine, heureDebut et heureFin sont obligatoires.' })
+      return
+    }
+    try {
+      const row = await dbCreate(TABLE_DISPONIBILITES, {
+        jour_semaine: parsed.fields.jour_semaine,
+        actif: parsed.fields.actif ?? true,
+        heure_debut: parsed.fields.heure_debut ?? '09:00',
+        heure_fin: parsed.fields.heure_fin ?? '18:00',
+      })
+      res.status(201).json({ disponibilite: mapDisponibilite(row) })
+    } catch (error) {
+      if (error instanceof SupabaseConfigError) {
+        res.status(500).json({ error: error.message })
+        return
+      }
+      console.error(error)
+      res.status(502).json({ error: 'Impossible d’ajouter cette plage de disponibilité.' })
+    }
+    return
+  }
+
   if (req.method === 'PATCH') {
+    const idRaw = req.query.id
+    if (typeof idRaw === 'string' && UUID_RE.test(idRaw)) {
+      const parsed = parseDisponibiliteInput(req.body)
+      if ('errors' in parsed) {
+        res.status(400).json({ error: parsed.errors.join(' ') })
+        return
+      }
+      try {
+        const existing = await dbGet(TABLE_DISPONIBILITES, idRaw)
+        if (!existing) {
+          res.status(404).json({ error: 'Plage introuvable.' })
+          return
+        }
+        const row = await dbUpdate(TABLE_DISPONIBILITES, idRaw, parsed.fields)
+        res.status(200).json({ disponibilite: mapDisponibilite(row) })
+      } catch (error) {
+        if (error instanceof SupabaseConfigError) {
+          res.status(500).json({ error: error.message })
+          return
+        }
+        console.error(error)
+        res.status(502).json({ error: 'Impossible de mettre à jour cette plage de disponibilité.' })
+      }
+      return
+    }
     const jourRaw = req.query.jour
     const jour = typeof jourRaw === 'string' ? Number(jourRaw) : NaN
     if (!Number.isInteger(jour) || jour < 0 || jour > 6) {
@@ -435,6 +485,36 @@ async function handleDisponibilites(req: VercelRequest, res: VercelResponse): Pr
       }
       console.error(error)
       res.status(502).json({ error: "Impossible de mettre à jour la disponibilité dans la base de données." })
+    }
+    return
+  }
+
+  if (req.method === 'DELETE') {
+    const idRaw = req.query.id
+    if (typeof idRaw !== 'string' || !UUID_RE.test(idRaw)) {
+      res.status(400).json({ error: 'Identifiant de plage invalide.' })
+      return
+    }
+    try {
+      const existing = await dbGet(TABLE_DISPONIBILITES, idRaw)
+      if (!existing) {
+        res.status(404).json({ error: 'Plage introuvable.' })
+        return
+      }
+      const siblings = await dbList(TABLE_DISPONIBILITES, { eq: ['jour_semaine', existing.jour_semaine] })
+      if (siblings.length <= 1) {
+        res.status(400).json({ error: 'La plage principale ne peut pas être supprimée. Désactive plutôt ce jour.' })
+        return
+      }
+      await dbDelete(TABLE_DISPONIBILITES, idRaw)
+      res.status(200).json({ ok: true })
+    } catch (error) {
+      if (error instanceof SupabaseConfigError) {
+        res.status(500).json({ error: error.message })
+        return
+      }
+      console.error(error)
+      res.status(502).json({ error: 'Impossible de supprimer cette plage de disponibilité.' })
     }
     return
   }
@@ -957,11 +1037,16 @@ async function computeCreneauxPourDate(dateStr: string, dureeMin: number): Promi
   // CET/CEST switch is handled correctly.
   const instantMin = Date.now() + reservationDelaiMinHeures * 60 * 60 * 1000
 
-  const dispo = dispoRows[0]
-  if (!dispo || !dispo.actif) return { creneaux: [], raison: 'jour_inactif' }
+  const fenetresDisponibles = dispoRows
+    .filter((row) => Boolean(row.actif))
+    .map((row) => ({
+      debut: minutesFromMidnight((row.heure_debut as string) ?? '09:00'),
+      fin: minutesFromMidnight((row.heure_fin as string) ?? '18:00'),
+    }))
+    .filter((window) => window.debut < window.fin)
+  if (fenetresDisponibles.length === 0) return { creneaux: [], raison: 'jour_inactif' }
 
-  let fenetreDebut = minutesFromMidnight((dispo.heure_debut as string) ?? '09:00')
-  let fenetreFin = minutesFromMidnight((dispo.heure_fin as string) ?? '18:00')
+  let fenetres = fenetresDisponibles
 
   const occupations: { debut: number; fin: number }[] = []
 
@@ -990,10 +1075,10 @@ async function computeCreneauxPourDate(dateStr: string, dureeMin: number): Promi
 
     const demi = a.demi_journee as string | null
     if (!demi) return { creneaux: [], raison: 'absence' }
-    if (demi === 'matin') fenetreDebut = Math.max(fenetreDebut, MIDI)
-    else if (demi === 'apres-midi') fenetreFin = Math.min(fenetreFin, MIDI)
+    if (demi === 'matin') fenetres = fenetres.map((window) => ({ ...window, debut: Math.max(window.debut, MIDI) })).filter((window) => window.debut < window.fin)
+    else if (demi === 'apres-midi') fenetres = fenetres.map((window) => ({ ...window, fin: Math.min(window.fin, MIDI) })).filter((window) => window.debut < window.fin)
   }
-  if (fenetreDebut >= fenetreFin) return { creneaux: [], raison: 'absence' }
+  if (fenetres.length === 0) return { creneaux: [], raison: 'absence' }
   for (const r of rdvRows) {
     const rDateStr = r.date as string | null
     if (!rDateStr || r.statut === 'Annulé') continue
@@ -1012,15 +1097,17 @@ async function computeCreneauxPourDate(dateStr: string, dureeMin: number): Promi
 
   const creneaux: string[] = []
   let ecartesParDelai = 0
-  for (let t = fenetreDebut; t + dureeMin <= fenetreFin; t += CRENEAU_PAS_MINUTES) {
-    const chevauche = occupations.some((o) => t < o.fin && t + dureeMin > o.debut)
-    if (chevauche) continue
-    const hhmm = hhmmFromMinutes(t)
-    if (new Date(parisWallClockToUtcIso(dateStr, hhmm)).getTime() < instantMin) {
-      ecartesParDelai += 1
-      continue
+  for (const window of fenetres) {
+    for (let t = window.debut; t + dureeMin <= window.fin; t += CRENEAU_PAS_MINUTES) {
+      const chevauche = occupations.some((o) => t < o.fin && t + dureeMin > o.debut)
+      if (chevauche) continue
+      const hhmm = hhmmFromMinutes(t)
+      if (new Date(parisWallClockToUtcIso(dateStr, hhmm)).getTime() < instantMin) {
+        ecartesParDelai += 1
+        continue
+      }
+      creneaux.push(hhmm)
     }
-    creneaux.push(hhmm)
   }
   if (creneaux.length > 0) return { creneaux, raison: null }
   // Distinguish "everything was already booked" from "the day is still free but
