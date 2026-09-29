@@ -101,6 +101,12 @@ function DisponibilitesManager() {
 
   return (
     <div>
+      <div className="mb-3">
+        <h4 className="text-sm font-semibold text-sage-dark">Jours et heures de disponibilité</h4>
+        <p className="text-xs text-text-muted mt-1">
+          Active un jour puis indique précisément l’heure de début et l’heure de fin. Ces horaires servent à calculer les créneaux proposés dans la réservation en ligne.
+        </p>
+      </div>
       <p className="text-xs text-text-muted mb-4">
         Indique tes jours et horaires de disponibilité habituels — c'est ce que voient tes clientes sur la page de
         réservation en ligne. Une fois qu'une demande arrive, elle apparaît dans l'agenda en « En attente » : tu
@@ -174,14 +180,16 @@ function DisponibilitesManager() {
                 disabled={busy || !d.actif}
                 onChange={(e) => saveDay(jour, { heureDebut: e.target.value })}
                 className="input max-w-32 disabled:opacity-50"
+                aria-label={`Heure de début — ${JOUR_LABELS[jour]}`}
               />
-              <span className="text-text-muted text-sm">→</span>
+              <span className="text-xs font-semibold text-text-muted">à</span>
               <input
                 type="time"
                 value={d.heureFin}
                 disabled={busy || !d.actif}
                 onChange={(e) => saveDay(jour, { heureFin: e.target.value })}
                 className="input max-w-32 disabled:opacity-50"
+                aria-label={`Heure de fin — ${JOUR_LABELS[jour]}`}
               />
             </div>
           )
