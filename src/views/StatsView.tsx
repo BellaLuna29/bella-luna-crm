@@ -36,9 +36,30 @@ interface FactureItem {
   date: string | null
   montant: number | null
   categorieFacture: string
+  rendezvousId: string | null
   promoId: string | null
   promoNom: string
   payee: boolean
+}
+
+type StatScope = 'non-associatif' | 'associatif' | 'tout'
+
+const ASSOCIATIF_CATEGORY = 'Associatif ou formation'
+
+function isAssociative(facture: FactureItem): boolean {
+  return facture.categorieFacture === ASSOCIATIF_CATEGORY
+}
+
+function scopeLabel(scope: StatScope): string {
+  if (scope === 'associatif') return 'Associatif'
+  if (scope === 'tout') return 'Les deux activités'
+  return 'Non associatif'
+}
+
+function isRdvInScope(rdvId: string, scope: StatScope, associativeRdvIds: Set<string>): boolean {
+  if (scope === 'tout') return true
+  const isAssociatif = associativeRdvIds.has(rdvId)
+  return scope === 'associatif' ? isAssociatif : !isAssociatif
 }
 
 interface DepenseItem {
@@ -147,6 +168,7 @@ function StatsView() {
   const [periodBFin, setPeriodBFin] = useState(defaultLastMonthEnd)
   const [prestationsMonth, setPrestationsMonth] = useState(monthInputValue(now))
   const [selectedYear, setSelectedYear] = useState(now.getFullYear())
+  const [statScope, setStatScope] = useState<StatScope>('non-associatif')
 
   const load = useCallback(() => {
     setState({ status: 'loading' })
@@ -177,19 +199,37 @@ function StatsView() {
     load()
   }, [load])
 
-  const data = useMemo(() => {
+  const scopeContext = useMemo(() => {
     if (state.status !== 'success') return null
 
-    const commerciales = state.factures.filter((f) => f.categorieFacture !== 'Associatif ou formation')
+    const associativeRdvIds = new Set(
+      state.factures.filter(isAssociative).flatMap((facture) => (facture.rendezvousId ? [facture.rendezvousId] : [])),
+    )
+    const facturesDansScope = state.factures.filter((facture) => {
+      if (statScope === 'tout') return true
+      return statScope === 'associatif' ? isAssociative(facture) : !isAssociative(facture)
+    })
+    const rendezvousDansScope = state.rendezvous.filter((rdv) =>
+      isRdvInScope(rdv.id, statScope, associativeRdvIds),
+    )
+
+    return { associativeRdvIds, facturesDansScope, rendezvousDansScope }
+  }, [state, statScope])
+
+  const data = useMemo(() => {
+    if (state.status !== 'success' || !scopeContext) return null
+
+    const facturesDansScope = scopeContext.facturesDansScope
+    const rendezvousDansScope = scopeContext.rendezvousDansScope
 
     const sumFactures = (start: string, end: string) =>
-      commerciales.filter((f) => inRange(f.date, start, end)).reduce((sum, f) => sum + (f.montant ?? 0), 0)
+      facturesDansScope.filter((f) => inRange(f.date, start, end)).reduce((sum, f) => sum + (f.montant ?? 0), 0)
 
     const sumDepenses = (start: string, end: string) =>
       state.depenses.filter((d) => inRange(d.date, start, end)).reduce((sum, d) => sum + (d.montant ?? 0), 0)
 
     const countRdv = (start: string, end: string) =>
-      state.rendezvous.filter((r) => inRange(r.date, start, end)).length
+      rendezvousDansScope.filter((r) => inRange(r.date, start, end)).length
 
     const countNouvelles = (start: string, end: string) =>
       state.clients.filter((c) => inRange(c.dateCreation, start, end)).length
@@ -200,7 +240,7 @@ function StatsView() {
     const depensesB = sumDepenses(periodBDebut, periodBFin)
 
     const prestationStats = new Map<string, { count: number; ca: number }>()
-    for (const r of state.rendezvous) {
+    for (const r of rendezvousDansScope) {
       if (!isInMonthValue(r.date, prestationsMonth)) continue
       const nom = r.prestationNom || 'Prestation inconnue'
       const entry = prestationStats.get(nom) ?? { count: 0, ca: 0 }
@@ -216,7 +256,7 @@ function StatsView() {
     const promoStats = new Map<string, { count: number; ca: number }>()
     let sansPromoCount = 0
     let sansPromoCa = 0
-    for (const f of commerciales) {
+    for (const f of facturesDansScope) {
       if (!inRange(f.date, periodADebut, periodAFin)) continue
       if (f.promoId) {
         const entry = promoStats.get(f.promoNom || 'Promotion') ?? { count: 0, ca: 0 }
@@ -232,8 +272,8 @@ function StatsView() {
       .map(([nom, v]) => ({ nom, count: v.count, ca: v.ca, panierMoyen: v.count > 0 ? v.ca / v.count : 0 }))
       .sort((a, b) => b.count - a.count)
 
-    const facturesA = commerciales.filter((f) => inRange(f.date, periodADebut, periodAFin))
-    const facturesB = commerciales.filter((f) => inRange(f.date, periodBDebut, periodBFin))
+    const facturesA = facturesDansScope.filter((f) => inRange(f.date, periodADebut, periodAFin))
+    const facturesB = facturesDansScope.filter((f) => inRange(f.date, periodBDebut, periodBFin))
     const panierMoyenA = facturesA.length > 0 ? caA / facturesA.length : 0
     const panierMoyenB = facturesB.length > 0 ? caB / facturesB.length : 0
 
@@ -242,7 +282,7 @@ function StatsView() {
     const tauxFidelisation = state.clients.length > 0 ? Math.round((regulieresCount / state.clients.length) * 100) : 0
 
     const clientIdsActifsA = new Set(
-      state.rendezvous
+      rendezvousDansScope
         .filter((r) => r.clienteId && inRange(r.date, periodADebut, periodAFin))
         .map((r) => r.clienteId as string),
     )
@@ -258,7 +298,7 @@ function StatsView() {
     const pctFideles = totalActifs > 0 ? 100 - pctNouveaux : 0
 
     const byWeekday = new Array(7).fill(0) as number[]
-    for (const r of state.rendezvous) {
+    for (const r of rendezvousDansScope) {
       if (!inRange(r.date, periodADebut, periodAFin)) continue
       const d = new Date(r.date as string)
       if (Number.isNaN(d.getTime())) continue
@@ -271,15 +311,15 @@ function StatsView() {
       pct: totalRdvSemaine > 0 ? Math.round((byWeekday[day] / totalRdvSemaine) * 100) : 0,
     }))
 
-    const rdvPeriodeA = state.rendezvous.filter((r) => inRange(r.date, periodADebut, periodAFin))
+    const rdvPeriodeA = rendezvousDansScope.filter((r) => inRange(r.date, periodADebut, periodAFin))
     const annulesA = rdvPeriodeA.filter((r) => r.statut === 'Annulé').length
     const tauxAnnulation = rdvPeriodeA.length > 0 ? Math.round((annulesA / rdvPeriodeA.length) * 100) : 0
 
-    const rdvPeriodeB = state.rendezvous.filter((r) => inRange(r.date, periodBDebut, periodBFin))
+    const rdvPeriodeB = rendezvousDansScope.filter((r) => inRange(r.date, periodBDebut, periodBFin))
     const annulesB = rdvPeriodeB.filter((r) => r.statut === 'Annulé').length
     const tauxAnnulationB = rdvPeriodeB.length > 0 ? Math.round((annulesB / rdvPeriodeB.length) * 100) : 0
 
-    const facturesImpayees = state.factures.filter((f) => !f.payee)
+    const facturesImpayees = facturesDansScope.filter((f) => !f.payee)
     const facturesImpayeesCount = facturesImpayees.length
     const facturesImpayeesMontant = facturesImpayees.reduce((sum, f) => sum + (f.montant ?? 0), 0)
 
@@ -313,11 +353,12 @@ function StatsView() {
       facturesImpayeesCount,
       facturesImpayeesMontant,
     }
-  }, [state, periodADebut, periodAFin, periodBDebut, periodBFin, prestationsMonth])
+  }, [state, scopeContext, periodADebut, periodAFin, periodBDebut, periodBFin, prestationsMonth])
 
   const yearlyData = useMemo(() => {
-    if (state.status !== 'success') return null
-    const commerciales = state.factures.filter((f) => f.categorieFacture !== 'Associatif ou formation')
+    if (state.status !== 'success' || !scopeContext) return null
+    const facturesDansScope = scopeContext.facturesDansScope
+    const rendezvousDansScope = scopeContext.rendezvousDansScope
 
     const monthlyCA = MONTH_LABELS.map((label, i) => {
       const start = `${selectedYear}-${String(i + 1).padStart(2, '0')}-01`
@@ -325,7 +366,7 @@ function StatsView() {
       const end = `${selectedYear}-${String(i + 1).padStart(2, '0')}-${String(endDay).padStart(2, '0')}`
       return {
         label,
-        value: commerciales.filter((f) => inRange(f.date, start, end)).reduce((sum, f) => sum + (f.montant ?? 0), 0),
+        value: facturesDansScope.filter((f) => inRange(f.date, start, end)).reduce((sum, f) => sum + (f.montant ?? 0), 0),
       }
     })
 
@@ -333,14 +374,14 @@ function StatsView() {
       const start = `${selectedYear}-${String(i + 1).padStart(2, '0')}-01`
       const endDay = new Date(selectedYear, i + 1, 0).getDate()
       const end = `${selectedYear}-${String(i + 1).padStart(2, '0')}-${String(endDay).padStart(2, '0')}`
-      return { label, value: state.rendezvous.filter((r) => inRange(r.date, start, end)).length }
+      return { label, value: rendezvousDansScope.filter((r) => inRange(r.date, start, end)).length }
     })
 
     const totalCaAnnee = monthlyCA.reduce((sum, m) => sum + m.value, 0)
     const totalRdvAnnee = monthlyRdv.reduce((sum, m) => sum + m.value, 0)
 
     return { monthlyCA, monthlyRdv, totalCaAnnee, totalRdvAnnee }
-  }, [state, selectedYear])
+  }, [state, scopeContext, selectedYear])
 
   const availableYears = useMemo(() => {
     if (state.status !== 'success') return [now.getFullYear()]
@@ -355,21 +396,21 @@ function StatsView() {
   }, [state, now])
 
   const landingStats = useMemo(() => {
-    if (state.status !== 'success') return null
+    if (state.status !== 'success' || !scopeContext) return null
     const yearStart = `${selectedYear}-01-01`
     const yearEnd = `${selectedYear}-12-31`
-    const rdvAnnee = state.rendezvous.filter((r) => inRange(r.date, yearStart, yearEnd))
+    const rdvAnnee = scopeContext.rendezvousDansScope.filter((r) => inRange(r.date, yearStart, yearEnd))
     const annulesAnnee = rdvAnnee.filter((r) => r.statut === 'Annulé').length
     const tauxAnnulationAnnee = rdvAnnee.length > 0 ? Math.round((annulesAnnee / rdvAnnee.length) * 100) : 0
     return { tauxAnnulationAnnee }
-  }, [state, selectedYear])
+  }, [state, scopeContext, selectedYear])
 
   const yearlyPrestationStats = useMemo(() => {
-    if (state.status !== 'success') return null
+    if (state.status !== 'success' || !scopeContext) return null
     const yearStart = `${selectedYear}-01-01`
     const yearEnd = `${selectedYear}-12-31`
     const map = new Map<string, { count: number; ca: number }>()
-    for (const r of state.rendezvous) {
+    for (const r of scopeContext.rendezvousDansScope) {
       if (!inRange(r.date, yearStart, yearEnd)) continue
       const nom = r.prestationNom || 'Prestation inconnue'
       const entry = map.get(nom) ?? { count: 0, ca: 0 }
@@ -381,11 +422,48 @@ function StatsView() {
     if (rows.length === 0) return { best: null, worst: null }
     const sorted = [...rows].sort((a, b) => b.ca - a.ca)
     return { best: sorted[0], worst: sorted[sorted.length - 1] }
-  }, [state, selectedYear])
+  }, [state, scopeContext, selectedYear])
 
-  const [subTab, setSubTab] = useState<'apercu' | 'comparaison' | 'prestations'>('apercu')
+  const clientStats = useMemo(() => {
+    if (state.status !== 'success' || !scopeContext) return null
+    const yearStart = `${selectedYear}-01-01`
+    const yearEnd = `${selectedYear}-12-31`
+    const rendezvousAnnee = scopeContext.rendezvousDansScope.filter((rdv) => inRange(rdv.date, yearStart, yearEnd))
+    const visitesParCliente = new Map<string, number>()
+    for (const rdv of rendezvousAnnee) {
+      if (rdv.statut === 'Annulé' || !rdv.clienteId) continue
+      visitesParCliente.set(rdv.clienteId, (visitesParCliente.get(rdv.clienteId) ?? 0) + 1)
+    }
+    const clientesActives = visitesParCliente.size
+    const clientesFideles = Array.from(visitesParCliente.values()).filter((count) => count >= 2).length
+    const nouvellesClientes = state.clients.filter((client) => inRange(client.dateCreation, yearStart, yearEnd)).length
+    const moyenneVisites = clientesActives > 0
+      ? rendezvousAnnee.filter((rdv) => rdv.statut !== 'Annulé' && rdv.clienteId).length / clientesActives
+      : 0
+    const nouvellesParMois = MONTH_LABELS.map((label, i) => ({
+      label,
+      value: state.clients.filter((client) => isInMonthValue(client.dateCreation, `${selectedYear}-${String(i + 1).padStart(2, '0')}`)).length,
+    }))
+    const rendezvousParMois = MONTH_LABELS.map((label, i) => ({
+      label,
+      value: rendezvousAnnee.filter((rdv) => isInMonthValue(rdv.date, `${selectedYear}-${String(i + 1).padStart(2, '0')}`) && rdv.statut !== 'Annulé').length,
+    }))
+    return {
+      clientesActives,
+      clientesFideles,
+      nouvellesClientes,
+      clientesSansRdv: Math.max(0, state.clients.length - clientesActives),
+      moyenneVisites,
+      tauxFidelite: clientesActives > 0 ? Math.round((clientesFideles / clientesActives) * 100) : 0,
+      nouvellesParMois,
+      rendezvousParMois,
+    }
+  }, [state, scopeContext, selectedYear])
+
+  const [subTab, setSubTab] = useState<'apercu' | 'clients' | 'comparaison' | 'prestations'>('apercu')
   const TABS: { key: typeof subTab; label: string }[] = [
     { key: 'apercu', label: "Vue d'ensemble" },
+    { key: 'clients', label: 'Clients & fidélité' },
     { key: 'comparaison', label: 'Comparaison de périodes' },
     { key: 'prestations', label: 'Prestations & promotions' },
   ]
@@ -409,7 +487,41 @@ function StatsView() {
       {state.status === 'loading' && <p className="text-sm text-text-muted">Chargement…</p>}
       {state.status === 'error' && <p className="text-sm text-danger">{state.message}</p>}
 
-      {state.status === 'success' && data && landingStats && (
+      {state.status === 'success' && (
+        <div className="bg-sage-pale border border-sage-light rounded-2xl p-4 mb-6">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 className="text-sm font-semibold text-sage-dark">Périmètre des statistiques</h3>
+              <p className="text-xs text-text-muted mt-0.5">
+                Les factures « Associatif ou formation » sont classées dans l&apos;associatif.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2" role="group" aria-label="Périmètre des statistiques">
+              {(['non-associatif', 'associatif', 'tout'] as StatScope[]).map((scope) => (
+                <button
+                  key={scope}
+                  type="button"
+                  aria-pressed={statScope === scope}
+                  onClick={() => setStatScope(scope)}
+                  className={`px-3 py-2 rounded-[10px] text-sm font-semibold transition-colors ${
+                    statScope === scope
+                      ? 'bg-sage-dark text-white'
+                      : 'bg-white border border-border text-text-muted hover:bg-white hover:text-sage-dark'
+                  }`}
+                >
+                  {scopeLabel(scope)}
+                </button>
+              ))}
+            </div>
+          </div>
+          <p className="text-[11px] text-text-muted mt-3">
+            Les rendez-vous sans facture associative sont comptés dans « Non associatif ». Les dépenses restent globales,
+            car elles ne possèdent pas encore de catégorie d&apos;activité.
+          </p>
+        </div>
+      )}
+
+      {state.status === 'success' && data && landingStats && scopeContext && (
         <div className="flex flex-col gap-6">
           {subTab === 'apercu' && yearlyData && (
             <>
@@ -428,6 +540,9 @@ function StatsView() {
                     ))}
                   </select>
                 </div>
+                <p className="text-xs text-text-muted mb-3">
+                  {scopeLabel(statScope)} · données de {selectedYear}
+                </p>
                 <div className="flex flex-col gap-6 mt-3">
                   <div>
                     <p className="text-xs text-text-muted mb-2">
@@ -457,7 +572,7 @@ function StatsView() {
               <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
                 <StatTile label="Chiffre d'affaires (année)" value={formatEuros(yearlyData.totalCaAnnee)} />
                 <StatTile label="Rendez-vous (année)" value={String(yearlyData.totalRdvAnnee)} />
-                <StatTile label="Taux de fidélisation" value={`${data.tauxFidelisation} %`} />
+                <StatTile label="Taux de fidélité" value={`${clientStats?.tauxFidelite ?? data.tauxFidelisation} %`} sub="clientes actives sur l'année" />
                 <StatTile label="Taux d'annulation (année)" value={`${landingStats.tauxAnnulationAnnee} %`} />
                 <StatTile label="Factures impayées" value={formatEuros(data.facturesImpayeesMontant)} />
                 {yearlyPrestationStats?.best && (
@@ -474,6 +589,72 @@ function StatsView() {
                     sub={formatEuros(yearlyPrestationStats.worst.ca)}
                   />
                 )}
+              </div>
+            </>
+          )}
+
+          {subTab === 'clients' && clientStats && (
+            <>
+              <div className="bg-white border border-border rounded-2xl p-5">
+                <div className="flex items-center justify-between flex-wrap gap-3 mb-1">
+                  <div>
+                    <h3 className="font-serif text-lg font-semibold text-sage-dark">Clients & fidélité</h3>
+                    <p className="text-xs text-text-muted mt-1">
+                      Activité {selectedYear} · {scopeLabel(statScope)}
+                    </p>
+                  </div>
+                  <select
+                    value={selectedYear}
+                    onChange={(e) => setSelectedYear(Number(e.target.value))}
+                    className="input max-w-28"
+                    aria-label="Année des statistiques clients"
+                  >
+                    {availableYears.map((y) => (
+                      <option key={y} value={y}>
+                        {y}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-5">
+                  <StatTile label="Clientes actives" value={String(clientStats.clientesActives)} sub={`au moins 1 RDV en ${selectedYear}`} />
+                  <StatTile label="Clientes fidèles" value={String(clientStats.clientesFideles)} sub="2 RDV ou plus dans l'année" />
+                  <StatTile label="Taux de fidélité" value={`${clientStats.tauxFidelite} %`} sub="parmi les clientes actives" />
+                  <StatTile label="Moyenne de visites" value={clientStats.moyenneVisites.toFixed(1)} sub="RDV par cliente active" />
+                  <StatTile label="Nouvelles clientes" value={String(clientStats.nouvellesClientes)} sub={`créées en ${selectedYear}`} />
+                  <StatTile label="Sans RDV cette année" value={String(clientStats.clientesSansRdv)} sub="fiches à relancer" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                <div className="bg-white border border-border rounded-2xl p-5">
+                  <h3 className="font-serif text-lg font-semibold text-sage-dark mb-1">Nouvelles clientes par mois</h3>
+                  <p className="text-xs text-text-muted mb-2">Toutes les clientes créées dans la base en {selectedYear}.</p>
+                  <MonthlyBarChart
+                    data={clientStats.nouvellesParMois}
+                    color="#C9A86A"
+                    formatValue={(n) => `${n} cliente${n > 1 ? 's' : ''}`}
+                    formatValueShort={(n) => String(n)}
+                  />
+                </div>
+                <div className="bg-white border border-border rounded-2xl p-5">
+                  <h3 className="font-serif text-lg font-semibold text-sage-dark mb-1">Visites clientes par mois</h3>
+                  <p className="text-xs text-text-muted mb-2">Rendez-vous non annulés · {scopeLabel(statScope).toLowerCase()}.</p>
+                  <MonthlyBarChart
+                    data={clientStats.rendezvousParMois}
+                    color="#3A5A50"
+                    formatValue={(n) => `${n} RDV`}
+                    formatValueShort={(n) => String(n)}
+                  />
+                </div>
+              </div>
+
+              <div className="bg-white border border-border rounded-2xl p-5">
+                <h3 className="font-serif text-lg font-semibold text-sage-dark mb-1">Base à relancer</h3>
+                <p className="text-sm text-text-muted">
+                  {clientStats.clientesSansRdv} cliente{clientStats.clientesSansRdv > 1 ? 's' : ''} n&apos;a pas eu de rendez-vous
+                  {` ${scopeLabel(statScope).toLowerCase()}`} enregistré en {selectedYear}. Ce chiffre aide à repérer les fiches à recontacter.
+                </p>
               </div>
             </>
           )}
@@ -505,7 +686,8 @@ function StatsView() {
                   </div>
                 </div>
                 <p className="text-xs text-text-muted mt-3">
-                  Le chiffre d'affaires et le résultat net excluent les factures « Associatif ou formation ».
+                  Le chiffre d&apos;affaires, les rendez-vous et le résultat net suivent le périmètre « {scopeLabel(statScope)} ».
+                  Les dépenses restent globales.
                 </p>
               </div>
 
@@ -518,7 +700,7 @@ function StatsView() {
                   formatValue={formatEuros}
                   positiveIsGood={false}
                 />
-                <ComparisonCard label="Résultat net" current={data.resultatA} previous={data.resultatB} formatValue={formatEuros} />
+                <ComparisonCard label="Résultat après dépenses globales" current={data.resultatA} previous={data.resultatB} formatValue={formatEuros} />
                 <ComparisonCard label="Rendez-vous" current={data.rdvA} previous={data.rdvB} />
                 <ComparisonCard label="Nouvelles clientes" current={data.nouvellesA} previous={data.nouvellesB} />
                 <ComparisonCard label="Panier moyen" current={data.panierMoyenA} previous={data.panierMoyenB} formatValue={formatEuros} />
