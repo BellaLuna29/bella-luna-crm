@@ -24,8 +24,8 @@ type StatutJour = 'off' | 'matin' | 'apres-midi' | 'journee'
 type SurchargesDisponibilite = Record<string, StatutJour>
 // Heures précises ajoutées à la main, en minutes depuis minuit, par jour (clé YYYY-MM-DD).
 type HeuresManuelles = Record<string, number[]>
-interface Ajustements { statuts: SurchargesDisponibilite; heures: HeuresManuelles; sansPastille: Record<string, boolean> }
-interface ResultatJour { status: StatutJour; label: string; heures?: string[]; sansPastille?: boolean }
+interface Ajustements { statuts: SurchargesDisponibilite; heures: HeuresManuelles }
+interface ResultatJour { status: StatutJour; label: string; heures?: string[] }
 
 const JOURS_COURTS = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
 const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
@@ -156,12 +156,7 @@ function getStatusPourStory(
   const heures = ajustements.heures[dateKey(date)]
   if (heures?.length) {
     const labels = heures.map(formatHeure)
-    return {
-      status: statutDesHeures(heures),
-      label: labels.join(' · '),
-      heures: labels,
-      sansPastille: ajustements.sansPastille[dateKey(date)] === true,
-    }
+    return { status: statutDesHeures(heures), label: labels.join(' · '), heures: labels }
   }
   const choisi = ajustements.statuts[dateKey(date)]
   if (!choisi) return getStatus(date, disponibilites, absences, rendezvous)
@@ -205,44 +200,12 @@ function drawStatusDot(ctx: CanvasRenderingContext2D, x: number, y: number, resu
   ctx.fill()
 }
 
-// Garde les premières heures qui tiennent dans la case, le reste devient « +n ».
-function fitLabel(ctx: CanvasRenderingContext2D, parts: string[], maxWidth: number): string {
-  const textePour = (count: number) => {
-    const rest = parts.length - count
-    return [...parts.slice(0, count), ...(rest > 0 ? [`+${rest}`] : [])].join(' · ')
-  }
-  let count = parts.length
-  while (count > 1 && ctx.measureText(textePour(count)).width > maxWidth) count -= 1
-  return textePour(count)
-}
-
-// Répartit les heures sur plusieurs lignes ; la dernière ligne peut se terminer par « +n ».
-function wrapLabel(ctx: CanvasRenderingContext2D, parts: string[], maxWidth: number, maxLines: number): string[] {
-  const lines: string[] = []
-  let index = 0
-  while (index < parts.length) {
-    if (lines.length === maxLines - 1) {
-      lines.push(fitLabel(ctx, parts.slice(index), maxWidth))
-      break
-    }
-    let line = parts[index]
-    index += 1
-    while (index < parts.length && ctx.measureText(`${line} · ${parts[index]}`).width <= maxWidth) {
-      line = `${line} · ${parts[index]}`
-      index += 1
-    }
-    lines.push(line)
-  }
-  return lines
-}
-
-// Les heures seules, sans pastille, centrées sur la verticale de la case.
+// Une heure par ligne, empilées depuis topY ; au-delà de maxLines, la dernière ligne devient « +n ».
 function drawHeuresSeules(
   ctx: CanvasRenderingContext2D,
   heures: string[],
   centerX: number,
-  centerY: number,
-  maxWidth: number,
+  topY: number,
   maxLines: number,
   lineHeight: number,
   font: string,
@@ -252,9 +215,8 @@ function drawHeuresSeules(
   ctx.fillStyle = '#5B452C'
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
-  const lines = wrapLabel(ctx, heures, maxWidth, maxLines)
-  const top = centerY - ((lines.length - 1) * lineHeight) / 2
-  lines.forEach((line, index) => ctx.fillText(line, centerX, top + index * lineHeight))
+  const lines = heures.length > maxLines ? [...heures.slice(0, maxLines - 1), `+${heures.length - maxLines + 1}`] : heures
+  lines.forEach((line, index) => ctx.fillText(line, centerX, topY + index * lineHeight + lineHeight / 2))
   ctx.restore()
 }
 
@@ -339,15 +301,15 @@ function drawMonthly(
     ctx.fillStyle = '#5B452C'
     ctx.font = '500 24px Fraunces, Georgia, serif'
     ctx.fillText(String(day), x + 12, y + 31)
-    if (result.sansPastille && result.heures) {
-      drawHeuresSeules(ctx, result.heures, x + cellWidth / 2, y + 80, cellWidth - 16, 3, 24, '600 20px Inter, Arial, sans-serif')
+    if (result.heures) {
+      drawHeuresSeules(ctx, result.heures, x + cellWidth / 2, y + 42, 5, 18, '600 16px Inter, Arial, sans-serif')
     } else {
       drawStatusDot(ctx, x + cellWidth / 2, y + 75, result)
       if (result.status !== 'off') {
         ctx.textAlign = 'center'
         ctx.fillStyle = '#5B452C'
         ctx.font = '600 16px Inter, Arial, sans-serif'
-        ctx.fillText(fitLabel(ctx, result.heures ?? [result.label], cellWidth - 16), x + cellWidth / 2, y + 121)
+        ctx.fillText(result.label, x + cellWidth / 2, y + 121)
       }
     }
   }
@@ -388,14 +350,14 @@ function drawWeekly(
     ctx.fillText(JOURS_COURTS[index], x + columnWidth / 2, gridY + 45)
     ctx.font = '500 31px Fraunces, Georgia, serif'
     ctx.fillText(String(date.getDate()), x + columnWidth / 2, gridY + 86)
-    if (result.sansPastille && result.heures) {
-      drawHeuresSeules(ctx, result.heures, x + columnWidth / 2, gridY + 195, columnWidth - 16, 5, 32, '600 24px Inter, Arial, sans-serif')
+    if (result.heures) {
+      drawHeuresSeules(ctx, result.heures, x + columnWidth / 2, gridY + 150, 9, 30, '600 22px Inter, Arial, sans-serif')
     } else {
       drawStatusDot(ctx, x + columnWidth / 2, gridY + 195, result, true)
       if (result.status !== 'off') {
         ctx.fillStyle = '#5B452C'
         ctx.font = '600 18px Inter, Arial, sans-serif'
-        ctx.fillText(fitLabel(ctx, result.heures ?? [result.label], columnWidth - 16), x + columnWidth / 2, gridY + 285)
+        ctx.fillText(result.label, x + columnWidth / 2, gridY + 285)
       }
     }
   }
@@ -464,7 +426,6 @@ function DisponibilitesExportModal({ onClose }: DisponibilitesExportModalProps) 
   const [rendezvous, setRendezvous] = useState<RendezVous[]>([])
   const [surcharges, setSurcharges] = useState<SurchargesDisponibilite>({})
   const [heuresManuelles, setHeuresManuelles] = useState<HeuresManuelles>({})
-  const [heuresSansPastille, setHeuresSansPastille] = useState<Record<string, boolean>>({})
   const [jourHeure, setJourHeure] = useState('')
   const [heureChoisie, setHeureChoisie] = useState(HEURES_AJOUTABLES[0])
   const [statutSelectionne, setStatutSelectionne] = useState<StatutJour>('journee')
@@ -472,10 +433,7 @@ function DisponibilitesExportModal({ onClose }: DisponibilitesExportModalProps) 
   const [rendering, setRendering] = useState(false)
   const [sharing, setSharing] = useState(false)
 
-  const ajustements = useMemo<Ajustements>(
-    () => ({ statuts: surcharges, heures: heuresManuelles, sansPastille: heuresSansPastille }),
-    [surcharges, heuresManuelles, heuresSansPastille],
-  )
+  const ajustements = useMemo<Ajustements>(() => ({ statuts: surcharges, heures: heuresManuelles }), [surcharges, heuresManuelles])
 
   const draw = useCallback(async () => {
     // Le canvas n'existe qu'après le chargement : attendre son montage évite une
@@ -583,15 +541,8 @@ function DisponibilitesExportModal({ onClose }: DisponibilitesExportModalProps) 
       if (restantes.length > 0) return { ...current, [jour]: restantes }
       return Object.fromEntries(Object.entries(current).filter(([key]) => key !== jour))
     })
-    if (restantes.length === 0) {
-      setHeuresSansPastille((current) => Object.fromEntries(Object.entries(current).filter(([key]) => key !== jour)))
-    }
     // Le chip retiré disparaît avec le focus ; on le rend au bouton Ajouter.
     ajouterRef.current?.focus()
-  }
-
-  function basculerSansPastille(jour: string) {
-    setHeuresSansPastille((current) => ({ ...current, [jour]: !current[jour] }))
   }
 
   async function share() {
@@ -677,7 +628,7 @@ function DisponibilitesExportModal({ onClose }: DisponibilitesExportModalProps) 
         </div>
         <div className="mt-3 pt-3 border-t border-sage-dark/15">
           <p className="text-xs font-semibold text-sage-dark">Ajouter une heure précise</p>
-          <p className="text-xs text-text-muted mt-1">Pour une journée où il ne reste que quelques heures. Un jour qui a des heures n’affiche que ces heures, avec ou sans pastille colorée.</p>
+          <p className="text-xs text-text-muted mt-1">Pour une journée où il ne reste que quelques heures. Un jour qui a des heures n’affiche que ces heures, une au-dessus de l’autre, sans pastille.</p>
           <div className="grid sm:grid-cols-[1fr_auto_auto] gap-2 mt-3">
             <input
               type="date"
@@ -710,14 +661,6 @@ function DisponibilitesExportModal({ onClose }: DisponibilitesExportModalProps) 
                         {formatHeure(minute)} ×
                       </button>
                     ))}
-                    <button
-                      type="button"
-                      onClick={() => basculerSansPastille(jour)}
-                      aria-pressed={heuresSansPastille[jour] === true}
-                      className={`min-h-11 rounded-full border px-3 text-xs font-semibold ${heuresSansPastille[jour] ? 'border-sage-dark bg-sage-dark text-white' : 'border-sage-dark/30 bg-white text-sage-dark'}`}
-                    >
-                      Sans pastille
-                    </button>
                   </li>
                 ))}
               </ul>
@@ -725,7 +668,7 @@ function DisponibilitesExportModal({ onClose }: DisponibilitesExportModalProps) 
           </div>
         </div>
         {aucunJourActif && <p className="text-xs text-gold-text mt-3">Aucun horaire hebdomadaire n’est activé : le mode automatique se base sur les créneaux réellement libres de l’agenda, du lundi au samedi.</p>}
-        {(Object.keys(surcharges).length > 0 || joursAvecHeures.length > 0) && <button type="button" onClick={() => { setSurcharges({}); setHeuresManuelles({}); setHeuresSansPastille({}) }} className="text-xs font-semibold text-sage-dark hover:underline mt-3">Revenir aux disponibilités de l’agenda</button>}
+        {(Object.keys(surcharges).length > 0 || joursAvecHeures.length > 0) && <button type="button" onClick={() => { setSurcharges({}); setHeuresManuelles({}) }} className="text-xs font-semibold text-sage-dark hover:underline mt-3">Revenir aux disponibilités de l’agenda</button>}
       </div>
       <p className="text-xs text-text-muted mt-1">Sur téléphone, le partage ouvre directement les applications disponibles, dont Instagram s’il est installé.</p>
       <div className="grid sm:grid-cols-[auto_1fr] gap-3 mt-4">
