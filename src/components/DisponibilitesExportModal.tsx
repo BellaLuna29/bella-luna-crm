@@ -302,7 +302,7 @@ function drawMonthly(
     ctx.font = '500 24px Fraunces, Georgia, serif'
     ctx.fillText(String(day), x + 12, y + 31)
     if (result.heures) {
-      drawHeuresSeules(ctx, result.heures, x + cellWidth / 2, y + 42, 5, 18, '600 16px Inter, Arial, sans-serif')
+      drawHeuresSeules(ctx, result.heures, x + cellWidth / 2, y + 42, 5, 19, '600 18px Inter, Arial, sans-serif')
     } else {
       drawStatusDot(ctx, x + cellWidth / 2, y + 75, result)
       if (result.status !== 'off') {
@@ -351,7 +351,7 @@ function drawWeekly(
     ctx.font = '500 31px Fraunces, Georgia, serif'
     ctx.fillText(String(date.getDate()), x + columnWidth / 2, gridY + 86)
     if (result.heures) {
-      drawHeuresSeules(ctx, result.heures, x + columnWidth / 2, gridY + 150, 9, 30, '600 22px Inter, Arial, sans-serif')
+      drawHeuresSeules(ctx, result.heures, x + columnWidth / 2, gridY + 150, 9, 32, '600 24px Inter, Arial, sans-serif')
     } else {
       drawStatusDot(ctx, x + columnWidth / 2, gridY + 195, result, true)
       if (result.status !== 'off') {
