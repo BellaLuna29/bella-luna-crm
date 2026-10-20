@@ -22,10 +22,16 @@ interface DisponibilitesExportModalProps { onClose: () => void }
 type ExportFormat = 'mois' | 'semaine'
 type StatutJour = 'off' | 'matin' | 'apres-midi' | 'journee'
 type SurchargesDisponibilite = Record<string, StatutJour>
+// Heures précises ajoutées à la main, en minutes depuis minuit, par jour (clé YYYY-MM-DD).
+type HeuresManuelles = Record<string, number[]>
+interface Ajustements { statuts: SurchargesDisponibilite; heures: HeuresManuelles }
+interface ResultatJour { status: StatutJour; label: string; heures?: string[] }
 
 const JOURS_COURTS = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
 const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
 const COULEURS: Record<StatutJour, string> = { off: '#C8C3BB', matin: '#FFE054', 'apres-midi': '#F4A11B', journee: '#78D649' }
+// Toutes les demi-heures de 8 h à 20 h.
+const HEURES_AJOUTABLES = Array.from({ length: 25 }, (_, index) => 8 * 60 + index * 30)
 
 function minutes(value: string | null): number | null {
   if (!value) return null
@@ -48,6 +54,11 @@ function addDays(date: Date, count: number): Date {
   const copy = new Date(date)
   copy.setDate(copy.getDate() + count)
   return copy
+}
+
+function formatJourCourt(key: string): string {
+  const [year, month, day] = key.split('-').map(Number)
+  return new Date(year, month - 1, day).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })
 }
 
 function applies(absence: Absence, date: Date): boolean {
@@ -121,14 +132,33 @@ function getStatus(
   return matin ? { status: 'matin', label: 'Matin' } : { status: 'apres-midi', label: 'Après-midi' }
 }
 
+function formatHeure(minute: number): string {
+  const hour = Math.floor(minute / 60)
+  const rest = minute % 60
+  return rest === 0 ? `${hour}h` : `${hour}h${String(rest).padStart(2, '0')}`
+}
+
+// Une heure avant 13 h compte comme matin, une heure à partir de 13 h comme après-midi.
+function statutDesHeures(heures: number[]): StatutJour {
+  const matin = heures.some((minute) => minute < 13 * 60)
+  const apresMidi = heures.some((minute) => minute >= 13 * 60)
+  if (matin && apresMidi) return 'journee'
+  return matin ? 'matin' : 'apres-midi'
+}
+
 function getStatusPourStory(
   date: Date,
   disponibilites: Map<number, Disponibilite>,
   absences: Absence[],
   rendezvous: RendezVous[],
-  surcharges: SurchargesDisponibilite,
-): { status: StatutJour; label: string } {
-  const choisi = surcharges[dateKey(date)]
+  ajustements: Ajustements,
+): ResultatJour {
+  const heures = ajustements.heures[dateKey(date)]
+  if (heures?.length) {
+    const labels = heures.map(formatHeure)
+    return { status: statutDesHeures(heures), label: labels.join(' · '), heures: labels }
+  }
+  const choisi = ajustements.statuts[dateKey(date)]
   if (!choisi) return getStatus(date, disponibilites, absences, rendezvous)
   if (choisi === 'off') return { status: 'off', label: 'COMPLET' }
   return {
@@ -168,6 +198,17 @@ function drawStatusDot(ctx: CanvasRenderingContext2D, x: number, y: number, resu
   ctx.beginPath()
   ctx.arc(x, y, large ? 36 : 29, 0, Math.PI * 2)
   ctx.fill()
+}
+
+// Garde les premières heures qui tiennent dans la case, le reste devient « +n ».
+function fitLabel(ctx: CanvasRenderingContext2D, parts: string[], maxWidth: number): string {
+  const textePour = (count: number) => {
+    const rest = parts.length - count
+    return [...parts.slice(0, count), ...(rest > 0 ? [`+${rest}`] : [])].join(' · ')
+  }
+  let count = parts.length
+  while (count > 1 && ctx.measureText(textePour(count)).width > maxWidth) count -= 1
+  return textePour(count)
 }
 
 function drawBase(ctx: CanvasRenderingContext2D, width: number, height: number) {
@@ -215,7 +256,7 @@ function drawMonthly(
   disponibilites: Map<number, Disponibilite>,
   absences: Absence[],
   rendezvous: RendezVous[],
-  surcharges: SurchargesDisponibilite,
+  ajustements: Ajustements,
 ) {
   drawTitle(ctx, `en ${MOIS[month]}`)
   const gridX = 105
@@ -246,7 +287,7 @@ function drawMonthly(
     ctx.strokeRect(x, y, cellWidth, cellHeight)
     const day = index - offset + 1
     if (day < 1 || day > dayCount) continue
-    const result = getStatusPourStory(new Date(year, month, day), disponibilites, absences, rendezvous, surcharges)
+    const result = getStatusPourStory(new Date(year, month, day), disponibilites, absences, rendezvous, ajustements)
     ctx.textAlign = 'left'
     ctx.fillStyle = '#5B452C'
     ctx.font = '500 24px Fraunces, Georgia, serif'
@@ -256,7 +297,7 @@ function drawMonthly(
       ctx.textAlign = 'center'
       ctx.fillStyle = '#5B452C'
       ctx.font = '600 16px Inter, Arial, sans-serif'
-      ctx.fillText(result.label, x + cellWidth / 2, y + 121)
+      ctx.fillText(fitLabel(ctx, result.heures ?? [result.label], cellWidth - 16), x + cellWidth / 2, y + 121)
     }
   }
   drawLegend(ctx, gridY + 68 + rowCount * cellHeight + 84)
@@ -269,7 +310,7 @@ function drawWeekly(
   disponibilites: Map<number, Disponibilite>,
   absences: Absence[],
   rendezvous: RendezVous[],
-  surcharges: SurchargesDisponibilite,
+  ajustements: Ajustements,
 ) {
   const weekEnd = addDays(weekStart, 6)
   drawTitle(ctx, `du ${weekStart.getDate()} au ${weekEnd.getDate()} ${MOIS[weekEnd.getMonth()]}`)
@@ -283,7 +324,7 @@ function drawWeekly(
   const cardHeight = 470
   for (let index = 0; index < 7; index += 1) {
     const date = addDays(weekStart, index)
-    const result = getStatusPourStory(date, disponibilites, absences, rendezvous, surcharges)
+    const result = getStatusPourStory(date, disponibilites, absences, rendezvous, ajustements)
     const x = gridX + index * columnWidth
     ctx.fillStyle = 'rgba(249, 247, 242, 0.78)'
     ctx.fillRect(x, gridY, columnWidth, cardHeight)
@@ -300,8 +341,7 @@ function drawWeekly(
     if (result.status !== 'off') {
       ctx.fillStyle = '#5B452C'
       ctx.font = '600 18px Inter, Arial, sans-serif'
-      const label = [result.label]
-      label.forEach((line, lineIndex) => ctx.fillText(line, x + columnWidth / 2, gridY + 285 + lineIndex * 25))
+      ctx.fillText(fitLabel(ctx, result.heures ?? [result.label], columnWidth - 16), x + columnWidth / 2, gridY + 285)
     }
   }
   drawLegend(ctx, 1290)
@@ -322,7 +362,7 @@ async function drawExport(
   disponibilites: Map<number, Disponibilite>,
   absences: Absence[],
   rendezvous: RendezVous[],
-  surcharges: SurchargesDisponibilite,
+  ajustements: Ajustements,
 ) {
   const ctx = canvas.getContext('2d')
   if (!ctx) return
@@ -341,8 +381,8 @@ async function drawExport(
     ctx.fillRect(0, 0, width, height)
   }
   drawBase(ctx, width, height)
-  if (format === 'mois') drawMonthly(ctx, year, month, disponibilites, absences, rendezvous, surcharges)
-  else drawWeekly(ctx, weekStart, disponibilites, absences, rendezvous, surcharges)
+  if (format === 'mois') drawMonthly(ctx, year, month, disponibilites, absences, rendezvous, ajustements)
+  else drawWeekly(ctx, weekStart, disponibilites, absences, rendezvous, ajustements)
 }
 
 function canvasToFile(canvas: HTMLCanvasElement, name: string): Promise<File> {
@@ -367,10 +407,15 @@ function DisponibilitesExportModal({ onClose }: DisponibilitesExportModalProps) 
   const [absences, setAbsences] = useState<Absence[]>([])
   const [rendezvous, setRendezvous] = useState<RendezVous[]>([])
   const [surcharges, setSurcharges] = useState<SurchargesDisponibilite>({})
+  const [heuresManuelles, setHeuresManuelles] = useState<HeuresManuelles>({})
+  const [jourHeure, setJourHeure] = useState('')
+  const [heureChoisie, setHeureChoisie] = useState(HEURES_AJOUTABLES[0])
   const [statutSelectionne, setStatutSelectionne] = useState<StatutJour>('journee')
   const [loading, setLoading] = useState(true)
   const [rendering, setRendering] = useState(false)
   const [sharing, setSharing] = useState(false)
+
+  const ajustements = useMemo<Ajustements>(() => ({ statuts: surcharges, heures: heuresManuelles }), [surcharges, heuresManuelles])
 
   const draw = useCallback(async () => {
     // Le canvas n'existe qu'après le chargement : attendre son montage évite une
@@ -387,12 +432,12 @@ function DisponibilitesExportModal({ onClose }: DisponibilitesExportModalProps) 
         new Map(disponibilites.map((item) => [item.jourSemaine, item])),
         absences,
         rendezvous,
-        surcharges,
+        ajustements,
       )
     } finally {
       setRendering(false)
     }
-  }, [absences, disponibilites, format, loading, month, rendezvous, surcharges, weekStart, year])
+  }, [absences, ajustements, disponibilites, format, loading, month, rendezvous, weekStart, year])
 
   useEffect(() => {
     Promise.all([
@@ -456,6 +501,26 @@ function DisponibilitesExportModal({ onClose }: DisponibilitesExportModalProps) 
     setSurcharges((current) => ({ ...current, [dateKey(date)]: statutSelectionne }))
   }
 
+  function ajouterHeure() {
+    if (!jourHeure) return
+    if (heuresManuelles[jourHeure]?.includes(heureChoisie)) {
+      showToast('Cette heure est déjà ajoutée à ce jour.')
+      return
+    }
+    setHeuresManuelles((current) => ({
+      ...current,
+      [jourHeure]: [...(current[jourHeure] ?? []), heureChoisie].sort((a, b) => a - b),
+    }))
+  }
+
+  function retirerHeure(jour: string, heure: number) {
+    setHeuresManuelles((current) => {
+      const restantes = (current[jour] ?? []).filter((item) => item !== heure)
+      if (restantes.length > 0) return { ...current, [jour]: restantes }
+      return Object.fromEntries(Object.entries(current).filter(([key]) => key !== jour))
+    })
+  }
+
   async function share() {
     if (!canvasRef.current) return
     setSharing(true)
@@ -483,6 +548,9 @@ function DisponibilitesExportModal({ onClose }: DisponibilitesExportModalProps) 
   const weekEnd = addDays(weekStart, 6)
   const periodLabel = format === 'mois' ? `${MOIS[month]} ${year}` : `du ${weekStart.getDate()} au ${weekEnd.getDate()} ${MOIS[weekEnd.getMonth()]}`
   const aucunJourActif = disponibilites.length > 0 && disponibilites.every((item) => !item.actif)
+  const premierJour = format === 'mois' ? new Date(year, month, 1) : weekStart
+  const dernierJour = format === 'mois' ? new Date(year, month + 1, 0) : weekEnd
+  const joursAvecHeures = Object.keys(heuresManuelles).sort()
 
   return (
     <Modal size="lg">
@@ -534,8 +602,47 @@ function DisponibilitesExportModal({ onClose }: DisponibilitesExportModalProps) 
             </button>
           ))}
         </div>
+        <div className="mt-3 pt-3 border-t border-sage-dark/15">
+          <p className="text-xs font-semibold text-sage-dark">Ajouter une heure précise</p>
+          <p className="text-xs text-text-muted mt-1">Pour une journée où il ne reste que quelques heures. Un jour qui a des heures n’affiche que ces heures.</p>
+          <div className="grid sm:grid-cols-[1fr_auto_auto] gap-2 mt-3">
+            <input
+              type="date"
+              value={jourHeure}
+              min={dateKey(premierJour)}
+              max={dateKey(dernierJour)}
+              onChange={(event) => setJourHeure(event.target.value)}
+              className="input min-h-11"
+              aria-label="Journée"
+            />
+            <select value={heureChoisie} onChange={(event) => setHeureChoisie(Number(event.target.value))} className="input min-h-11" aria-label="Heure">
+              {HEURES_AJOUTABLES.map((minute) => <option key={minute} value={minute}>{formatHeure(minute)}</option>)}
+            </select>
+            <button type="button" onClick={ajouterHeure} disabled={!jourHeure} className="btn-secondary min-h-11 disabled:opacity-50">Ajouter</button>
+          </div>
+          {joursAvecHeures.length > 0 && (
+            <ul className="mt-3 flex flex-col gap-2">
+              {joursAvecHeures.map((jour) => (
+                <li key={jour} className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-semibold text-sage-dark min-w-28 capitalize">{formatJourCourt(jour)}</span>
+                  {heuresManuelles[jour].map((minute) => (
+                    <button
+                      key={minute}
+                      type="button"
+                      onClick={() => retirerHeure(jour, minute)}
+                      className="min-h-11 rounded-full bg-white border border-sage-dark/30 px-3 text-xs font-semibold text-sage-dark"
+                      aria-label={`Retirer ${formatHeure(minute)} le ${formatJourCourt(jour)}`}
+                    >
+                      {formatHeure(minute)} ×
+                    </button>
+                  ))}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
         {aucunJourActif && <p className="text-xs text-gold-text mt-3">Aucun horaire hebdomadaire n’est activé : le mode automatique se base sur les créneaux réellement libres de l’agenda, du lundi au samedi.</p>}
-        {Object.keys(surcharges).length > 0 && <button type="button" onClick={() => setSurcharges({})} className="text-xs font-semibold text-sage-dark hover:underline mt-3">Revenir aux disponibilités de l’agenda</button>}
+        {(Object.keys(surcharges).length > 0 || joursAvecHeures.length > 0) && <button type="button" onClick={() => { setSurcharges({}); setHeuresManuelles({}) }} className="text-xs font-semibold text-sage-dark hover:underline mt-3">Revenir aux disponibilités de l’agenda</button>}
       </div>
       <p className="text-xs text-text-muted mt-1">Sur téléphone, le partage ouvre directement les applications disponibles, dont Instagram s’il est installé.</p>
       <div className="grid sm:grid-cols-[auto_1fr] gap-3 mt-4">
