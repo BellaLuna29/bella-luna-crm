@@ -29,7 +29,7 @@ interface ResultatJour { status: StatutJour; label: string; heures?: string[] }
 
 const JOURS_COURTS = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
 const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
-const COULEURS: Record<StatutJour, string> = { off: '#C8C3BB', matin: '#FFE054', 'apres-midi': '#F4A11B', journee: '#78D649', ferme: '#4A4A4A' }
+const COULEURS: Record<StatutJour, string> = { off: '#C8C3BB', matin: '#FFE054', 'apres-midi': '#F4A11B', journee: '#78D649', ferme: '#7A7A7A' }
 // Toutes les demi-heures de 8 h à 20 h.
 const HEURES_AJOUTABLES = Array.from({ length: 25 }, (_, index) => 8 * 60 + index * 30)
 
@@ -299,13 +299,18 @@ function drawMonthly(
     const day = index - offset + 1
     if (day < 1 || day > dayCount) continue
     const result = getStatusPourStory(new Date(year, month, day), disponibilites, absences, rendezvous, ajustements)
+    const ferme = result.status === 'ferme'
+    if (ferme) {
+      ctx.fillStyle = COULEURS.ferme
+      ctx.fillRect(x, y, cellWidth, cellHeight)
+    }
     ctx.textAlign = 'left'
-    ctx.fillStyle = '#5B452C'
+    ctx.fillStyle = ferme ? '#FFFDF9' : '#5B452C'
     ctx.font = '500 24px Fraunces, Georgia, serif'
     ctx.fillText(String(day), x + 12, y + 31)
     if (result.heures) {
       drawHeuresSeules(ctx, result.heures, x + cellWidth / 2, y + 42, 5, 19, '600 18px Inter, Arial, sans-serif')
-    } else {
+    } else if (!ferme) {
       drawStatusDot(ctx, x + cellWidth / 2, y + 75, result)
       if (result.status !== 'off') {
         ctx.textAlign = 'center'
@@ -341,20 +346,21 @@ function drawWeekly(
     const date = addDays(weekStart, index)
     const result = getStatusPourStory(date, disponibilites, absences, rendezvous, ajustements)
     const x = gridX + index * columnWidth
-    ctx.fillStyle = 'rgba(249, 247, 242, 0.78)'
+    const ferme = result.status === 'ferme'
+    ctx.fillStyle = ferme ? COULEURS.ferme : 'rgba(249, 247, 242, 0.78)'
     ctx.fillRect(x, gridY, columnWidth, cardHeight)
     ctx.strokeStyle = 'rgba(91, 69, 44, 0.38)'
     ctx.lineWidth = 1.5
     ctx.strokeRect(x, gridY, columnWidth, cardHeight)
     ctx.textAlign = 'center'
-    ctx.fillStyle = '#5B452C'
+    ctx.fillStyle = ferme ? '#FFFDF9' : '#5B452C'
     ctx.font = '600 23px Fraunces, Georgia, serif'
     ctx.fillText(JOURS_COURTS[index], x + columnWidth / 2, gridY + 45)
     ctx.font = '500 31px Fraunces, Georgia, serif'
     ctx.fillText(String(date.getDate()), x + columnWidth / 2, gridY + 86)
     if (result.heures) {
       drawHeuresSeules(ctx, result.heures, x + columnWidth / 2, gridY + 150, 9, 32, '600 24px Inter, Arial, sans-serif')
-    } else {
+    } else if (!ferme) {
       drawStatusDot(ctx, x + columnWidth / 2, gridY + 195, result, true)
       if (result.status !== 'off') {
         ctx.fillStyle = '#5B452C'
