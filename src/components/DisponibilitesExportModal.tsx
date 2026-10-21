@@ -20,7 +20,7 @@ interface RendezVous {
 interface DisponibilitesExportModalProps { onClose: () => void }
 
 type ExportFormat = 'mois' | 'semaine'
-type StatutJour = 'off' | 'matin' | 'apres-midi' | 'journee'
+type StatutJour = 'off' | 'matin' | 'apres-midi' | 'journee' | 'ferme'
 type SurchargesDisponibilite = Record<string, StatutJour>
 // Heures précises ajoutées à la main, en minutes depuis minuit, par jour (clé YYYY-MM-DD).
 type HeuresManuelles = Record<string, number[]>
@@ -29,7 +29,7 @@ interface ResultatJour { status: StatutJour; label: string; heures?: string[] }
 
 const JOURS_COURTS = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
 const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
-const COULEURS: Record<StatutJour, string> = { off: '#C8C3BB', matin: '#FFE054', 'apres-midi': '#F4A11B', journee: '#78D649' }
+const COULEURS: Record<StatutJour, string> = { off: '#C8C3BB', matin: '#FFE054', 'apres-midi': '#F4A11B', journee: '#78D649', ferme: '#4A4A4A' }
 // Toutes les demi-heures de 8 h à 20 h.
 const HEURES_AJOUTABLES = Array.from({ length: 25 }, (_, index) => 8 * 60 + index * 30)
 
@@ -153,12 +153,14 @@ function getStatusPourStory(
   rendezvous: RendezVous[],
   ajustements: Ajustements,
 ): ResultatJour {
+  const choisi = ajustements.statuts[dateKey(date)]
+  // Un jour fermé reste gris foncé, même s'il a des heures ajoutées.
+  if (choisi === 'ferme') return { status: 'ferme', label: 'Fermé' }
   const heures = ajustements.heures[dateKey(date)]
   if (heures?.length) {
     const labels = heures.map(formatHeure)
     return { status: statutDesHeures(heures), label: labels.join(' · '), heures: labels }
   }
-  const choisi = ajustements.statuts[dateKey(date)]
   if (!choisi) return getStatus(date, disponibilites, absences, rendezvous)
   if (choisi === 'off') return { status: 'off', label: 'COMPLET' }
   return {
@@ -608,12 +610,13 @@ function DisponibilitesExportModal({ onClose }: DisponibilitesExportModalProps) 
       <div className="mt-3 bg-sage-pale rounded-[10px] p-3">
         <p className="text-xs font-semibold text-sage-dark">Ajuster la story si besoin</p>
         <p className="text-xs text-text-muted mt-1">Les pastilles sont calculées depuis l’agenda. Choisis une couleur, puis touche un jour pour la modifier uniquement sur cette image.</p>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
+        <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 mt-3">
           {([
             ['off', 'Complet'],
             ['matin', 'Matin'],
             ['apres-midi', 'Après-midi'],
             ['journee', 'Journée'],
+            ['ferme', 'Fermé'],
           ] as const).map(([status, label]) => (
             <button
               key={status}
