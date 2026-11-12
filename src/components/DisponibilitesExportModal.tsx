@@ -248,12 +248,12 @@ function drawReservationButton(ctx: CanvasRenderingContext2D, y: number) {
   ctx.fillText('RÉSERVATION EN DM', 540, y + 51)
 }
 
-function drawLegend(ctx: CanvasRenderingContext2D, y: number) {
+function drawLegend(ctx: CanvasRenderingContext2D, y: number, lineSpacing = 53) {
   const legend = [['#FFE054', 'Créneau le matin'], ['#F4A11B', "Créneau l’après-midi"], ['#78D649', 'Disponible matin et après-midi']]
   ctx.textAlign = 'left'
   ctx.font = '400 28px Fraunces, Georgia, serif'
   legend.forEach(([color, label], index) => {
-    const lineY = y + index * 53
+    const lineY = y + index * lineSpacing
     ctx.fillStyle = color
     ctx.beginPath()
     ctx.arc(203, lineY - 9, 18, 0, Math.PI * 2)
@@ -321,7 +321,7 @@ function drawMonthly(
     ctx.font = '500 24px Fraunces, Georgia, serif'
     ctx.fillText(String(day), x + 12, y + 31)
     if (result.heures) {
-      drawHeuresSeules(ctx, result.heures, x + cellWidth / 2, y + 42, 5, 19, '600 18px Inter, Arial, sans-serif')
+      drawHeuresSeules(ctx, result.heures, x + cellWidth / 2, y + 34, 5, 21, '600 20px Inter, Arial, sans-serif')
     } else if (!ferme) {
       drawStatusDot(ctx, x + cellWidth / 2, y + 75, result)
       if (result.status !== 'off') {
@@ -332,8 +332,11 @@ function drawMonthly(
       }
     }
   }
-  drawLegend(ctx, gridY + 68 + rowCount * cellHeight + 84)
-  drawReservationButton(ctx, 1702)
+  // Un mois sur 6 lignes pousse la grille plus bas : on resserre la légende et on
+  // remonte le bouton pour qu'ils ne se chevauchent pas.
+  const compact = rowCount > 5
+  drawLegend(ctx, gridY + 68 + rowCount * cellHeight + (compact ? 50 : 84), compact ? 44 : 53)
+  drawReservationButton(ctx, compact ? 1690 : 1702)
 }
 
 function drawWeekly(
@@ -375,7 +378,7 @@ function drawWeekly(
     ctx.font = '500 31px Fraunces, Georgia, serif'
     ctx.fillText(String(date.getDate()), x + columnWidth / 2, gridY + 86)
     if (result.heures) {
-      drawHeuresSeules(ctx, result.heures, x + columnWidth / 2, gridY + 150, 9, 32, '600 24px Inter, Arial, sans-serif')
+      drawHeuresSeules(ctx, result.heures, x + columnWidth / 2, gridY + 150, 8, 35, '600 27px Inter, Arial, sans-serif')
     } else if (!ferme) {
       drawStatusDot(ctx, x + columnWidth / 2, gridY + 195, result, true)
       if (result.status !== 'off') {
