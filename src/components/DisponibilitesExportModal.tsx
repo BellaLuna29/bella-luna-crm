@@ -20,7 +20,7 @@ interface RendezVous {
 interface DisponibilitesExportModalProps { onClose: () => void }
 
 type ExportFormat = 'mois' | 'semaine'
-type StatutJour = 'off' | 'matin' | 'apres-midi' | 'journee' | 'ferme'
+type StatutJour = 'off' | 'matin' | 'apres-midi' | 'journee' | 'ferme' | 'vide'
 type SurchargesDisponibilite = Record<string, StatutJour>
 // Heures précises ajoutées à la main, en minutes depuis minuit, par jour (clé YYYY-MM-DD).
 type HeuresManuelles = Record<string, number[]>
@@ -29,7 +29,7 @@ interface ResultatJour { status: StatutJour; label: string; heures?: string[] }
 
 const JOURS_COURTS = ['L', 'M', 'M', 'J', 'V', 'S', 'D']
 const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
-const COULEURS: Record<StatutJour, string> = { off: '#C8C3BB', matin: '#FFE054', 'apres-midi': '#F4A11B', journee: '#78D649', ferme: '#7A7A7A' }
+const COULEURS: Record<StatutJour, string> = { off: '#C8C3BB', matin: '#FFE054', 'apres-midi': '#F4A11B', journee: '#78D649', ferme: '#7A7A7A', vide: '#FFFFFF' }
 // Toutes les demi-heures de 8 h à 20 h.
 const HEURES_AJOUTABLES = Array.from({ length: 25 }, (_, index) => 8 * 60 + index * 30)
 
@@ -166,6 +166,8 @@ function getStatusPourStory(
   }
   if (!choisi) return getStatus(date, disponibilites, absences, rendezvous)
   if (choisi === 'off') return { status: 'off', label: 'COMPLET' }
+  // « Rien » : case laissée vierge, ni pastille ni texte.
+  if (choisi === 'vide') return { status: 'vide', label: '' }
   return {
     status: choisi,
     label: choisi === 'matin' ? 'Matin' : choisi === 'apres-midi' ? 'Après-midi' : 'Journée',
@@ -188,6 +190,7 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 }
 
 function drawStatusDot(ctx: CanvasRenderingContext2D, x: number, y: number, result: { status: StatutJour; label: string }, large = false) {
+  if (result.status === 'vide') return
   if (result.status === 'off') {
     ctx.save()
     ctx.translate(x, y)
@@ -324,7 +327,7 @@ function drawMonthly(
       drawHeuresSeules(ctx, result.heures, x + cellWidth / 2, y + 34, 5, 21, '600 20px Inter, Arial, sans-serif')
     } else if (!ferme) {
       drawStatusDot(ctx, x + cellWidth / 2, y + 75, result)
-      if (result.status !== 'off') {
+      if (result.status !== 'off' && result.status !== 'vide') {
         ctx.textAlign = 'center'
         ctx.fillStyle = '#5B452C'
         ctx.font = '600 16px Inter, Arial, sans-serif'
@@ -381,7 +384,7 @@ function drawWeekly(
       drawHeuresSeules(ctx, result.heures, x + columnWidth / 2, gridY + 150, 8, 35, '600 27px Inter, Arial, sans-serif')
     } else if (!ferme) {
       drawStatusDot(ctx, x + columnWidth / 2, gridY + 195, result, true)
-      if (result.status !== 'off') {
+      if (result.status !== 'off' && result.status !== 'vide') {
         ctx.fillStyle = '#5B452C'
         ctx.font = '600 18px Inter, Arial, sans-serif'
         ctx.fillText(result.label, x + columnWidth / 2, gridY + 285)
@@ -639,13 +642,14 @@ function DisponibilitesExportModal({ onClose }: DisponibilitesExportModalProps) 
       <div className="mt-3 bg-sage-pale rounded-[10px] p-3">
         <p className="text-xs font-semibold text-sage-dark">Ajuster la story si besoin</p>
         <p className="text-xs text-text-muted mt-1">Les pastilles sont calculées depuis l’agenda. Choisis une couleur, puis touche un jour pour la modifier uniquement sur cette image.</p>
-        <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 mt-3">
+        <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mt-3">
           {([
             ['off', 'Indisponible'],
             ['matin', 'Matin'],
             ['apres-midi', 'Après-midi'],
             ['journee', 'Journée'],
             ['ferme', 'Fermé'],
+            ['vide', 'Rien'],
           ] as const).map(([status, label]) => (
             <button
               key={status}
@@ -653,7 +657,7 @@ function DisponibilitesExportModal({ onClose }: DisponibilitesExportModalProps) 
               onClick={() => setStatutSelectionne(status)}
               className={`min-h-11 rounded-[8px] border text-xs font-semibold ${statutSelectionne === status ? 'border-sage-dark bg-white text-sage-dark' : 'border-transparent bg-white/60 text-text-muted'}`}
             >
-              <span className="inline-block w-3 h-3 rounded-full mr-1.5 align-[-1px]" style={{ backgroundColor: COULEURS[status] }} />
+              <span className="inline-block w-3 h-3 rounded-full mr-1.5 align-[-1px]" style={{ backgroundColor: COULEURS[status], boxShadow: status === 'vide' ? 'inset 0 0 0 1px rgba(91,69,44,0.4)' : undefined }} />
               {label}
             </button>
           ))}
